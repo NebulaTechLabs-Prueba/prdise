@@ -1562,33 +1562,7 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="testi">
-        <div className="container">
-          <div className="sec-head">
-            <div className="tag">{t("testimTag")}</div>
-            <h2>{t("whatTravelers")}</h2>
-          </div>
-          <div className="t-grid">
-            {[
-              { c: "gold", q: t("testim1"), name: "María L.", from: "San Juan, PR" },
-              { c: "green", q: t("testim2"), name: "Carlos R.", from: "Miami, FL" },
-              { c: "sky", q: t("testim3"), name: "Ana & Pedro", from: "NYC" },
-            ].map((tw, i) => (
-              <div key={i} className={`t-card c-${tw.c}`}>
-                <div className="qm" style={{ color: COLORS[tw.c] }}>&ldquo;</div>
-                <p>{tw.q}</p>
-                <div className="t-author">
-                  <div className="t-av" style={{ background: COLORS[tw.c] }}>{tw.name[0]}</div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{tw.name}</div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>{tw.from}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Sección de testimonios: oculta hasta que existan reviews aprobadas reales en Supabase. */}
     </>
   );
 }
@@ -4677,7 +4651,8 @@ function ServicesPage() {
             ))}
           </div>
 
-          {/* NEWS SECTION — Editorial Magazine Layout */}
+          {/* NEWS SECTION — Editorial Magazine Layout. Solo se renderiza si hay posts reales en A_POSTS (DataLoader). */}
+          {A_POSTS.length > 0 && (
           <div style={{ marginTop: 80, paddingTop: 56, borderTop: "1px solid rgba(255,255,255,.06)" }}>
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 36, flexWrap: "wrap", gap: 12 }}>
               <div>
@@ -4850,6 +4825,7 @@ function ServicesPage() {
               }
             `}</style>
           </div>
+          )}
         </div>
       </div>
     </>
