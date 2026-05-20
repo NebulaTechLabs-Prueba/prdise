@@ -3462,7 +3462,7 @@ function CartCheckoutPage() {
     if (saved.length > 0) PRDISE.save("userCart", saved.filter(c => (c._cartId || c.id) !== id));
   };
 
-  const handlePay = () => {
+  const handlePay = async () => {
     if (!form.firstName || !form.email) { alert(lang === "es" ? "Completa nombre y correo" : "Complete name and email"); return; }
     // Validate based on method (skip if using saved profile method)
     if (!useSavedMethod) {
@@ -3475,6 +3475,44 @@ function CartCheckoutPage() {
       }
     }
     setProcessing(true);
+
+    // Persistir cada item del cart a Supabase si el método es offline.
+    if (method === "ath" || method === "bank") {
+      const itemTypeMap = { hotel: "stay", tour: "tour", transfer: "transfer" };
+      for (const it of cart) {
+        try {
+          const itemId = it.hotelId || it.tourId || it.routeId || (it.from && it.to ? `${it.from}:${it.to}` : it.id);
+          const startDate = it.checkin || it.date || new Date().toISOString().slice(0, 10);
+          const endDate = it.checkout || null;
+          const fd = new FormData();
+          fd.append("itemType", itemTypeMap[it.type] || it.type);
+          fd.append("itemId", String(itemId || ""));
+          fd.append("startDate", String(startDate));
+          if (endDate) fd.append("endDate", String(endDate));
+          fd.append("pax", String(it.guests || it.travelers || it.pax || it.quantity || 1));
+          fd.append("totalCents", String(Math.round((it.total || 0) * 100)));
+          fd.append("paymentMethod", method);
+          fd.append("notes", it.notes || "");
+          if (method === "ath") {
+            fd.append("athPhone", form.athPhone || "");
+            fd.append("athReceipt", form.athReceipt || "");
+          } else if (method === "bank") {
+            fd.append("bankHolder", form.bankHolder || "");
+            fd.append("bankReference", form.bankReference || "");
+            fd.append("bankReceipt", form.bankReceipt || "");
+          }
+          const res = await sbCreateBookingOffline(fd);
+          if (!res?.ok) {
+            // eslint-disable-next-line no-console
+            console.warn("cart item createBookingOffline:", res?.error, it);
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn("cart checkout persistence error:", e, it);
+        }
+      }
+    }
+
     setTimeout(() => {
       // Award points (10 points per dollar spent)
       const pointsEarned = Math.floor(total * 0.1);
@@ -11235,9 +11273,55 @@ textarea.adm-fi{resize:vertical;min-height:80px}
       })()}
 
       {editing && (
-        <EditModal editing={editing} onClose={() => setEditing(null)} onSave={(updated) => {
+        <EditModal editing={editing} onClose={() => setEditing(null)} onSave={async (updated) => {
           // Stamp _createdBy if employee is creating a new service
           const ownedUpdate = editing.isNew && currentEmployeeId ? { ...updated, _createdBy: currentEmployeeId } : updated;
+          // Persistir a Supabase como FormData. Best-effort; si falla, igual hace update local.
+          try {
+            const fd = new FormData();
+            const priceCents = String(Math.round((ownedUpdate.price || 0) * 100));
+            if (editing.type === "hotel") {
+              fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
+              fd.append("titleEs", ownedUpdate.name || "");
+              fd.append("titleEn", ownedUpdate.name || "");
+              fd.append("shortDescEs", ownedUpdate.desc || "");
+              fd.append("shortDescEn", ownedUpdate.desc || "");
+              fd.append("priceCents", priceCents);
+              fd.append("maxGuests", String(ownedUpdate.sleeps || 1));
+              fd.append("bedrooms", String(ownedUpdate.bedrooms || 0));
+              fd.append("bathrooms", String(ownedUpdate.bathrooms || 0));
+              fd.append("location", ownedUpdate.zone || "");
+              if (ownedUpdate.lat != null) fd.append("lat", String(ownedUpdate.lat));
+              if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
+              fd.append("featured", ownedUpdate.featured ? "true" : "false");
+              fd.append("active", ownedUpdate.status === "hidden" ? "false" : "true");
+              const action = editing.isNew ? sbCreateStay : sbUpdateStay;
+              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              const res = await action(fd);
+              if (!res?.ok) console.warn("stay save:", res?.error);
+            } else if (editing.type === "tour") {
+              fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
+              fd.append("titleEs", ownedUpdate.name || "");
+              fd.append("titleEn", ownedUpdate.name || "");
+              fd.append("shortDescEs", ownedUpdate.desc || "");
+              fd.append("shortDescEn", ownedUpdate.desc || "");
+              fd.append("priceCents", priceCents);
+              fd.append("durationMinutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
+              fd.append("maxPax", String(ownedUpdate.capacity || 10));
+              fd.append("location", ownedUpdate.location || "");
+              if (ownedUpdate.lat != null) fd.append("lat", String(ownedUpdate.lat));
+              if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
+              fd.append("featured", ownedUpdate.featured ? "true" : "false");
+              fd.append("active", ownedUpdate.status === "draft" ? "false" : "true");
+              const action = editing.isNew ? sbCreateTour : sbUpdateTour;
+              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              const res = await action(fd);
+              if (!res?.ok) console.warn("tour save:", res?.error);
+            }
+          } catch (e) {
+            console.warn("admin save persistence error:", e);
+          }
+          // Update local state for immediate UI feedback (Supabase es source of truth en próximo reload).
           if (editing.type === "hotel") {
             if (editing.isNew) { HOTELS.push(ownedUpdate); setHotels([...HOTELS]); }
             else {
