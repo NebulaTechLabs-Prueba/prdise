@@ -13,7 +13,7 @@ users:
     sudo: 'ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload caddy, /usr/bin/systemctl restart caddy, /usr/bin/systemctl status caddy'
     shell: /bin/bash
     ssh_authorized_keys:
-      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtYfVEJuClFs5Cxxh5PSD9vjzQ7vbqqFcTO7u34EDF4 github-actions-prdise-deploy
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN8YAZTdjsU80S11STObDlTMQVs1DhR8UbyKCNW80f1Z nebulatechlabs-prdise-deploy
 
 packages:
   - git
