@@ -1751,11 +1751,28 @@ function HotelDetail({ params }) {
   const [checkout, setCheckout] = useState("");
   const [guests, setGuests] = useState(2);
   const [user, setUser] = useState(null);
+  const [addedToCart, setAddedToCart] = useState(false);
   useEffect(() => {
     if (hotel) document.title = `${hotel.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
     if (u && u.firstName !== "Guest") setUser(u);
   }, [hotel?.name]);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const minCheckin = toISO(tomorrow);
+  const minCheckout = useMemo(() => {
+    if (!checkin) return minCheckin;
+    const d = new Date(checkin + "T12:00"); d.setDate(d.getDate() + 1);
+    return toISO(d);
+  }, [checkin, minCheckin]);
+  const pricing = useMemo(() => {
+    if (!checkin || !checkout || !hotel) return null;
+    const nights = Math.round((new Date(checkout + "T12:00") - new Date(checkin + "T12:00")) / 86400000);
+    if (nights < 1) return null;
+    const subtotal = nights * hotel.price;
+    const cleaning = 45;
+    const service = subtotal * 0.1;
+    return { nights, subtotal, cleaning, service, total: subtotal + cleaning + service };
+  }, [checkin, checkout, hotel?.price, hotel]);
   if (!hotel) {
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.6)", padding: 40, textAlign: "center" }}>
@@ -1766,24 +1783,6 @@ function HotelDetail({ params }) {
       </div>
     );
   }
-
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  const minCheckin = toISO(tomorrow);
-  const minCheckout = useMemo(() => {
-    if (!checkin) return minCheckin;
-    const d = new Date(checkin + "T12:00"); d.setDate(d.getDate() + 1);
-    return toISO(d);
-  }, [checkin, minCheckin]);
-
-  const pricing = useMemo(() => {
-    if (!checkin || !checkout) return null;
-    const nights = Math.round((new Date(checkout + "T12:00") - new Date(checkin + "T12:00")) / 86400000);
-    if (nights < 1) return null;
-    const subtotal = nights * hotel.price;
-    const cleaning = 45;
-    const service = subtotal * 0.1;
-    return { nights, subtotal, cleaning, service, total: subtotal + cleaning + service };
-  }, [checkin, checkout, hotel.price]);
 
   const reserve = () => {
     if (!checkin || !checkout) { alert("Please select check-in and check-out dates"); return; }
@@ -1798,7 +1797,6 @@ function HotelDetail({ params }) {
     PRDISE.addToUserCart(booking);
     nav("/checkout-hotel");
   };
-  const [addedToCart, setAddedToCart] = useState(false);
   const addToCartOnly = () => {
     if (!checkin || !checkout) { alert(lang==="es"?"Por favor selecciona fechas de entrada y salida":"Please select check-in and check-out dates"); return; }
     if (!pricing) { alert(lang==="es"?"La salida debe ser después de la entrada":"Check-out must be after check-in"); return; }
@@ -2007,11 +2005,20 @@ function TourDetail({ params }) {
   const [date, setDate] = useState("");
   const [travelers, setTravelers] = useState(2);
   const [user, setUser] = useState(null);
+  const [tourAddedToCart, setTourAddedToCart] = useState(false);
   useEffect(() => {
     if (tour) document.title = `${tour.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
     if (u && u.firstName !== "Guest") setUser(u);
   }, [tour?.name]);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = toISO(tomorrow);
+  const pricing = useMemo(() => {
+    if (!tour) return { subtotal: 0, service: 0, total: 0 };
+    const subtotal = travelers * tour.price;
+    const service = subtotal * 0.05;
+    return { subtotal, service, total: subtotal + service };
+  }, [travelers, tour?.price, tour]);
   if (!tour) {
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.6)", padding: 40, textAlign: "center" }}>
@@ -2022,16 +2029,6 @@ function TourDetail({ params }) {
       </div>
     );
   }
-
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = toISO(tomorrow);
-
-  const pricing = useMemo(() => {
-    const subtotal = travelers * tour.price;
-    const service = subtotal * 0.05;
-    return { subtotal, service, total: subtotal + service };
-  }, [travelers, tour.price]);
-
   const book = () => {
     if (!date) { alert("Please select a date"); return; }
     const booking = {
@@ -2043,7 +2040,6 @@ function TourDetail({ params }) {
     PRDISE.addToUserCart(booking);
     nav("/checkout-tour");
   };
-  const [tourAddedToCart, setTourAddedToCart] = useState(false);
   const addTourToCart = () => {
     if (!date) { alert(lang==="es"?"Por favor selecciona una fecha":"Please select a date"); return; }
     const sess = PRDISE.load("session", null);
@@ -6292,25 +6288,29 @@ function AdminPanel({ onClose }) {
     (async () => {
       try {
         const { listPendingPayments } = await import("@/lib/admin/payments");
-        const list = await listPendingPayments();
-        if (!mounted) return;
-        const mapped = (list || []).map((row) => ({
-          id: "sb-" + row.id,
-          paymentId: row.id,
-          bookingId: row.booking_id,
-          ref: "PAY-" + row.id.slice(0, 8).toUpperCase(),
-          customer: row.customer_name || row.customer_email || "—",
-          email: row.customer_email || "",
-          amount: (row.amount_cents || 0) / 100,
-          method: row.method,
-          status: "pending",
-          date: (row.claimed_at || row.created_at || "").slice(0, 10),
-          bookingRef: row.booking_id?.slice(0, 8).toUpperCase() || "",
-          type: row.item_type || "",
-          item: row.item_title || row.item_type || "",
-          notes: row.notes || "",
-          customerPaymentClaim: row.external_ref || "",
-        }));
+        const res = await listPendingPayments();
+        if (!mounted || !res?.ok) return;
+        const mapped = (res.data || []).map((row) => {
+          const c = row.customer || {};
+          const customerName = [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "—";
+          return {
+            id: "sb-" + row.id,
+            paymentId: row.id,
+            bookingId: row.booking_id,
+            ref: "PAY-" + row.id.slice(0, 8).toUpperCase(),
+            customer: customerName,
+            email: row.customer_email || "",
+            amount: (row.amount_cents || 0) / 100,
+            method: row.method,
+            status: "pending",
+            date: (row.claimed_at || row.created_at || "").slice(0, 10),
+            bookingRef: row.booking_id?.slice(0, 8).toUpperCase() || "",
+            type: row.booking?.item_type || "",
+            item: row.booking?.item_type || "",
+            notes: row.notes || "",
+            customerPaymentClaim: row.external_ref || "",
+          };
+        });
         setTransactions((prev) => {
           const seen = new Set(mapped.map((m) => m.paymentId));
           const local = prev.filter((p) => !p.paymentId || !seen.has(p.paymentId));
