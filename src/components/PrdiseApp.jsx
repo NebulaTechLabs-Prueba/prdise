@@ -37,6 +37,8 @@ import {
   togglePostPublish as sbTogglePostPublish,
   togglePostFeatured as sbTogglePostFeatured,
   deletePost as sbDeletePost,
+  createPost as sbCreatePost,
+  updatePost as sbUpdatePost,
 } from "@/lib/admin/posts";
 import {
   createDriver as sbCreateDriver,
@@ -11500,6 +11502,22 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               const res = await action(fd);
               if (!res?.ok) console.warn("tour save:", res?.error);
+            } else if (editing.type === "post") {
+              fd.append("slug", ownedUpdate.slug || ownedUpdate.id || "");
+              fd.append("titleEs", ownedUpdate.title || "");
+              fd.append("titleEn", ownedUpdate.title || "");
+              fd.append("excerptEs", ownedUpdate.excerpt || "");
+              fd.append("excerptEn", ownedUpdate.excerpt || "");
+              fd.append("bodyEs", ownedUpdate.body || "");
+              fd.append("bodyEn", ownedUpdate.body || "");
+              fd.append("category", ownedUpdate.category || "");
+              fd.append("featured", ownedUpdate.featured ? "true" : "false");
+              fd.append("image", ownedUpdate.img || "");
+              fd.append("status", ownedUpdate.status || "draft");
+              const action = editing.isNew ? sbCreatePost : sbUpdatePost;
+              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              const res = await action(fd);
+              if (!res?.ok) console.warn("post save:", res?.error);
             }
           } catch (e) {
             console.warn("admin save persistence error:", e);
