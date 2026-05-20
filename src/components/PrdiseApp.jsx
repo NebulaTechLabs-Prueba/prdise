@@ -22,6 +22,17 @@ import {
 } from "@/lib/auth/actions";
 import { createBookingOffline as sbCreateBookingOffline } from "@/lib/bookings/actions";
 import { submitContactMessage as sbSubmitContact } from "@/lib/contact/actions";
+import {
+  confirmPayment as sbConfirmPayment,
+  rejectPayment as sbRejectPayment,
+} from "@/lib/admin/payments";
+import { completeBooking as sbCompleteBooking } from "@/lib/admin/bookings";
+import {
+  createStay as sbCreateStay, updateStay as sbUpdateStay, deleteStay as sbDeleteStay,
+  createTour as sbCreateTour, updateTour as sbUpdateTour, deleteTour as sbDeleteTour,
+  createVehicle as sbCreateVehicle, updateVehicle as sbUpdateVehicle, deleteVehicle as sbDeleteVehicle,
+  createTransferRoute as sbCreateRoute, updateTransferRoute as sbUpdateRoute, deleteTransferRoute as sbDeleteRoute,
+} from "@/lib/admin/catalog";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -4397,15 +4408,26 @@ function AccountPage() {
           <div className="acc-panel">
             <h3>{lang === "es" ? "Seguridad de la cuenta" : "Account Security"}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button onClick={() => alert(lang === "es" ? "Flujo de cambio de contraseña (demo)" : "Password change flow (demo)")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
+              <button onClick={async () => {
+                if (!user?.email) { alert(lang === "es" ? "Necesitas tener un email en tu cuenta" : "Need an email on your account"); return; }
+                try {
+                  const fd = new FormData(); fd.append("email", user.email);
+                  await sbRequestPasswordReset(fd);
+                  alert(lang === "es" ? "Te enviamos un enlace por email para restablecer la contraseña." : "We sent you an email link to reset your password.");
+                } catch { alert(lang === "es" ? "No se pudo enviar el email. Intenta más tarde." : "Could not send email. Try again later."); }
+              }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
                 <Key style={{ width: 16, height: 16, color: "var(--gold)" }} />{lang === "es" ? "Cambiar contraseña" : "Change Password"}
                 <ChevronRight style={{ width: 14, height: 14, marginLeft: "auto", color: "rgba(255,255,255,.3)" }} />
               </button>
-              <button onClick={() => alert(lang === "es" ? "Configuración de 2FA (demo)" : "2FA setup (demo)")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
+              <button onClick={() => alert(lang === "es" ? "Configuración de 2FA estará disponible próximamente." : "2FA setup coming soon.")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
                 <Shield style={{ width: 16, height: 16, color: "#8DC63F" }} />{lang === "es" ? "Activar autenticación de dos factores" : "Enable Two-Factor Authentication"}
                 <ChevronRight style={{ width: 14, height: 14, marginLeft: "auto", color: "rgba(255,255,255,.3)" }} />
               </button>
-              <button onClick={() => alert(lang === "es" ? "Todas las sesiones cerradas (demo)" : "All sessions closed (demo)")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
+              <button onClick={async () => {
+                try { await sbSignOut(); } catch {}
+                try { PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession"); } catch {}
+                window.location.replace("/");
+              }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
                 <Power style={{ width: 16, height: 16, color: "#29ABE2" }} />{lang === "es" ? "Cerrar sesión en todos los dispositivos" : "Sign Out of All Devices"}
                 <ChevronRight style={{ width: 14, height: 14, marginLeft: "auto", color: "rgba(255,255,255,.3)" }} />
               </button>
@@ -9388,18 +9410,41 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </p>
                 <div className="adm-modal-actions" style={{ justifyContent: "center" }}>
                   <button className="adm-btn adm-btn-ghost" onClick={() => setTxAction(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
-                  <button className="adm-btn adm-btn-primary" style={{ background: accent, borderColor: accent, color: "#0F1822" }} onClick={() => {
+                  <button className="adm-btn adm-btn-primary" style={{ background: accent, borderColor: accent, color: "#0F1822" }} onClick={async () => {
                     const today = new Date().toISOString().split("T")[0];
                     let updated;
                     if (isVerify) {
                       const verifRef = txVerificationRef.trim();
                       updated = { ...tx, status: "paid", verifiedAt: today, verificationRef: verifRef || undefined };
+                      // Persistir a Supabase si tenemos paymentId real (UUID).
+                      if (tx.paymentId) {
+                        try {
+                          const fd = new FormData();
+                          fd.append("paymentId", tx.paymentId);
+                          if (verifRef) fd.append("notes", verifRef);
+                          await sbConfirmPayment(fd);
+                        } catch (e) {
+                          // eslint-disable-next-line no-console
+                          console.warn("confirmPayment:", e);
+                        }
+                      }
                     } else if (isRevert) {
                       // Strip completedAt to truly revert
                       const { completedAt, ...rest } = tx;
                       updated = { ...rest, status: "paid", revertedAt: today };
                     } else {
                       updated = { ...tx, status: "completed", completedAt: today };
+                      // Marcar booking completado en Supabase si tenemos bookingId real.
+                      if (tx.bookingId) {
+                        try {
+                          const fd = new FormData();
+                          fd.append("bookingId", tx.bookingId);
+                          await sbCompleteBooking(fd);
+                        } catch (e) {
+                          // eslint-disable-next-line no-console
+                          console.warn("completeBooking:", e);
+                        }
+                      }
                     }
                     setTransactions(transactions.map(x => x.id === tx.id ? updated : x));
                     // Sync to localStorage if user-generated
@@ -10482,7 +10527,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-fg"><label className="adm-fl">WhatsApp</label><input className="adm-fi" defaultValue="+1 787-237-9519" /></div>
                 </div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" defaultValue="Cabo Rojo, Puerto Rico" /></div>
-                <button className="adm-btn adm-btn-primary" onClick={() => alert(lang==="es"?"Configuración guardada (demo)":"Settings saved (demo)")}><Check />{t("adm_save")}</button>
+                <button className="adm-btn adm-btn-primary" onClick={() => alert(lang==="es"?"La persistencia de esta configuración llegará en una próxima actualización.":"Persistence of this configuration is coming in a future update.")}><Check />{t("adm_save")}</button>
               </div>
 
               {/* Language Settings */}
@@ -12093,7 +12138,7 @@ function NotifMatrixCard() {
         </table>
       </div>
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "flex-end" }}>
-        <button className="adm-btn adm-btn-primary" onClick={() => alert("Notification matrix saved (demo)")}><Check />Save Preferences</button>
+        <button className="adm-btn adm-btn-primary" onClick={() => alert(lang==="es"?"Esta matriz de notificaciones se conectará pronto.":"Notification matrix wiring coming soon.")}><Check />Save Preferences</button>
       </div>
     </div>
   );
