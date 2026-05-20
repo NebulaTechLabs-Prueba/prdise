@@ -1,0 +1,69 @@
+# dependencias
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# build / Next.js
+/.next/
+/out/
+/build
+/dist
+*.tsbuildinfo
+next-env.d.ts
+
+# configuración local de Claude Code (puede contener tokens/secrets)
+.claude/
+
+# variables de entorno (NUNCA commitear claves)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# debug
+.pnpm-debug.log*
+
+# editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# despliegue
+.vercel
+.turbo
+
+# Supabase CLI — archivos locales/temporales (las migrations sí se commitean)
+/supabase/.temp/
+/supabase/.branches/
+
+# notas privadas / borradores que no deben subirse
+/notas-privadas/
+/borradores/
+*-credenciales*
+*-secrets*
+*.pem
+*.key

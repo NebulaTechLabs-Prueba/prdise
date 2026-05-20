@@ -1,0 +1,9 @@
+# Config de Supabase CLI para el proyecto prdise.
+# Solo se usan los campos que la CLI necesita; el grueso de la config remota
+# se gestiona desde el dashboard.
+
+project_id = "krmihhwpwhvycveupiwy"
+
+[db]
+# Solo informativo para herramientas; Supabase remoto usa lo que el proyecto tenga.
+major_version = 17

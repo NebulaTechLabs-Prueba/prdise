@@ -1,0 +1,1010 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+  public: {
+    Tables: {
+      audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: number
+          payload: Json | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: number
+          payload?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: number
+          payload?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bookings: {
+        Row: {
+          cancelled_at: string | null
+          completed_at: string | null
+          confirmed_at: string | null
+          created_at: string
+          end_date: string | null
+          id: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          notes: string | null
+          pax: number
+          start_date: string
+          start_time: string | null
+          status: Database["public"]["Enums"]["booking_status"]
+          stay_id: string | null
+          total_cents: number
+          tour_id: string | null
+          transfer_route_id: string | null
+          updated_at: string
+          user_id: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          cancelled_at?: string | null
+          completed_at?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          notes?: string | null
+          pax?: number
+          start_date: string
+          start_time?: string | null
+          status?: Database["public"]["Enums"]["booking_status"]
+          stay_id?: string | null
+          total_cents: number
+          tour_id?: string | null
+          transfer_route_id?: string | null
+          updated_at?: string
+          user_id: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          cancelled_at?: string | null
+          completed_at?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          item_type?: Database["public"]["Enums"]["item_type"]
+          notes?: string | null
+          pax?: number
+          start_date?: string
+          start_time?: string | null
+          status?: Database["public"]["Enums"]["booking_status"]
+          stay_id?: string | null
+          total_cents?: number
+          tour_id?: string | null
+          transfer_route_id?: string | null
+          updated_at?: string
+          user_id?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookings_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_transfer_route_id_fkey"
+            columns: ["transfer_route_id"]
+            isOneToOne: false
+            referencedRelation: "transfer_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cart_items: {
+        Row: {
+          created_at: string
+          end_date: string | null
+          id: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          notes: string | null
+          pax: number
+          start_date: string | null
+          stay_id: string | null
+          tour_id: string | null
+          transfer_route_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          notes?: string | null
+          pax?: number
+          start_date?: string | null
+          stay_id?: string | null
+          tour_id?: string | null
+          transfer_route_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          item_type?: Database["public"]["Enums"]["item_type"]
+          notes?: string | null
+          pax?: number
+          start_date?: string | null
+          stay_id?: string | null
+          tour_id?: string | null
+          transfer_route_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_transfer_route_id_fkey"
+            columns: ["transfer_route_id"]
+            isOneToOne: false
+            referencedRelation: "transfer_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_messages: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          message: string
+          name: string
+          phone: string | null
+          replied_at: string | null
+          replied_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          message: string
+          name: string
+          phone?: string | null
+          replied_at?: string | null
+          replied_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string
+          name?: string
+          phone?: string | null
+          replied_at?: string | null
+          replied_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_messages_replied_by_fkey"
+            columns: ["replied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount_cents: number
+          booking_id: string
+          claimed_at: string | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          external_ref: string | null
+          id: string
+          method: Database["public"]["Enums"]["payment_method"]
+          notes: string | null
+          receipt_url: string | null
+          rejected_at: string | null
+          status: Database["public"]["Enums"]["payment_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          booking_id: string
+          claimed_at?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          external_ref?: string | null
+          id?: string
+          method: Database["public"]["Enums"]["payment_method"]
+          notes?: string | null
+          receipt_url?: string | null
+          rejected_at?: string | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          booking_id?: string
+          claimed_at?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          external_ref?: string | null
+          id?: string
+          method?: Database["public"]["Enums"]["payment_method"]
+          notes?: string | null
+          receipt_url?: string | null
+          rejected_at?: string | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          author_id: string | null
+          body_en: string | null
+          body_es: string | null
+          category: string | null
+          created_at: string
+          excerpt_en: string | null
+          excerpt_es: string | null
+          featured: boolean
+          id: string
+          image: string | null
+          published_at: string | null
+          scheduled_at: string | null
+          slug: string
+          status: Database["public"]["Enums"]["content_status"]
+          tags: Json
+          title_en: string | null
+          title_es: string
+          updated_at: string
+          views: number
+        }
+        Insert: {
+          author_id?: string | null
+          body_en?: string | null
+          body_es?: string | null
+          category?: string | null
+          created_at?: string
+          excerpt_en?: string | null
+          excerpt_es?: string | null
+          featured?: boolean
+          id?: string
+          image?: string | null
+          published_at?: string | null
+          scheduled_at?: string | null
+          slug: string
+          status?: Database["public"]["Enums"]["content_status"]
+          tags?: Json
+          title_en?: string | null
+          title_es: string
+          updated_at?: string
+          views?: number
+        }
+        Update: {
+          author_id?: string | null
+          body_en?: string | null
+          body_es?: string | null
+          category?: string | null
+          created_at?: string
+          excerpt_en?: string | null
+          excerpt_es?: string | null
+          featured?: boolean
+          id?: string
+          image?: string | null
+          published_at?: string | null
+          scheduled_at?: string | null
+          slug?: string
+          status?: Database["public"]["Enums"]["content_status"]
+          tags?: Json
+          title_en?: string | null
+          title_es?: string
+          updated_at?: string
+          views?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          country: string | null
+          created_at: string
+          deleted_at: string | null
+          department: string | null
+          employee_id: string | null
+          first_name: string | null
+          id: string
+          lang_pref: Database["public"]["Enums"]["language_code"]
+          last_name: string | null
+          phone: string | null
+          points_balance: number
+          points_spent: number
+          position: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          status: Database["public"]["Enums"]["user_status"]
+          tfa_enabled: boolean
+          tier: Database["public"]["Enums"]["loyalty_tier"]
+          updated_at: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          department?: string | null
+          employee_id?: string | null
+          first_name?: string | null
+          id: string
+          lang_pref?: Database["public"]["Enums"]["language_code"]
+          last_name?: string | null
+          phone?: string | null
+          points_balance?: number
+          points_spent?: number
+          position?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          status?: Database["public"]["Enums"]["user_status"]
+          tfa_enabled?: boolean
+          tier?: Database["public"]["Enums"]["loyalty_tier"]
+          updated_at?: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          department?: string | null
+          employee_id?: string | null
+          first_name?: string | null
+          id?: string
+          lang_pref?: Database["public"]["Enums"]["language_code"]
+          last_name?: string | null
+          phone?: string | null
+          points_balance?: number
+          points_spent?: number
+          position?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          status?: Database["public"]["Enums"]["user_status"]
+          tfa_enabled?: boolean
+          tier?: Database["public"]["Enums"]["loyalty_tier"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      reviews: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          body: string | null
+          created_at: string
+          id: string
+          item_id: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          rating: number
+          status: Database["public"]["Enums"]["content_status"]
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          item_id: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          rating: number
+          status?: Database["public"]["Enums"]["content_status"]
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          item_id?: string
+          item_type?: Database["public"]["Enums"]["item_type"]
+          rating?: number
+          status?: Database["public"]["Enums"]["content_status"]
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stays: {
+        Row: {
+          active: boolean
+          amenities: Json
+          bathrooms: number
+          bedrooms: number
+          created_at: string
+          created_by: string | null
+          description_en: string | null
+          description_es: string | null
+          featured: boolean
+          id: string
+          images: Json
+          lat: number | null
+          lng: number | null
+          location: string | null
+          max_guests: number
+          price_cents: number
+          rating_avg: number
+          rating_count: number
+          short_desc_en: string | null
+          short_desc_es: string | null
+          slug: string
+          title_en: string | null
+          title_es: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          amenities?: Json
+          bathrooms?: number
+          bedrooms?: number
+          created_at?: string
+          created_by?: string | null
+          description_en?: string | null
+          description_es?: string | null
+          featured?: boolean
+          id?: string
+          images?: Json
+          lat?: number | null
+          lng?: number | null
+          location?: string | null
+          max_guests?: number
+          price_cents: number
+          rating_avg?: number
+          rating_count?: number
+          short_desc_en?: string | null
+          short_desc_es?: string | null
+          slug: string
+          title_en?: string | null
+          title_es: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          amenities?: Json
+          bathrooms?: number
+          bedrooms?: number
+          created_at?: string
+          created_by?: string | null
+          description_en?: string | null
+          description_es?: string | null
+          featured?: boolean
+          id?: string
+          images?: Json
+          lat?: number | null
+          lng?: number | null
+          location?: string | null
+          max_guests?: number
+          price_cents?: number
+          rating_avg?: number
+          rating_count?: number
+          short_desc_en?: string | null
+          short_desc_es?: string | null
+          slug?: string
+          title_en?: string | null
+          title_es?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stays_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tours: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          description_en: string | null
+          description_es: string | null
+          difficulty: string | null
+          duration_minutes: number
+          featured: boolean
+          id: string
+          images: Json
+          includes: Json
+          lat: number | null
+          lng: number | null
+          location: string | null
+          max_pax: number
+          meeting_point: string | null
+          price_cents: number
+          rating_avg: number
+          rating_count: number
+          short_desc_en: string | null
+          short_desc_es: string | null
+          slug: string
+          title_en: string | null
+          title_es: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          description_en?: string | null
+          description_es?: string | null
+          difficulty?: string | null
+          duration_minutes: number
+          featured?: boolean
+          id?: string
+          images?: Json
+          includes?: Json
+          lat?: number | null
+          lng?: number | null
+          location?: string | null
+          max_pax?: number
+          meeting_point?: string | null
+          price_cents: number
+          rating_avg?: number
+          rating_count?: number
+          short_desc_en?: string | null
+          short_desc_es?: string | null
+          slug: string
+          title_en?: string | null
+          title_es: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          description_en?: string | null
+          description_es?: string | null
+          difficulty?: string | null
+          duration_minutes?: number
+          featured?: boolean
+          id?: string
+          images?: Json
+          includes?: Json
+          lat?: number | null
+          lng?: number | null
+          location?: string | null
+          max_pax?: number
+          meeting_point?: string | null
+          price_cents?: number
+          rating_avg?: number
+          rating_count?: number
+          short_desc_en?: string | null
+          short_desc_es?: string | null
+          slug?: string
+          title_en?: string | null
+          title_es?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tours_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transfer_routes: {
+        Row: {
+          active: boolean
+          base_price_cents: number
+          created_at: string
+          distance_km: number | null
+          duration_minutes: number | null
+          from_location: string
+          id: string
+          max_pax: number
+          to_location: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          base_price_cents: number
+          created_at?: string
+          distance_km?: number | null
+          duration_minutes?: number | null
+          from_location: string
+          id?: string
+          max_pax?: number
+          to_location: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          base_price_cents?: number
+          created_at?: string
+          distance_km?: number | null
+          duration_minutes?: number | null
+          from_location?: string
+          id?: string
+          max_pax?: number
+          to_location?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      vehicles: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          image: string | null
+          max_luggage: number
+          max_pax: number
+          name: string
+          price_cents: number | null
+          type: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          image?: string | null
+          max_luggage?: number
+          max_pax?: number
+          name: string
+          price_cents?: number | null
+          type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          image?: string | null
+          max_luggage?: number
+          max_pax?: number
+          name?: string
+          price_cents?: number | null
+          type?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      fn_current_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["user_role"]
+      }
+      fn_is_admin: { Args: never; Returns: boolean }
+      fn_is_staff: { Args: never; Returns: boolean }
+      fn_tier_from_points: {
+        Args: { points: number }
+        Returns: Database["public"]["Enums"]["loyalty_tier"]
+      }
+    }
+    Enums: {
+      booking_status:
+        | "pending"
+        | "pending_payment"
+        | "confirmed"
+        | "cancelled"
+        | "completed"
+        | "refunded"
+      content_status: "draft" | "scheduled" | "published" | "archived"
+      item_type: "stay" | "tour" | "transfer"
+      language_code: "es" | "en"
+      loyalty_tier: "bronze" | "silver" | "gold"
+      payment_method: "stripe" | "paypal" | "ath" | "bank"
+      payment_status:
+        | "pending"
+        | "claimed"
+        | "confirmed"
+        | "rejected"
+        | "refunded"
+      user_role: "admin" | "manager" | "employee" | "user"
+      user_status: "active" | "inactive"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {
+      booking_status: [
+        "pending",
+        "pending_payment",
+        "confirmed",
+        "cancelled",
+        "completed",
+        "refunded",
+      ],
+      content_status: ["draft", "scheduled", "published", "archived"],
+      item_type: ["stay", "tour", "transfer"],
+      language_code: ["es", "en"],
+      loyalty_tier: ["bronze", "silver", "gold"],
+      payment_method: ["stripe", "paypal", "ath", "bank"],
+      payment_status: [
+        "pending",
+        "claimed",
+        "confirmed",
+        "rejected",
+        "refunded",
+      ],
+      user_role: ["admin", "manager", "employee", "user"],
+      user_status: ["active", "inactive"],
+    },
+  },
+} as const
