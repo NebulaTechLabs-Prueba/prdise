@@ -6572,16 +6572,42 @@ function AdminPanel({ onClose }) {
   // Reset to placeholder vars (avoid unused warnings)
   void totalRevenue;
 
-  const toggleStatus = (type, id) => {
+  const toggleStatus = async (type, id) => {
     const setter = type === "hotels" ? setHotels : type === "tours" ? setTours : setVehicles;
     const list = type === "hotels" ? hotels : type === "tours" ? tours : vehicles;
-    setter(list.map((it) => it.id === id ? { ...it, status: it.status === "published" ? "hidden" : it.status === "hidden" ? "published" : it.status } : it));
+    const item = list.find((it) => it.id === id);
+    if (!item) return;
+    const nextActive = item.status !== "published";
+    setter(list.map((it) => it.id === id ? { ...it, status: nextActive ? "published" : "hidden" } : it));
+    // Persistir cambio a Supabase.
+    try {
+      const fd = new FormData();
+      fd.append("id", id);
+      fd.append("active", nextActive ? "true" : "false");
+      if (type === "hotels") await sbUpdateStay(fd);
+      else if (type === "tours") await sbUpdateTour(fd);
+      else if (type === "vehicles") await sbUpdateVehicle(fd);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("toggleStatus:", e);
+    }
   };
-  const deleteItem = (type, id) => {
+  const deleteItem = async (type, id) => {
     if (!confirm("Delete this item? This cannot be undone.")) return;
     const setter = type === "hotels" ? setHotels : type === "tours" ? setTours : setVehicles;
     const list = type === "hotels" ? hotels : type === "tours" ? tours : vehicles;
     setter(list.filter((it) => it.id !== id));
+    // Soft delete a Supabase.
+    try {
+      const fd = new FormData();
+      fd.append("id", id);
+      if (type === "hotels") await sbDeleteStay(fd);
+      else if (type === "tours") await sbDeleteTour(fd);
+      else if (type === "vehicles") await sbDeleteVehicle(fd);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("deleteItem:", e);
+    }
   };
 
 
@@ -7592,9 +7618,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td><span className={`adm-pill ${r.status === "active" ? "published" : "hidden"}`}>{r.status}</span></td>
                           <td>
                             <div className="adm-row-actions">
-                              <button className="adm-icon-btn" onClick={() => setRoutes(routes.map(x => x.id === r.id ? { ...x, status: x.status === "active" ? "inactive" : "active" } : x))}>{r.status === "active" ? <EyeOff /> : <Eye />}</button>
+                              <button className="adm-icon-btn" onClick={async () => {
+                                const newActive = r.status !== "active";
+                                setRoutes(routes.map(x => x.id === r.id ? { ...x, status: newActive ? "active" : "inactive" } : x));
+                                try { const fd = new FormData(); fd.append("id", r.id); fd.append("active", newActive ? "true" : "false"); await sbUpdateRoute(fd); } catch {}
+                              }}>{r.status === "active" ? <EyeOff /> : <Eye />}</button>
                               <button className="adm-icon-btn" onClick={() => setEditing({ type: "route", item: r })}><Pencil /></button>
-                              <button className="adm-icon-btn danger" onClick={() => setRoutes(routes.filter(x => x.id !== r.id))}><Trash2 /></button>
+                              <button className="adm-icon-btn danger" onClick={async () => {
+                                if (!confirm(lang==="es"?"¿Eliminar esta ruta?":"Delete this route?")) return;
+                                setRoutes(routes.filter(x => x.id !== r.id));
+                                try { const fd = new FormData(); fd.append("id", r.id); await sbDeleteRoute(fd); } catch {}
+                              }}><Trash2 /></button>
                             </div>
                           </td>
                         </tr>
@@ -7628,7 +7662,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td>
                             <div className="adm-row-actions">
                               <button className="adm-icon-btn" onClick={() => setEditingVehicle({...v})}><Pencil /></button>
-                              <button className="adm-icon-btn danger" onClick={() => setVehicles(vehicles.filter(x => x.id !== v.id))}><Trash2 /></button>
+                              <button className="adm-icon-btn danger" onClick={async () => {
+                                if (!confirm(lang==="es"?"¿Eliminar este vehículo?":"Delete this vehicle?")) return;
+                                setVehicles(vehicles.filter(x => x.id !== v.id));
+                                try { const fd = new FormData(); fd.append("id", v.id); await sbDeleteVehicle(fd); } catch {}
+                              }}><Trash2 /></button>
                             </div>
                           </td>
                         </tr>
@@ -7682,9 +7720,26 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                   <div className="adm-modal-actions">
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingVehicle(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
-                    <button className="adm-btn adm-btn-primary" onClick={() => {
+                    <button className="adm-btn adm-btn-primary" onClick={async () => {
                       if (!editingVehicle.name) return;
-                      if (editingVehicle.id === "new") {
+                      const isNew = editingVehicle.id === "new";
+                      // Persistir a Supabase.
+                      try {
+                        const fd = new FormData();
+                        if (!isNew) fd.append("id", editingVehicle.id);
+                        fd.append("name", editingVehicle.name);
+                        fd.append("type", editingVehicle.type || editingVehicle.name.toLowerCase());
+                        fd.append("maxPax", String(editingVehicle.seats || 4));
+                        fd.append("maxLuggage", String(editingVehicle.bags || 2));
+                        fd.append("priceCents", String(Math.round((editingVehicle.base || 0) * 100)));
+                        fd.append("active", "true");
+                        const action = isNew ? sbCreateVehicle : sbUpdateVehicle;
+                        await action(fd);
+                      } catch (e) {
+                        // eslint-disable-next-line no-console
+                        console.warn("vehicle save:", e);
+                      }
+                      if (isNew) {
                         setVehicles([...vehicles, { ...editingVehicle, id: "v" + Date.now() }]);
                       } else {
                         setVehicles(vehicles.map(v => v.id === editingVehicle.id ? editingVehicle : v));
