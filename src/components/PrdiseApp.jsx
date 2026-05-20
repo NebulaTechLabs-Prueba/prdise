@@ -6192,12 +6192,10 @@ function AdminPanel({ onClose }) {
   useEffect(() => { PRDISE.save("couponHistory", couponHistory); }, [couponHistory]);
   const driverRotationIdx = useRef(0);
   const [transactions, setTransactions] = useState(() => {
-    // Migration: previously cart-checkout transactions were saved as "completed" — fix those to pending
+    // Local cache + migration mientras llega la carga desde Supabase.
     let userGenerated = PRDISE.load("userGeneratedTransactions", []);
     let migrated = false;
     userGenerated = userGenerated.map(t => {
-      // Any cart-checkout transaction that's not pending/paid/completed-after-verification should be pending
-      // We detect non-verified ones by absence of verifiedAt/completedAt timestamps
       if (String(t.id || "").startsWith("tx-cart-") && !t.verifiedAt && !t.completedAt && t.status !== "pending" && t.status !== "refunded" && t.status !== "failed") {
         migrated = true;
         return { ...t, status: "pending", notes: t.notes || "Cart checkout · Awaiting verification" };
@@ -6207,6 +6205,43 @@ function AdminPanel({ onClose }) {
     if (migrated) PRDISE.save("userGeneratedTransactions", userGenerated);
     return [...userGenerated, ...A_TRANSACTIONS];
   });
+  // Cargar pagos pendientes REALES desde Supabase (admin payments).
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { listPendingPayments } = await import("@/lib/admin/payments");
+        const list = await listPendingPayments();
+        if (!mounted) return;
+        const mapped = (list || []).map((row) => ({
+          id: "sb-" + row.id,
+          paymentId: row.id,
+          bookingId: row.booking_id,
+          ref: "PAY-" + row.id.slice(0, 8).toUpperCase(),
+          customer: row.customer_name || row.customer_email || "—",
+          email: row.customer_email || "",
+          amount: (row.amount_cents || 0) / 100,
+          method: row.method,
+          status: "pending",
+          date: (row.claimed_at || row.created_at || "").slice(0, 10),
+          bookingRef: row.booking_id?.slice(0, 8).toUpperCase() || "",
+          type: row.item_type || "",
+          item: row.item_title || row.item_type || "",
+          notes: row.notes || "",
+          customerPaymentClaim: row.external_ref || "",
+        }));
+        setTransactions((prev) => {
+          const seen = new Set(mapped.map((m) => m.paymentId));
+          const local = prev.filter((p) => !p.paymentId || !seen.has(p.paymentId));
+          return [...mapped, ...local];
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("listPendingPayments admin:", e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
   const [invoices, setInvoices] = useState(() => {
     // Same migration for invoices: cart-checkout invoices that were marked paid without verification
     let userGenerated = PRDISE.load("userGeneratedInvoices", []);
