@@ -2344,6 +2344,7 @@ function TransferSearchPage() {
 function TransferResultsPage() {
   const { lang } = useLang();
   const [search, setSearch] = useState(null);
+  const [transferAddedId, setTransferAddedId] = useState(null);
   useEffect(() => {
     const s = PRDISE.load("transferSearch", null);
     if (!s) { nav("/transfer-search"); return; }
@@ -2351,7 +2352,6 @@ function TransferResultsPage() {
   }, []);
   if (!search) return null;
   const eligible = VEHICLES.filter((v) => v.seats >= search.pax && v.bags >= search.bags);
-  const [transferAddedId, setTransferAddedId] = useState(null);
   const select = (id) => {
     const v = VEHICLES.find((x) => x.id === id);
     const distanceFee = v.perKm * search.km;
@@ -5256,9 +5256,11 @@ function RegisterPage() {
 
   useEffect(() => {
     document.title = "Create Account — Living in PRDISE";
+    // Solo redirigir si AuthBridge ya validó contra Supabase real (no localStorage residual).
+    // Si hay sesión legítima, AuthBridge la habrá conservado; si no, ya la limpió.
     const sess = PRDISE.load("session", null);
-    if (sess) {
-      if (sess.role === "admin" || sess.role === "employee") nav("/admin");
+    if (sess && sess.email) {
+      if (sess.role === "admin" || sess.role === "manager" || sess.role === "employee") nav("/admin");
       else nav("/account");
     }
   }, []);
