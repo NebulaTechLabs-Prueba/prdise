@@ -3990,6 +3990,71 @@ function AccountPage() {
     setUser(u);
   }, []);
 
+  // Cargar profile + loyalty + bookings REALES desde Supabase (mejora datos demo).
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [{ createClient }, { nextTierProgress }] = await Promise.all([
+          import("@/lib/supabase/client"),
+          import("@/lib/loyalty/config"),
+        ]);
+        const sb = createClient();
+        const { data: { user: authUser } } = await sb.auth.getUser();
+        if (!authUser || !mounted) return;
+        const { data: profile } = await sb
+          .from("profiles")
+          .select("first_name, last_name, phone, country, points_balance, tier, avatar_url")
+          .eq("id", authUser.id)
+          .maybeSingle();
+        if (!profile || !mounted) return;
+        const progress = nextTierProgress(profile.points_balance || 0);
+        setUser((prev) => ({
+          ...(prev || {}),
+          firstName: profile.first_name || prev?.firstName || "",
+          lastName: profile.last_name || prev?.lastName || "",
+          phone: profile.phone || prev?.phone || "",
+          country: profile.country || prev?.country || "",
+          email: authUser.email || prev?.email || "",
+          points: profile.points_balance || 0,
+          level: progress.currentTier?.label?.es || "Bronze",
+          avatarUrl: profile.avatar_url || null,
+        }));
+        // Bookings reales del usuario
+        const { data: bookingsData } = await sb
+          .from("bookings")
+          .select("id, item_type, stay_id, tour_id, transfer_route_id, start_date, end_date, pax, total_cents, status, created_at, payments(id, method, status, amount_cents)")
+          .eq("user_id", authUser.id)
+          .order("created_at", { ascending: false });
+        if (bookingsData && mounted) {
+          const mapped = bookingsData.map((b) => ({
+            id: "sb-" + b.id,
+            ref: "PRD-" + b.id.slice(0, 8).toUpperCase(),
+            type: b.item_type === "stay" ? "hotel" : b.item_type === "tour" ? "tour" : "transfer",
+            name: b.item_type === "stay" ? "Stay" : b.item_type === "tour" ? "Tour" : "Transfer",
+            status: b.status === "completed" ? "completed" : b.status === "confirmed" ? "active" : "pending",
+            checkin: b.start_date,
+            checkout: b.end_date,
+            date: b.start_date,
+            time: "",
+            location: "",
+            guests: b.pax || 1,
+            total: (b.total_cents || 0) / 100,
+            notes: "",
+          }));
+          setBookings((prev) => {
+            const localOnly = prev.filter((p) => !String(p.id || "").startsWith("sb-"));
+            return [...mapped, ...localOnly];
+          });
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("account load real:", e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   // Sync cart removals back to PRDISE.userCart (only non-demo items matter for persistence)
   useEffect(() => {
     // Identify "real" saved cart items by checking for the CART-DRAFT-ish ref format or _cartId

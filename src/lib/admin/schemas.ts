@@ -261,6 +261,126 @@ export const createVehicleSchema = vehicleBaseSchema;
 export const updateVehicleSchema = vehicleBaseSchema.extend({ id: uuidSchema });
 export const deleteVehicleSchema = z.object({ id: uuidSchema });
 
+// ─── Posts (blog) ───────────────────────────────────────────────────────────
+
+export const POST_STATUSES = [
+  "draft",
+  "scheduled",
+  "published",
+  "archived",
+] as const;
+export type PostStatusLiteral = (typeof POST_STATUSES)[number];
+
+const postBaseSchema = z.object({
+  slug: slugSchema,
+  title_es: optionalNonEmptyText(200, "Título (ES)"),
+  title_en: optionalText(200, "Título (EN)"),
+  excerpt_es: optionalText(500, "Extracto (ES)"),
+  excerpt_en: optionalText(500, "Extracto (EN)"),
+  body_es: optionalText(50000, "Cuerpo (ES)"),
+  body_en: optionalText(50000, "Cuerpo (EN)"),
+  category: optionalText(60, "Categoría"),
+  image: optionalText(300, "Imagen"),
+  tags: stringArraySchema.default([]),
+  featured: booleanFlagSchema.default(false),
+  status: z
+    .enum(POST_STATUSES, {
+      errorMap: () => ({ message: "Estado de publicación inválido" }),
+    })
+    .default("draft"),
+});
+
+export const createPostSchema = postBaseSchema;
+export const updatePostSchema = postBaseSchema.extend({ id: uuidSchema });
+export const deletePostSchema = z.object({ id: uuidSchema });
+export const togglePostPublishSchema = z.object({ id: uuidSchema });
+export const togglePostFeaturedSchema = z.object({ id: uuidSchema });
+
+// ─── Drivers (transfers) ────────────────────────────────────────────────────
+
+export const DRIVER_STATUSES = ["available", "in_trip", "off"] as const;
+export type DriverStatusLiteral = (typeof DRIVER_STATUSES)[number];
+
+const phoneSchema = z
+  .string()
+  .trim()
+  .max(40, "Teléfono demasiado largo")
+  .optional()
+  .or(z.literal(""));
+
+const emailSchema = z
+  .string()
+  .trim()
+  .max(200, "Email demasiado largo")
+  .email("Email inválido")
+  .optional()
+  .or(z.literal(""));
+
+const driverBaseSchema = z.object({
+  name: optionalNonEmptyText(160, "Nombre"),
+  phone: phoneSchema,
+  email: emailSchema,
+  license: optionalText(60, "Licencia"),
+  vehicle: optionalText(200, "Vehículo"),
+  emergency_phone: phoneSchema,
+  status: z
+    .enum(DRIVER_STATUSES, {
+      errorMap: () => ({ message: "Estado de chofer inválido" }),
+    })
+    .default("available"),
+  web_visible: booleanFlagSchema.default(false),
+});
+
+export const createDriverSchema = driverBaseSchema;
+export const updateDriverSchema = driverBaseSchema.extend({ id: uuidSchema });
+export const deleteDriverSchema = z.object({ id: uuidSchema });
+export const toggleDriverVisibilitySchema = z.object({ id: uuidSchema });
+
+// ─── Coupons ────────────────────────────────────────────────────────────────
+
+const couponCodeSchema = z
+  .string({ required_error: "Código requerido" })
+  .trim()
+  .min(2, "Código demasiado corto")
+  .max(40, "Código demasiado largo")
+  .regex(/^[A-Z0-9_-]+$/i, "Solo letras, números, guion y guion bajo");
+
+const discountPctSchema = z.coerce
+  .number({ invalid_type_error: "Descuento inválido" })
+  .int("El descuento debe ser entero")
+  .min(0, "El descuento no puede ser negativo")
+  .max(100, "El descuento no puede exceder 100");
+
+const maxUsesSchema = z.coerce
+  .number({ invalid_type_error: "Máx. usos inválido" })
+  .int("Máx. usos debe ser entero")
+  .min(0, "Máx. usos no puede ser negativo")
+  .max(1_000_000, "Máx. usos fuera de rango")
+  .optional()
+  .nullable();
+
+const expiresAtSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de expiración inválida (YYYY-MM-DD)")
+  .optional()
+  .or(z.literal(""));
+
+const couponBaseSchema = z.object({
+  code: couponCodeSchema,
+  description_es: optionalText(500, "Descripción (ES)"),
+  description_en: optionalText(500, "Descripción (EN)"),
+  discount_pct: discountPctSchema,
+  max_uses: maxUsesSchema,
+  expires_at: expiresAtSchema,
+  active: booleanFlagSchema.default(true),
+});
+
+export const createCouponSchema = couponBaseSchema;
+export const updateCouponSchema = couponBaseSchema.extend({ id: uuidSchema });
+export const deleteCouponSchema = z.object({ id: uuidSchema });
+export const toggleCouponActiveSchema = z.object({ id: uuidSchema });
+
 // ─── Users ──────────────────────────────────────────────────────────────────
 
 export const USER_ROLES = ["admin", "manager", "employee", "user"] as const;
@@ -306,3 +426,9 @@ export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 export type UpdateVehicleInput = z.infer<typeof updateVehicleSchema>;
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 export type ToggleUserStatusInput = z.infer<typeof toggleUserStatusSchema>;
+export type CreatePostInput = z.infer<typeof createPostSchema>;
+export type UpdatePostInput = z.infer<typeof updatePostSchema>;
+export type CreateDriverInput = z.infer<typeof createDriverSchema>;
+export type UpdateDriverInput = z.infer<typeof updateDriverSchema>;
+export type CreateCouponInput = z.infer<typeof createCouponSchema>;
+export type UpdateCouponInput = z.infer<typeof updateCouponSchema>;
