@@ -360,6 +360,36 @@ export type Database = {
           },
         ]
       }
+      permissions: {
+        Row: {
+          area: string
+          created_at: string
+          description_en: string
+          description_es: string
+          key: string
+          label_en: string
+          label_es: string
+        }
+        Insert: {
+          area: string
+          created_at?: string
+          description_en: string
+          description_es: string
+          key: string
+          label_en: string
+          label_es: string
+        }
+        Update: {
+          area?: string
+          created_at?: string
+          description_en?: string
+          description_es?: string
+          key?: string
+          label_en?: string
+          label_es?: string
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           author_id: string | null
@@ -436,6 +466,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           country: string | null
           created_at: string
           deleted_at: string | null
@@ -449,6 +480,8 @@ export type Database = {
           points_balance: number
           points_spent: number
           position: string | null
+          provider: string
+          provider_sub: string | null
           role: Database["public"]["Enums"]["user_role"]
           status: Database["public"]["Enums"]["user_status"]
           tfa_enabled: boolean
@@ -456,6 +489,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
           country?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -469,6 +503,8 @@ export type Database = {
           points_balance?: number
           points_spent?: number
           position?: string | null
+          provider?: string
+          provider_sub?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
           tfa_enabled?: boolean
@@ -476,6 +512,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
           country?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -489,6 +526,8 @@ export type Database = {
           points_balance?: number
           points_spent?: number
           position?: string | null
+          provider?: string
+          provider_sub?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
           tfa_enabled?: boolean
@@ -777,6 +816,49 @@ export type Database = {
         }
         Relationships: []
       }
+      user_permissions: {
+        Row: {
+          granted_at: string
+          granted_by: string | null
+          permission_key: string
+          user_id: string
+        }
+        Insert: {
+          granted_at?: string
+          granted_by?: string | null
+          permission_key: string
+          user_id: string
+        }
+        Update: {
+          granted_at?: string
+          granted_by?: string | null
+          permission_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_permissions_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_permissions_permission_key_fkey"
+            columns: ["permission_key"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "user_permissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           active: boolean
@@ -825,6 +907,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      fn_has_permission: { Args: { perm_key: string }; Returns: boolean }
       fn_is_admin: { Args: never; Returns: boolean }
       fn_is_staff: { Args: never; Returns: boolean }
       fn_tier_from_points: {

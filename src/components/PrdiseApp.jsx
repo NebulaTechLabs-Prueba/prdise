@@ -3347,12 +3347,7 @@ function CartCheckoutPage() {
       }
     }
     const savedDrafts = PRDISE.load("userCart", []);
-    const demoCart = [
-      { id: "c1", ref: "CART-A1", type: "tour", name: "Sunset & Flavor Tour", date: "2026-05-18", time: "12:00 PM", location: "Cabo Rojo Lighthouse", guests: 2, total: 420, quantity: 2, notes: "Sunset + 3-course dinner in Joyuda" },
-      { id: "c2", ref: "CART-A2", type: "hotel", name: "Boquerón Luxury Villa", checkin: "2026-05-16", checkout: "2026-05-20", location: "Boquerón, Cabo Rojo", guests: 4, total: 780, quantity: 4, notes: "4 nights · Walking distance to beach" },
-      { id: "c3", ref: "CART-A3", type: "transfer", name: "Airport Pickup — BQN to Boquerón", date: "2026-05-16", time: "11:30 AM", location: "BQN → Boquerón", guests: 4, total: 85, quantity: 1, notes: "Private SUV · Up to 5 passengers" },
-    ];
-    setCart(savedDrafts.length > 0 ? savedDrafts.map(d => ({ id: d._cartId || ("c" + Math.random().toString(36).slice(2, 6)), ref: d.ref || "CART-DRAFT", type: d.type, name: d.name || d.vehicleName, date: d.date || d.checkin, time: d.time || "", checkin: d.checkin, checkout: d.checkout, location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""), guests: d.guests || d.travelers || d.pax || 1, total: d.total || 0, quantity: d.travelers || d.guests || d.pax || d.nights || 1 })) : demoCart);
+    setCart(savedDrafts.length > 0 ? savedDrafts.map(d => ({ id: d._cartId || ("c" + Math.random().toString(36).slice(2, 6)), ref: d.ref || "CART-DRAFT", type: d.type, name: d.name || d.vehicleName, date: d.date || d.checkin, time: d.time || "", checkin: d.checkin, checkout: d.checkout, location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""), guests: d.guests || d.travelers || d.pax || 1, total: d.total || 0, quantity: d.travelers || d.guests || d.pax || d.nights || 1 })) : []);
   }, []);
 
   const subtotal = cart.reduce((s, c) => s + (c.total || 0), 0);
@@ -3857,66 +3852,31 @@ function AccountPage() {
   const [showCouponsModal, setShowCouponsModal] = useState(false);
   const [redeemSuccess, setRedeemSuccess] = useState(null);
   const [bookings, setBookings] = useState(() => {
-    const defaultBookings = [
-      { id: "b1", ref: "PRD-T8K2L9", type: "tour", name: "La Parguera Bio Bay Night Tour", status: "pending", date: "2026-04-28", time: "6:30 PM", location: "La Parguera, Lajas", guests: 2, total: 190, notes: "Meeting point: La Parguera Dock, Pier 3" },
-      { id: "b2", ref: "PRD-H3M9X4", type: "hotel", name: "Villa Blue Coral", status: "active", checkin: "2026-04-14", checkout: "2026-04-18", location: "Playa Buyé, Cabo Rojo", guests: 2, total: 980, notes: "Check-in after 3:00 PM. WiFi: BlueCoralGuest" },
-      { id: "b3", ref: "PRD-X7N1P5", type: "transfer", name: "Airport Pickup — SJU to Cabo Rojo", status: "active", date: "2026-04-14", time: "2:00 PM", location: "SJU Airport → Villa Blue Coral", guests: 2, total: 95, notes: "Driver: Carlos Rivera · White Toyota Hiace · Plate: TXR-4421" },
-      { id: "b4", ref: "PRD-R2Q5T8", type: "tour", name: "Cabo Rojo Lighthouse Hike", status: "completed", date: "2026-03-15", time: "8:00 AM", location: "Salt Flats, Cabo Rojo", guests: 2, total: 110, notes: "Guide: Pedro González · Rating left: ★★★★★" },
-      { id: "b5", ref: "PRD-W9S3K6", type: "hotel", name: "Combate Ocean Breeze", status: "completed", checkin: "2026-03-12", checkout: "2026-03-15", location: "Combate, Cabo Rojo", guests: 3, total: 525, notes: "3 nights · Late checkout granted" },
-      { id: "b6", ref: "PRD-Z4V8M1", type: "transfer", name: "Round Trip — Hotel to La Parguera", status: "completed", date: "2026-03-13", time: "5:00 PM", location: "Combate → La Parguera → Combate", guests: 3, total: 75, notes: "Driver: Juan Morales" },
-    ];
-    // Merge with paid items from checkout (stored as pending bookings)
+    // Sin defaults demo. Bookings reales se cargan en useEffect desde Supabase.
+    // userPendingBookings es para items pagados offline aún sin confirmar por admin.
     const paidItems = PRDISE.load("userPendingBookings", []);
-    return [...paidItems, ...defaultBookings];
+    return paidItems;
   });
   const [cart, setCart] = useState(() => {
-    // Check if a cart checkout already happened — if so, show only what's currently in userCart
-    const savedDrafts = PRDISE.load("userCart", null); // null = never set, [] = explicitly emptied
-    const cartEmptied = PRDISE.load("cartEmptied", false);
-    // Demo items for first-time experience — only shown if user has never had/emptied a cart
-    const demoCart = [
-      { id: "c1", ref: "CART-A1", type: "tour", name: "Sunset & Flavor Tour", date: "2026-05-18", time: "12:00 PM", location: "Cabo Rojo Lighthouse", guests: 2, total: 420, quantity: 2, notes: "Sunset + 3-course dinner in Joyuda" },
-      { id: "c2", ref: "CART-A2", type: "hotel", name: "Boquerón Luxury Villa", checkin: "2026-05-16", checkout: "2026-05-20", location: "Boquerón, Cabo Rojo", guests: 4, total: 780, quantity: 4, notes: "4 nights · Walking distance to beach" },
-      { id: "c3", ref: "CART-A3", type: "transfer", name: "Airport Pickup — BQN to Boquerón", date: "2026-05-16", time: "11:30 AM", location: "BQN → Boquerón", guests: 4, total: 85, quantity: 1, notes: "Private SUV · Up to 5 passengers" },
-    ];
-    // If cart was explicitly emptied (after payment), show only real saved drafts
-    if (cartEmptied) {
-      if (!savedDrafts || savedDrafts.length === 0) return [];
-      return savedDrafts.map(d => ({
-        id: d._cartId || d.id || ("c" + Math.random().toString(36).slice(2, 6)),
-        ref: d.ref || "CART-DRAFT",
-        type: d.type,
-        name: d.name || d.vehicleName,
-        date: d.date || d.checkin,
-        time: d.time || "",
-        checkin: d.checkin,
-        checkout: d.checkout,
-        location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""),
-        guests: d.guests || d.travelers || d.pax || 1,
-        total: d.total || 0,
-        quantity: d.quantity || d.travelers || d.guests || d.pax || d.nights || 1,
-        notes: d.notes || "Saved from your search · complete payment to confirm",
-      }));
-    }
-    if (savedDrafts && savedDrafts.length > 0) {
-      const normalized = savedDrafts.map(d => ({
-        id: d._cartId || d.id || ("c" + Math.random().toString(36).slice(2, 6)),
-        ref: d.ref || "CART-DRAFT",
-        type: d.type,
-        name: d.name || d.vehicleName,
-        date: d.date || d.checkin,
-        time: d.time || "",
-        checkin: d.checkin,
-        checkout: d.checkout,
-        location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""),
-        guests: d.guests || d.travelers || d.pax || 1,
-        total: d.total || 0,
-        quantity: d.quantity || d.travelers || d.guests || d.pax || d.nights || 1,
-        notes: d.notes || "Saved from your search · complete payment to confirm",
-      }));
-      return [...normalized, ...demoCart];
-    }
-    return demoCart;
+    // Cart real desde userCart en localStorage. Sin fallback demo: si el usuario
+    // no ha agregado nada, el carrito queda vacío (no se muestran "items default").
+    const savedDrafts = PRDISE.load("userCart", []);
+    if (!savedDrafts || savedDrafts.length === 0) return [];
+    return savedDrafts.map(d => ({
+      id: d._cartId || d.id || ("c" + Math.random().toString(36).slice(2, 6)),
+      ref: d.ref || "CART-DRAFT",
+      type: d.type,
+      name: d.name || d.vehicleName,
+      date: d.date || d.checkin,
+      time: d.time || "",
+      checkin: d.checkin,
+      checkout: d.checkout,
+      location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""),
+      guests: d.guests || d.travelers || d.pax || 1,
+      total: d.total || 0,
+      quantity: d.quantity || d.travelers || d.guests || d.pax || d.nights || 1,
+      notes: d.notes || "Saved from your search · complete payment to confirm",
+    }));
   });
   const [removingItem, setRemovingItem] = useState(null);
   const [modifyingItem, setModifyingItem] = useState(null);
