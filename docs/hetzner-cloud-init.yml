@@ -2,9 +2,11 @@
 # ────────────────────────────────────────────────────────────────────
 # Cloud-init para Hetzner CX22 / Ubuntu 24.04 / prdise.
 # Provisión completa: Node 24, PM2, Caddy (HTTP plano), usuario deploy,
-# UFW (solo 22 + 80), directorios de la app.
+# UFW (solo 22 + 80), repo clonado en /opt/prdise.
 #
 # Pegar este archivo COMPLETO en el campo "Cloud config" al crear el server.
+# IMPORTANTE: usar imagen Ubuntu 24.04 (no 26.04 — NodeSource node_24.x no
+# está aún disponible para 26.04).
 # Tarda ~3-5 min adicionales al boot inicial.
 # ────────────────────────────────────────────────────────────────────
 
@@ -37,8 +39,8 @@ write_files:
         reverse_proxy localhost:3000
       }
 
-  - path: /opt/prdise/ecosystem.config.cjs
-    owner: deploy:deploy
+  - path: /etc/prdise/ecosystem.config.cjs.template
+    owner: root:root
     permissions: '0644'
     content: |
       module.exports = {
@@ -57,6 +59,11 @@ write_files:
       };
 
 runcmd:
+  # ─── Workaround del .deb de Caddy: a veces no crea el usuario 'caddy' ─
+  - groupadd --system caddy 2>/dev/null || true
+  - useradd --system --gid caddy --create-home --home-dir /var/lib/caddy --shell /usr/sbin/nologin caddy 2>/dev/null || true
+  - mkdir -p /var/lib/caddy && chown -R caddy:caddy /var/lib/caddy
+
   # ─── Node 24 desde NodeSource ────────────────────────────────────
   - mkdir -p /etc/apt/keyrings
   - curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
@@ -71,11 +78,14 @@ runcmd:
   - apt-get update
   - apt-get install -y caddy
 
-  # ─── Directorios de la app ───────────────────────────────────────
-  - mkdir -p /opt/prdise
-  - chown -R deploy:deploy /opt/prdise
+  # ─── Directorios de la app + log dir ─────────────────────────────
   - mkdir -p /var/log/prdise
   - chown -R deploy:deploy /var/log/prdise
+
+  # ─── Clone del repo (público) directo a /opt/prdise como deploy ──
+  - git clone https://github.com/NebulaTechLabs-Prueba/prdise.git /opt/prdise
+  - cp /etc/prdise/ecosystem.config.cjs.template /opt/prdise/ecosystem.config.cjs
+  - chown -R deploy:deploy /opt/prdise
 
   # ─── Firewall: solo SSH + HTTP ───────────────────────────────────
   - ufw default deny incoming
@@ -85,6 +95,7 @@ runcmd:
   - ufw --force enable
 
   # ─── Servicios ───────────────────────────────────────────────────
+  - systemctl daemon-reload
   - systemctl enable caddy
   - systemctl restart caddy
   - sudo -u deploy bash -lc "pm2 startup systemd -u deploy --hp /home/deploy" || true
@@ -92,5 +103,6 @@ runcmd:
 final_message: |
   ✓ prdise server provisioning complete.
   Login as deploy: ssh deploy@<IP>
-  App path: /opt/prdise
+  Repo: /opt/prdise (ya clonado)
   Logs: /var/log/prdise/
+  Falta: crear /opt/prdise/.env.production (manual, contiene secrets de Supabase).
