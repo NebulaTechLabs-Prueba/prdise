@@ -1749,10 +1749,20 @@ function HotelDetail({ params }) {
   const [guests, setGuests] = useState(2);
   const [user, setUser] = useState(null);
   useEffect(() => {
-    document.title = `${hotel.name} — Living in PRDISE`;
+    if (hotel) document.title = `${hotel.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
     if (u && u.firstName !== "Guest") setUser(u);
-  }, [hotel.name]);
+  }, [hotel?.name]);
+  if (!hotel) {
+    return (
+      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.6)", padding: 40, textAlign: "center" }}>
+        <div>
+          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>{lang === "es" ? "Sin estadías disponibles" : "No stays available"}</h2>
+          <p style={{ fontSize: 14 }}>{lang === "es" ? "Aún no hay opciones publicadas. Vuelve pronto." : "No options published yet. Check back soon."}</p>
+        </div>
+      </div>
+    );
+  }
 
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minCheckin = toISO(tomorrow);
@@ -1995,10 +2005,20 @@ function TourDetail({ params }) {
   const [travelers, setTravelers] = useState(2);
   const [user, setUser] = useState(null);
   useEffect(() => {
-    document.title = `${tour.name} — Living in PRDISE`;
+    if (tour) document.title = `${tour.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
     if (u && u.firstName !== "Guest") setUser(u);
-  }, [tour.name]);
+  }, [tour?.name]);
+  if (!tour) {
+    return (
+      <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.6)", padding: 40, textAlign: "center" }}>
+        <div>
+          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>{lang === "es" ? "Sin tours disponibles" : "No tours available"}</h2>
+          <p style={{ fontSize: 14 }}>{lang === "es" ? "Aún no hay opciones publicadas. Vuelve pronto." : "No options published yet. Check back soon."}</p>
+        </div>
+      </div>
+    );
+  }
 
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = toISO(tomorrow);
@@ -3887,13 +3907,17 @@ function AccountPage() {
     if (sess.role === "admin") { nav("/admin"); return; }
     let u = PRDISE.load("user", null);
     if (!u) {
+      // AuthBridge sincroniza profile real → localStorage; si todavía no llegó,
+      // construir un user MÍNIMO desde la sesión real (sin valores demo inventados).
       u = {
-        firstName: sess.name?.split(" ")[0] || "Guest", lastName: sess.name?.split(" ").slice(1).join(" ") || "",
-        email: sess.email || "guest@example.com", phone: "+1 787-555-0101", phoneCode: "+1", country: "Puerto Rico",
-        language: "Español", passport: "", passportExp: "", localId: "", paymentMethod: "Visa ****4821",
+        firstName: sess.name?.split(" ")[0] || "",
+        lastName:  sess.name?.split(" ").slice(1).join(" ") || "",
+        email:     sess.email || "",
+        phone: "", phoneCode: "+1", country: "",
+        language: "Español", passport: "", passportExp: "", localId: "", paymentMethod: "",
         billingAddress: "", allergies: "", dietRestrictions: "", specialNeeds: "",
-        level: "Silver", points: 1250, coupons: 2,
-        alertSchedule: true, alertRecommendations: true, alertNewTours: false,
+        level: "Bronze", points: 0, coupons: 0,
+        alertSchedule: false, alertRecommendations: false, alertNewTours: false,
         joinedAt: new Date().toLocaleDateString()
       };
       PRDISE.save("user", u);
