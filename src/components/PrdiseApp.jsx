@@ -20,6 +20,8 @@ import {
   softDeleteAccount as sbSoftDeleteAccount,
   updateProfile as sbUpdateProfile,
 } from "@/lib/auth/actions";
+import { createBookingOffline as sbCreateBookingOffline } from "@/lib/bookings/actions";
+import { submitContactMessage as sbSubmitContact } from "@/lib/contact/actions";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -2553,9 +2555,49 @@ function CheckoutForm({ type }) {
     return Object.keys(errs).length === 0;
   };
 
-  const place = () => {
+  const place = async () => {
     if (!validate()) return;
     setProcessing(true);
+
+    // Persistir en Supabase si el método es offline (ATH/Bank) y tenemos slug/id real.
+    // Best-effort: si falla (no auth, slug invalido, RLS), seguimos con el flujo
+    // local pero logueamos el error para diagnóstico.
+    try {
+      if (method === "ath" || method === "bank") {
+        const itemTypeMap = { hotel: "stay", tour: "tour", transfer: "transfer" };
+        const itemId = type === "hotel" ? booking.hotelId
+          : type === "tour" ? booking.tourId
+          : booking.routeId || booking.from + ":" + booking.to;
+        const startDate = booking.checkin || booking.date || new Date().toISOString().slice(0,10);
+        const endDate = booking.checkout || null;
+        const fd = new FormData();
+        fd.append("itemType", itemTypeMap[type] || type);
+        fd.append("itemId", String(itemId || ""));
+        fd.append("startDate", String(startDate));
+        if (endDate) fd.append("endDate", String(endDate));
+        fd.append("pax", String(booking.guests || booking.travelers || booking.pax || 1));
+        fd.append("totalCents", String(Math.round((booking.total || 0) * 100)));
+        fd.append("paymentMethod", method);
+        fd.append("notes", form.notes || "");
+        if (method === "ath") {
+          fd.append("athPhone", form.athPhone || "");
+          fd.append("athReceipt", form.athReceipt || "");
+        } else if (method === "bank") {
+          fd.append("bankHolder", form.bankHolder || "");
+          fd.append("bankReference", form.bankReference || "");
+          fd.append("bankReceipt", form.bankReceipt || "");
+        }
+        const res = await sbCreateBookingOffline(fd);
+        if (!res?.ok) {
+          // eslint-disable-next-line no-console
+          console.warn("createBookingOffline:", res?.error);
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("checkout persistence error:", e);
+    }
+
     setTimeout(() => {
       const prefix = type === "hotel" ? "HO" : type === "tour" ? "TO" : "TR";
       const ref = PRDISE.genRef(prefix);
@@ -4867,8 +4909,19 @@ function ContactPage() {
   const { t } = useLang();
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "General Inquiry", message: "" });
   const [sent, setSent] = useState(false);
-  const submit = () => {
+  const submit = async () => {
     if (!form.name || !form.email || !form.message) { alert("Please complete the required fields"); return; }
+    try {
+      const fd = new FormData();
+      fd.append("name", form.name);
+      fd.append("email", form.email);
+      if (form.phone) fd.append("phone", form.phone);
+      fd.append("message", `[${form.subject}] ${form.message}`);
+      await sbSubmitContact(fd);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("submitContact:", e);
+    }
     setSent(true);
     setTimeout(() => { setSent(false); setForm({ name: "", email: "", phone: "", subject: "General Inquiry", message: "" }); }, 4000);
   };
