@@ -27,3 +27,4 @@ Estos no son credenciales reales: son **fixtures de UI** usadas por los botones 
 - Contenido editable y copy en ES/EN, con columnas separadas por idioma en la DB.
 - Zona horaria de negocio: `America/Puerto_Rico` (AST, sin DST).
 - Moneda base: USD (almacenada en centavos como entero en la DB).
+"" 
