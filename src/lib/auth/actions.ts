@@ -125,7 +125,11 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     .single();
 
   if (profile?.status === "inactive") {
-    return { ok: false, needsReactivation: true, userId: data.user.id };
+    // CRÍTICO: cerrar la sesión recién abierta antes de devolver el flag
+    // de reactivación; si no, el usuario inactivo queda autenticado.
+    const userId = data.user.id;
+    await supabase.auth.signOut();
+    return { ok: false, needsReactivation: true, userId };
   }
 
   redirect("/");

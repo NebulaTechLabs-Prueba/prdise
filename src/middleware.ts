@@ -17,9 +17,15 @@ export async function middleware(request: NextRequest) {
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          // Plan A: app sirve sobre HTTP plano. Cookies con flag Secure son
+          // descartadas por el browser sobre HTTP. Quitamos `secure` cuando la
+          // URL base es HTTP; cuando migremos a HTTPS, el valor original (true)
+          // se respeta automáticamente.
+          const isHttpOnly = (process.env.NEXT_PUBLIC_APP_URL ?? "").startsWith("http://");
+          cookiesToSet.forEach(({ name, value, options }) => {
+            const opts = isHttpOnly ? { ...options, secure: false } : options;
+            supabaseResponse.cookies.set(name, value, opts);
+          });
         },
       },
     }
