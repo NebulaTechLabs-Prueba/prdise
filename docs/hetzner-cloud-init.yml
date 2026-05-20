@@ -1,0 +1,96 @@
+#cloud-config
+# ────────────────────────────────────────────────────────────────────
+# Cloud-init para Hetzner CX22 / Ubuntu 24.04 / prdise.
+# Provisión completa: Node 24, PM2, Caddy (HTTP plano), usuario deploy,
+# UFW (solo 22 + 80), directorios de la app.
+#
+# Pegar este archivo COMPLETO en el campo "Cloud config" al crear el server.
+# Tarda ~3-5 min adicionales al boot inicial.
+# ────────────────────────────────────────────────────────────────────
+
+users:
+  - name: deploy
+    sudo: 'ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload caddy, /usr/bin/systemctl restart caddy, /usr/bin/systemctl status caddy'
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtYfVEJuClFs5Cxxh5PSD9vjzQ7vbqqFcTO7u34EDF4 github-actions-prdise-deploy
+
+packages:
+  - git
+  - ufw
+  - ca-certificates
+  - curl
+  - gnupg
+  - apt-transport-https
+  - debian-keyring
+  - debian-archive-keyring
+
+write_files:
+  - path: /etc/caddy/Caddyfile
+    owner: root:root
+    permissions: '0644'
+    content: |
+      # Plan A: HTTP plano sobre puerto 80.
+      # Cuando migremos a Plan B con sslip.io, reemplazar ":80" por el hostname.
+      :80 {
+        encode gzip
+        reverse_proxy localhost:3000
+      }
+
+  - path: /opt/prdise/ecosystem.config.cjs
+    owner: deploy:deploy
+    permissions: '0644'
+    content: |
+      module.exports = {
+        apps: [{
+          name: "prdise",
+          script: "npm",
+          args: "start",
+          cwd: "/opt/prdise",
+          env: { NODE_ENV: "production", PORT: 3000 },
+          autorestart: true,
+          max_memory_restart: "1G",
+          error_file: "/var/log/prdise/error.log",
+          out_file: "/var/log/prdise/out.log",
+          time: true,
+        }],
+      };
+
+runcmd:
+  # ─── Node 24 desde NodeSource ────────────────────────────────────
+  - mkdir -p /etc/apt/keyrings
+  - curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  - echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+  - apt-get update
+  - apt-get install -y nodejs
+  - npm install -g pm2
+
+  # ─── Caddy ───────────────────────────────────────────────────────
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' -o /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update
+  - apt-get install -y caddy
+
+  # ─── Directorios de la app ───────────────────────────────────────
+  - mkdir -p /opt/prdise
+  - chown -R deploy:deploy /opt/prdise
+  - mkdir -p /var/log/prdise
+  - chown -R deploy:deploy /var/log/prdise
+
+  # ─── Firewall: solo SSH + HTTP ───────────────────────────────────
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw --force enable
+
+  # ─── Servicios ───────────────────────────────────────────────────
+  - systemctl enable caddy
+  - systemctl restart caddy
+  - sudo -u deploy bash -lc "pm2 startup systemd -u deploy --hp /home/deploy" || true
+
+final_message: |
+  ✓ prdise server provisioning complete.
+  Login as deploy: ssh deploy@<IP>
+  App path: /opt/prdise
+  Logs: /var/log/prdise/
