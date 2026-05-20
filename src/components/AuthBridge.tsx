@@ -49,6 +49,13 @@ export default function AuthBridge() {
   useEffect(() => {
     const supabase = createClient();
 
+    // CRÍTICO: limpiar agresivamente al startup antes de validar con Supabase.
+    // Evita que el JSX lea sesiones viejas del localStorage (demo, expiradas, etc.)
+    // y muestre "Booking as Administrator" o similar mientras el async check corre.
+    clearPrdise("session");
+    clearPrdise("user");
+    clearPrdise("adminSession");
+
     async function syncFromSession() {
       const {
         data: { user },

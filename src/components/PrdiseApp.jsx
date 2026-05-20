@@ -5350,8 +5350,25 @@ function RegisterPage() {
     }
   };
 
-  const handleSocial = (provider) => {
-    setError(`OAuth con ${provider} está deshabilitado en esta fase. Crea la cuenta con email y contraseña.`);
+  const handleSocial = async (provider) => {
+    setError("");
+    if (provider !== "google") {
+      setError("Este proveedor no está disponible. Usa Google o email + contraseña.");
+      return;
+    }
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const sb = createClient();
+      const { error: oauthErr } = await sb.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (oauthErr) {
+        setError("No se pudo iniciar el flujo con Google. Verifica que la conexión sea HTTPS.");
+      }
+    } catch {
+      setError("Google OAuth requiere HTTPS. Por ahora usa email + contraseña.");
+    }
   };
 
   const GoogleIcon = () => (<svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.5 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2c-.4.4 6.6-4.8 6.6-14.8 0-1.3-.1-2.3-.4-3.5z"/></svg>);
@@ -5450,24 +5467,6 @@ function RegisterPage() {
                   style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "11px 0", borderRadius: 10, background: (!quickTerms || !quickPrivacy) ? "rgba(255,255,255,.5)" : "#fff", border: "none", color: "#1F1F1F", fontSize: 13, fontWeight: 700, cursor: (!quickTerms || !quickPrivacy) ? "not-allowed" : "pointer", opacity: (!quickTerms || !quickPrivacy) ? .45 : 1, transition: "all .2s" }}
                 >
                   <GoogleIcon />Continue with Google
-                </button>
-                <button type="button" disabled={!quickTerms || !quickPrivacy}
-                  onClick={() => {
-                    if (!quickTerms || !quickPrivacy) { setQuickError("You must accept both Terms and Privacy Policy to continue."); return; }
-                    setQuickOpen(false); handleSocial("facebook");
-                  }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "11px 0", borderRadius: 10, background: "#1877F2", border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: (!quickTerms || !quickPrivacy) ? "not-allowed" : "pointer", opacity: (!quickTerms || !quickPrivacy) ? .45 : 1, transition: "all .2s" }}
-                >
-                  <FacebookIcon />Continue with Facebook
-                </button>
-                <button type="button" disabled={!quickTerms || !quickPrivacy}
-                  onClick={() => {
-                    if (!quickTerms || !quickPrivacy) { setQuickError("You must accept both Terms and Privacy Policy to continue."); return; }
-                    setQuickOpen(false); handleSocial("apple");
-                  }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "11px 0", borderRadius: 10, background: "#000", border: "1px solid rgba(255,255,255,.15)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: (!quickTerms || !quickPrivacy) ? "not-allowed" : "pointer", opacity: (!quickTerms || !quickPrivacy) ? .45 : 1, transition: "all .2s" }}
-                >
-                  <AppleIcon />Continue with Apple
                 </button>
               </div>
             </div>
@@ -6778,7 +6777,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
         <div className="adm-foot">
           {(() => {
             const sess = PRDISE.load("session", null) || PRDISE.load("adminSession", null) || {};
-            const displayName = sess.name || "Administrator";
+            const displayName = sess.name || "Usuario";
             const displayEmail = sess.email || "admin@prdise.com";
             const isEmployee = sess.role === "employee";
             return (
