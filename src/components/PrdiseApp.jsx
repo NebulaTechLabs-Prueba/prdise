@@ -33,6 +33,11 @@ import {
   createVehicle as sbCreateVehicle, updateVehicle as sbUpdateVehicle, deleteVehicle as sbDeleteVehicle,
   createTransferRoute as sbCreateRoute, updateTransferRoute as sbUpdateRoute, deleteTransferRoute as sbDeleteRoute,
 } from "@/lib/admin/catalog";
+import {
+  togglePostPublish as sbTogglePostPublish,
+  togglePostFeatured as sbTogglePostFeatured,
+  deletePost as sbDeletePost,
+} from "@/lib/admin/posts";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -7503,14 +7508,25 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           </td>
                           <td>
                             <div className="adm-row-actions">
-                              <button className="adm-icon-btn" title={p.featured ? "Unfeature" : "Feature"} onClick={() => setPosts(posts.map(x => x.id === p.id ? { ...x, featured: !x.featured } : x))}>
+                              <button className="adm-icon-btn" title={p.featured ? "Unfeature" : "Feature"} onClick={async () => {
+                                setPosts(posts.map(x => x.id === p.id ? { ...x, featured: !x.featured } : x));
+                                try { const fd = new FormData(); fd.append("id", p.id); await sbTogglePostFeatured(fd); } catch (e) { console.warn("togglePostFeatured:", e); }
+                              }}>
                                 <Star style={{ fill: p.featured ? "#F5A623" : "none", color: p.featured ? "#F5A623" : "currentColor" }} />
                               </button>
                               <button className="adm-icon-btn" title="Edit" onClick={() => setEditing({ type: "post", item: p })}><Pencil /></button>
-                              <button className="adm-icon-btn" title={p.status === "published" ? "Unpublish" : "Publish"} onClick={() => setPosts(posts.map(x => x.id === p.id ? { ...x, status: x.status === "published" ? "draft" : "published" } : x))}>
+                              <button className="adm-icon-btn" title={p.status === "published" ? "Unpublish" : "Publish"} onClick={async () => {
+                                const newStatus = p.status === "published" ? "draft" : "published";
+                                setPosts(posts.map(x => x.id === p.id ? { ...x, status: newStatus } : x));
+                                try { const fd = new FormData(); fd.append("id", p.id); await sbTogglePostPublish(fd); } catch (e) { console.warn("togglePostPublish:", e); }
+                              }}>
                                 {p.status === "published" ? <EyeOff /> : <Eye />}
                               </button>
-                              <button className="adm-icon-btn danger" title="Delete" onClick={() => setPosts(posts.filter(x => x.id !== p.id))}><Trash2 /></button>
+                              <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                                if (!confirm(lang==="es"?"¿Archivar este post?":"Archive this post?")) return;
+                                setPosts(posts.filter(x => x.id !== p.id));
+                                try { const fd = new FormData(); fd.append("id", p.id); await sbDeletePost(fd); } catch (e) { console.warn("deletePost:", e); }
+                              }}><Trash2 /></button>
                             </div>
                           </td>
                         </tr>
