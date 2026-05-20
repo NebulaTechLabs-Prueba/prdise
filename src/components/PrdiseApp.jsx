@@ -20,7 +20,10 @@ import {
   softDeleteAccount as sbSoftDeleteAccount,
   updateProfile as sbUpdateProfile,
 } from "@/lib/auth/actions";
-import { createBookingOffline as sbCreateBookingOffline } from "@/lib/bookings/actions";
+import {
+  createBookingOffline as sbCreateBookingOffline,
+  cancelBooking as sbCancelBooking,
+} from "@/lib/bookings/actions";
 import { submitContactMessage as sbSubmitContact } from "@/lib/contact/actions";
 import {
   confirmPayment as sbConfirmPayment,
@@ -4140,6 +4143,30 @@ function AccountPage() {
           <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>Total</span><br/><span style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(b.total)}</span></div>
         </div>
         {b.notes && <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)", padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,.02)", borderLeft: "2px solid rgba(255,255,255,.06)" }}>{b.notes}</div>}
+        {b.status === "pending" && String(b.id || "").startsWith("sb-") && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.05)", textAlign: "right" }}>
+            <button onClick={async () => {
+              if (!confirm(lang === "es" ? "¿Cancelar esta reserva? Esta acción no se puede deshacer." : "Cancel this booking? This cannot be undone.")) return;
+              const bookingUuid = b.id.replace(/^sb-/, "");
+              try {
+                const fd = new FormData();
+                fd.append("bookingId", bookingUuid);
+                const res = await sbCancelBooking(fd);
+                if (res && res.ok === false) {
+                  alert((lang === "es" ? "No se pudo cancelar: " : "Could not cancel: ") + (res.error || ""));
+                  return;
+                }
+                setBookings(bs => bs.filter(x => x.id !== b.id));
+              } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn("cancelBooking:", e);
+                alert(lang === "es" ? "Error de red. Intenta de nuevo." : "Network error. Try again.");
+              }
+            }} style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(239,108,43,.1)", border: "1px solid rgba(239,108,43,.3)", color: "#EF6C2B", fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
+              {lang === "es" ? "Cancelar reserva" : "Cancel booking"}
+            </button>
+          </div>
+        )}
         {b.status === "completed" && (
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.05)" }}>
             {ratings[b.id] ? (

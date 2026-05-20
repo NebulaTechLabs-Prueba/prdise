@@ -294,6 +294,165 @@ export type Database = {
           },
         ]
       }
+      coupon_redemptions: {
+        Row: {
+          amount_cents: number
+          booking_id: string | null
+          coupon_id: string
+          discount_cents: number
+          id: string
+          redeemed_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          booking_id?: string | null
+          coupon_id: string
+          discount_cents: number
+          id?: string
+          redeemed_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          booking_id?: string | null
+          coupon_id?: string
+          discount_cents?: number
+          id?: string
+          redeemed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coupon_redemptions_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_redemptions_coupon_id_fkey"
+            columns: ["coupon_id"]
+            isOneToOne: false
+            referencedRelation: "coupons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_redemptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coupons: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description_en: string | null
+          description_es: string | null
+          discount_pct: number
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          updated_at: string
+          used_count: number
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description_en?: string | null
+          description_es?: string | null
+          discount_pct: number
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          updated_at?: string
+          used_count?: number
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description_en?: string | null
+          description_es?: string | null
+          discount_pct?: number
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          updated_at?: string
+          used_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coupons_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drivers: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          email: string | null
+          emergency_phone: string | null
+          id: string
+          license: string | null
+          name: string
+          phone: string | null
+          rating: number
+          status: string
+          trips_count: number
+          updated_at: string
+          vehicle: string | null
+          web_visible: boolean
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          emergency_phone?: string | null
+          id?: string
+          license?: string | null
+          name: string
+          phone?: string | null
+          rating?: number
+          status?: string
+          trips_count?: number
+          updated_at?: string
+          vehicle?: string | null
+          web_visible?: boolean
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          emergency_phone?: string | null
+          id?: string
+          license?: string | null
+          name?: string
+          phone?: string | null
+          rating?: number
+          status?: string
+          trips_count?: number
+          updated_at?: string
+          vehicle?: string | null
+          web_visible?: boolean
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount_cents: number
