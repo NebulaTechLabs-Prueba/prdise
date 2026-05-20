@@ -317,7 +317,7 @@ const TX = {
     confirmedBookings: "CONFIRMED BOOKINGS", paid: "PAID", pending: "Pending", active: "Active", completed: "Completed", noBookings: "No bookings in this category.",
     contactAgency: "Contact Agency",
     // Login
-    loginTitle: "SIGN IN", loginSub: "Welcome back to Living in PRDISE", forgotPwd: "Forgot your password?", newHere: "New here?", demoAccounts: "Demo Accounts",
+    loginTitle: "SIGN IN", loginSub: "Welcome back to Living in PRDISE", forgotPwd: "Forgot your password?", newHere: "New here?", demoAccounts: "",
     // Register
     registerTitle: "CREATE ACCOUNT", registerSub: "Start planning your paradise experience", quickSignUp: "Sign Up in One Click", orWithEmail: "Or with Email", firstName: "First Name", lastName: "Last Name", password: "Password", confirmPassword: "Confirm Password", country: "Country", optional: "optional", acceptTerms: "I accept the", termsLink: "Terms & Conditions", privacyLink: "Privacy Policy", alreadyHave: "Already have an account?",
     // Forgot
@@ -428,7 +428,7 @@ const TX = {
     myCart: "MI CARRITO", cartItems: "artículos", cartEmpty: "TU CARRITO ESTÁ VACÍO", cartEmptySub: "Comienza a explorar para agregar estadías, tours o traslados.", cartSub: "Artículos en tu carrito — aún no pagados. Revisa, modifica o elimina antes del checkout.", proceedCheckout: "Proceder al Pago", modify: "Modificar", remove: "Eliminar", removeFromCart: "¿Eliminar del Carrito?",
     confirmedBookings: "RESERVAS CONFIRMADAS", paid: "PAGADO", pending: "Pendiente", active: "Activa", completed: "Completada", noBookings: "No hay reservas en esta categoría.",
     contactAgency: "Contactar Agencia",
-    loginTitle: "INICIAR SESIÓN", loginSub: "Bienvenido/a de vuelta a Living in PRDISE", forgotPwd: "¿Olvidaste tu contraseña?", newHere: "¿Nuevo aquí?", demoAccounts: "Cuentas Demo",
+    loginTitle: "INICIAR SESIÓN", loginSub: "Bienvenido/a de vuelta a Living in PRDISE", forgotPwd: "¿Olvidaste tu contraseña?", newHere: "¿Nuevo aquí?", demoAccounts: "",
     registerTitle: "CREAR CUENTA", registerSub: "Comienza a planificar tu experiencia en el paraíso", quickSignUp: "Registrarse en un Click", orWithEmail: "O con correo", firstName: "Nombre", lastName: "Apellido", password: "Contraseña", confirmPassword: "Confirmar Contraseña", country: "País", optional: "opcional", acceptTerms: "Acepto los", termsLink: "Términos y Condiciones", privacyLink: "Política de Privacidad", alreadyHave: "¿Ya tienes una cuenta?",
     resetTitle: "RECUPERAR CONTRASEÑA", resetSub: "Ingresa tu correo y te enviaremos un enlace para restablecer tu contraseña.", sendLink: "Enviar Enlace", backToSignIn: "Volver a iniciar sesión", checkInbox: "REVISA TU BANDEJA",
     footerCopy: "© 2026 Living in PRDISE · House of Tours",
@@ -9628,36 +9628,48 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     let updated;
                     if (isVerify) {
                       const verifRef = txVerificationRef.trim();
-                      updated = { ...tx, status: "paid", verifiedAt: today, verificationRef: verifRef || undefined };
-                      // Persistir a Supabase si tenemos paymentId real (UUID).
+                      // Persistir PRIMERO; si el server action falla, no mutamos UI ni revert localStorage.
                       if (tx.paymentId) {
                         try {
                           const fd = new FormData();
                           fd.append("paymentId", tx.paymentId);
                           if (verifRef) fd.append("notes", verifRef);
-                          await sbConfirmPayment(fd);
+                          const res = await sbConfirmPayment(fd);
+                          if (res && res.ok === false) {
+                            alert((lang === "es" ? "No se pudo verificar el pago: " : "Could not verify payment: ") + (res.error || ""));
+                            return;
+                          }
                         } catch (e) {
                           // eslint-disable-next-line no-console
                           console.warn("confirmPayment:", e);
+                          alert(lang === "es" ? "Error de red verificando el pago" : "Network error verifying payment");
+                          return;
                         }
                       }
+                      updated = { ...tx, status: "paid", verifiedAt: today, verificationRef: verifRef || undefined };
                     } else if (isRevert) {
                       // Strip completedAt to truly revert
                       const { completedAt, ...rest } = tx;
                       updated = { ...rest, status: "paid", revertedAt: today };
                     } else {
-                      updated = { ...tx, status: "completed", completedAt: today };
-                      // Marcar booking completado en Supabase si tenemos bookingId real.
+                      // Complete: persistir primero, después mutar UI.
                       if (tx.bookingId) {
                         try {
                           const fd = new FormData();
                           fd.append("bookingId", tx.bookingId);
-                          await sbCompleteBooking(fd);
+                          const res = await sbCompleteBooking(fd);
+                          if (res && res.ok === false) {
+                            alert((lang === "es" ? "No se pudo completar: " : "Could not complete: ") + (res.error || ""));
+                            return;
+                          }
                         } catch (e) {
                           // eslint-disable-next-line no-console
                           console.warn("completeBooking:", e);
+                          alert(lang === "es" ? "Error de red completando la reserva" : "Network error completing booking");
+                          return;
                         }
                       }
+                      updated = { ...tx, status: "completed", completedAt: today };
                     }
                     setTransactions(transactions.map(x => x.id === tx.id ? updated : x));
                     // Sync to localStorage if user-generated
