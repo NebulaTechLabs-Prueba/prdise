@@ -3959,9 +3959,11 @@ function AccountPage() {
     PRDISE.save("user", updated);
   };
 
-  const doLogout = () => {
-    PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession");
-    window.location.hash = "#/"; window.location.reload();
+  const doLogout = async () => {
+    try { await sbSignOut(); } catch { /* el redirect interno puede lanzar NEXT_REDIRECT */ }
+    try { PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession"); } catch {}
+    // Hard reload garantizado: invalida bfcache y obliga a re-validar sesión con Supabase.
+    window.location.replace("/");
   };
 
   const logout = () => {
@@ -5350,25 +5352,8 @@ function RegisterPage() {
     }
   };
 
-  const handleSocial = async (provider) => {
-    setError("");
-    if (provider !== "google") {
-      setError("Este proveedor no está disponible. Usa Google o email + contraseña.");
-      return;
-    }
-    try {
-      const { createClient } = await import("@/lib/supabase/client");
-      const sb = createClient();
-      const { error: oauthErr } = await sb.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
-      if (oauthErr) {
-        setError("No se pudo iniciar el flujo con Google. Verifica que la conexión sea HTTPS.");
-      }
-    } catch {
-      setError("Google OAuth requiere HTTPS. Por ahora usa email + contraseña.");
-    }
+  const handleSocial = () => {
+    setError("Inicio de sesión con proveedores externos disponible próximamente. Por ahora usa email + contraseña.");
   };
 
   const GoogleIcon = () => (<svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.5 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2c-.4.4 6.6-4.8 6.6-14.8 0-1.3-.1-2.3-.4-3.5z"/></svg>);
@@ -5458,16 +5443,10 @@ function RegisterPage() {
                 </div>
               )}
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <button type="button" disabled={!quickTerms || !quickPrivacy}
-                  onClick={() => {
-                    if (!quickTerms || !quickPrivacy) { setQuickError("You must accept both Terms and Privacy Policy to continue."); return; }
-                    setQuickOpen(false); handleSocial("google");
-                  }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "11px 0", borderRadius: 10, background: (!quickTerms || !quickPrivacy) ? "rgba(255,255,255,.5)" : "#fff", border: "none", color: "#1F1F1F", fontSize: 13, fontWeight: 700, cursor: (!quickTerms || !quickPrivacy) ? "not-allowed" : "pointer", opacity: (!quickTerms || !quickPrivacy) ? .45 : 1, transition: "all .2s" }}
-                >
-                  <GoogleIcon />Continue with Google
-                </button>
+              <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px dashed rgba(245,166,35,.3)", fontSize: 12, color: "rgba(255,255,255,.65)", lineHeight: 1.5, textAlign: "center" }}>
+                {lang === "es"
+                  ? "Inicio de sesión con proveedores externos estará disponible próximamente. Por ahora usa el formulario con email y contraseña."
+                  : "External provider sign-in coming soon. For now please use the email + password form."}
               </div>
             </div>
           </div>
@@ -10554,7 +10533,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <NotifSetting label={lang==="es"?"Autenticación de dos factores":"Two-factor authentication"} desc={lang==="es"?"Requerir un código de verificación además de la contraseña":"Require a verification code in addition to password"} defaultOn />
                 <NotifSetting label={lang==="es"?"Tiempo de sesión (30 min)":"Session timeout (30 min)"} desc={lang==="es"?"Cerrar sesión automáticamente tras 30 minutos de inactividad":"Automatically log out after 30 minutes of inactivity"} defaultOn />
                 <NotifSetting label={lang==="es"?"Alertas de inicio de sesión":"Login alerts"} desc={lang==="es"?"Notificación por correo al iniciar sesión desde un dispositivo nuevo":"Email notification on new device login"} defaultOn />
-                <NotifSetting label={lang==="es"?"Lista blanca de IPs":"IP allowlist"} desc={lang==="es"?"Restringir el acceso administrativo a direcciones IP específicas":"Restrict admin access to specific IP addresses"} />
                 <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,.06)" }}>
                   <button className="adm-btn adm-btn-ghost"><Key />{lang==="es"?"Cambiar Contraseña":"Change Password"}</button>
                 </div>
@@ -12880,28 +12858,53 @@ function PostDetail({ params }) {
 }
 
 function AdminPanelRoute() {
+  // Guard real contra Supabase: NO depende solo de localStorage (que puede tener
+  // residual de demo o sesiones expiradas). Verifica auth.users + profiles.role.
   const [auth, setAuth] = useState(undefined);
   useEffect(() => {
-    const sess = PRDISE.load("session", null);
-    const adminSess = PRDISE.load("adminSession", null);
-    const isAuthorizedRole = (r) => r === "admin" || r === "employee";
-    if ((!sess || !isAuthorizedRole(sess.role)) && (!adminSess || !isAuthorizedRole(adminSess.role))) {
-      nav("/login");
-      setAuth(false);
-      return;
-    }
-    setAuth(true);
-    document.title = "Admin Panel — Living in PRDISE";
+    let mounted = true;
+    const isAuthorizedRole = (r) => r === "admin" || r === "manager" || r === "employee";
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const sb = createClient();
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) {
+          try { PRDISE.del("session"); PRDISE.del("adminSession"); PRDISE.del("user"); } catch {}
+          if (mounted) { nav("/login"); setAuth(false); }
+          return;
+        }
+        const { data: profile } = await sb.from("profiles").select("role,status").eq("id", user.id).maybeSingle();
+        if (!profile || profile.status !== "active" || !isAuthorizedRole(profile.role)) {
+          if (mounted) { nav("/"); setAuth(false); }
+          return;
+        }
+        if (mounted) { setAuth(true); document.title = "Admin Panel — Living in PRDISE"; }
+      } catch {
+        if (mounted) { nav("/login"); setAuth(false); }
+      }
+    })();
+
+    // Protección bfcache: si el browser restaura la página de un cache (back button),
+    // re-validar la sesión y redirigir si no es admin.
+    const onPageShow = (e) => {
+      if (e.persisted) window.location.replace("/");
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => { mounted = false; window.removeEventListener("pageshow", onPageShow); };
   }, []);
+  if (auth === undefined) {
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--deep)", color: "rgba(255,255,255,.7)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif", fontSize: 14 }}>
+        Verificando sesión…
+      </div>
+    );
+  }
   if (auth !== true) return null;
-  const exit = () => {
-    try { PRDISE.del("adminSession"); } catch (e) {}
-    try { PRDISE.del("session"); } catch (e) {}
-    try { localStorage.removeItem("prdise_adminSession"); } catch (e) {}
-    window.location.hash = "#/";
-    setTimeout(() => {
-      if (window.location.hash !== "#/") window.location.href = window.location.pathname + "#/";
-    }, 50);
+  const exit = async () => {
+    try { await sbSignOut(); } catch {}
+    try { PRDISE.del("adminSession"); PRDISE.del("session"); PRDISE.del("user"); } catch {}
+    window.location.replace("/");
   };
   return <AdminPanel onClose={exit} />;
 }
