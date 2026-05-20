@@ -3064,64 +3064,58 @@ function CheckoutAuthModal({ mode, setMode, prefillEmail, prefillFirstName, pref
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const ACCOUNTS = [
-    { email: "admin@prdise.com", password: "admin123", role: "admin", name: "Administrator" },
-    { email: "user@prdise.com", password: "user123", role: "user", name: "María López" },
-    { email: "carlos@prdise.com", password: "carlos123", role: "employee", name: "Carlos Rivera", employeeId: "u2", position: "Receptionist", department: "Front Desk" },
-    { email: "ana@prdise.com", password: "ana123", role: "employee", name: "Ana García", employeeId: "u3", position: "Accounting Manager", department: "Finance" },
-  ];
-
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError("");
-    if (!loginForm.email.trim() || !loginForm.password.trim()) { setError("Please enter email and password."); return; }
+    if (!loginForm.email.trim() || !loginForm.password.trim()) { setError("Ingresa email y contraseña."); return; }
     setLoading(true);
-    setTimeout(() => {
-      const match = ACCOUNTS.find(a => a.email === loginForm.email.trim().toLowerCase() && a.password === loginForm.password);
-      if (match && match.role !== "admin") {
-        const userObj = {
-          firstName: match.name.split(" ")[0],
-          lastName: match.name.split(" ").slice(1).join(" "),
-          email: match.email, phone: "", country: "Puerto Rico",
-          joinedAt: new Date().toLocaleDateString(),
-        };
-        PRDISE.save("session", { email: match.email, role: "user", name: match.name, loginAt: new Date().toISOString() });
-        PRDISE.save("user", userObj);
+    const fd = new FormData();
+    fd.append("email", loginForm.email.trim().toLowerCase());
+    fd.append("password", loginForm.password);
+    try {
+      const result = await sbSignIn(fd);
+      if (result && "ok" in result && !result.ok) {
+        setError(result.error || "Credenciales inválidas");
         setLoading(false);
-        onSuccess(userObj);
-      } else if (match && match.role === "admin") {
-        setError("Admin accounts cannot complete bookings. Use a user account.");
-        setLoading(false);
-      } else {
-        setError("Invalid credentials. Try user@prdise.com / user123");
-        setLoading(false);
+        return;
       }
-    }, 600);
-  };
-
-  const handleRegister = () => {
-    setError("");
-    if (!regForm.firstName.trim() || !regForm.lastName.trim()) { setError("First and last name are required."); return; }
-    if (!regForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email)) { setError("Please enter a valid email address."); return; }
-    if (!regForm.password || regForm.password.length < 8) { setError("Password must be at least 8 characters."); return; }
-    if (regForm.password !== regForm.confirmPassword) { setError("Passwords do not match."); return; }
-    if (!regForm.acceptTerms || !regForm.acceptPrivacy) { setError("You must accept the Terms and Privacy Policy."); return; }
-    setLoading(true);
-    setTimeout(() => {
+      // signIn hace redirect en éxito; AuthBridge sincroniza localStorage.
+      // Si llegamos acá sin redirect, mostramos onSuccess best-effort.
       const userObj = {
-        firstName: regForm.firstName.trim(), lastName: regForm.lastName.trim(),
-        email: regForm.email.trim().toLowerCase(), phone: "",
-        country: regForm.country.trim() || "Puerto Rico",
+        firstName: loginForm.email.split("@")[0],
+        lastName: "",
+        email: loginForm.email.trim().toLowerCase(),
+        phone: "", country: "",
         joinedAt: new Date().toLocaleDateString(),
       };
-      PRDISE.save("session", {
-        email: userObj.email, role: "user",
-        name: `${userObj.firstName} ${userObj.lastName}`,
-        loginAt: new Date().toISOString(),
-      });
-      PRDISE.save("user", userObj);
       setLoading(false);
       onSuccess(userObj);
-    }, 700);
+    } catch (e) {
+      if (e && typeof e === "object" && "digest" in e && String(e.digest).startsWith("NEXT_REDIRECT")) return;
+      setError("Error inesperado, intenta de nuevo");
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setError("");
+    if (!regForm.firstName.trim() || !regForm.lastName.trim()) { setError("Nombre y apellido requeridos."); return; }
+    if (!regForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email)) { setError("Email inválido."); return; }
+    if (!regForm.password || regForm.password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres."); return; }
+    if (regForm.password !== regForm.confirmPassword) { setError("Las contraseñas no coinciden."); return; }
+    if (!regForm.acceptTerms || !regForm.acceptPrivacy) { setError("Debes aceptar los Términos y la Política de Privacidad."); return; }
+    setLoading(true);
+    const fd = new FormData();
+    fd.append("email", regForm.email.trim().toLowerCase());
+    fd.append("password", regForm.password);
+    fd.append("firstName", regForm.firstName.trim());
+    fd.append("lastName", regForm.lastName.trim());
+    const result = await sbSignUp(fd);
+    setLoading(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setError("Revisa tu email para confirmar la cuenta. Una vez confirmada, podrás iniciar sesión.");
   };
 
   return (
@@ -5276,64 +5270,6 @@ function LoginPage() {
           <User style={{ width: 14, height: 14 }} />{t("createAccount")}
         </NavLink>
 
-        <div style={{ marginTop: 20, padding: 14, borderRadius: 12, background: "rgba(245,166,35,.08)", border: "1px dashed rgba(245,166,35,.3)" }}>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 10 }}>{t("demoAccounts")}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => { setForm({ email: "admin@prdise.com", password: "admin123" }); setError(""); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", cursor: "pointer", transition: "all .2s", textAlign: "left" }}
-            >
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg,#8DC63F,#6BAF2A)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Shield style={{ width: 15, height: 15, color: "#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#8DC63F", marginBottom: 1 }}>Administrator</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontFamily: "monospace" }}>admin@prdise.com · admin123</div>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setForm({ email: "user@prdise.com", password: "user123" }); setError(""); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)", cursor: "pointer", transition: "all .2s", textAlign: "left" }}
-            >
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg,#29ABE2,#1E8CBF)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <User style={{ width: 15, height: 15, color: "#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#29ABE2", marginBottom: 1 }}>{lang === "es" ? "Cliente" : "User Account"}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontFamily: "monospace" }}>user@prdise.com · user123</div>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setForm({ email: "carlos@prdise.com", password: "carlos123" }); setError(""); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.2)", cursor: "pointer", transition: "all .2s", textAlign: "left" }}
-            >
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg,#F5A623,#D88B0E)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Briefcase style={{ width: 15, height: 15, color: "#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#F5A623", marginBottom: 1 }}>{lang === "es" ? "Empleado · Recepcionista" : "Employee · Receptionist"}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontFamily: "monospace" }}>carlos@prdise.com · carlos123</div>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setForm({ email: "ana@prdise.com", password: "ana123" }); setError(""); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9, background: "rgba(239,108,43,.08)", border: "1px solid rgba(239,108,43,.2)", cursor: "pointer", transition: "all .2s", textAlign: "left" }}
-            >
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg,#EF6C2B,#C62828)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Briefcase style={{ width: 15, height: 15, color: "#fff" }} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#EF6C2B", marginBottom: 1 }}>{lang === "es" ? "Empleado · Gerente" : "Employee · Manager"}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontFamily: "monospace" }}>ana@prdise.com · ana123</div>
-              </div>
-            </button>
-          </div>
-        </div>
-
         <div style={{ textAlign: "center", marginTop: 20 }}>
           <NavLink to="/" style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>← Back to site</NavLink>
         </div>
@@ -6452,64 +6388,33 @@ function AdminPanel({ onClose }) {
   const totalUsers = users.length;
   const activeStays = hotels.filter((h) => h.status === "published").length;
 
-  // Range-dependent demo metrics (1 semana vs 30 días)
+  // Métricas vacías hasta que se conecten a Supabase (bookings/payments reales).
+  // Las cifras hardcoded del demo fueron eliminadas — todo arranca en cero.
   const rangeMetrics = useMemo(() => {
-    if (dateRange === "7d") {
-      return {
-        revenue: 4280,
-        revenueDelta: "+8.2%",
-        bookings: 47,
-        bookingsDelta: "+5.4%",
-        newUsers: 12,
-        newUsersDelta: "+3 vs prev week",
-        chartData: [
-          { day: "Mon", value: 65, revenue: 580 },
-          { day: "Tue", value: 80, revenue: 720 },
-          { day: "Wed", value: 55, revenue: 490 },
-          { day: "Thu", value: 90, revenue: 810 },
-          { day: "Fri", value: 70, revenue: 630 },
-          { day: "Sat", value: 95, revenue: 850 },
-          { day: "Sun", value: 25, revenue: 200 },
-        ],
-        chartTitle: "Revenue (last 7 days)",
-        analytics: {
-          conversion: "3.1%",
-          conversionDelta: "+0.3% vs last week",
-          avgBooking: "$268",
-          avgBookingDelta: "+$12",
-          repeat: "24%",
-          repeatDelta: "+2%",
-          cancel: "1.8%",
-          cancelDelta: "-0.4%",
-        },
-      };
-    }
-    return {
-      revenue: 18650,
-      revenueDelta: "+12.4%",
-      bookings: 187,
-      bookingsDelta: "+8.2%",
-      newUsers: 24,
-      newUsersDelta: "+24 this week",
-      chartData: [
-        { day: "W1", value: 60, revenue: 3200 },
-        { day: "W2", value: 75, revenue: 4100 },
-        { day: "W3", value: 85, revenue: 4800 },
-        { day: "W4", value: 95, revenue: 5400 },
-      ],
-      chartTitle: "Revenue (last 30 days, by week)",
+    const zeros = {
+      revenue: 0,
+      revenueDelta: "—",
+      bookings: 0,
+      bookingsDelta: "—",
+      newUsers: 0,
+      newUsersDelta: "—",
+      chartData: [],
+      chartTitle: dateRange === "7d"
+        ? (lang === "es" ? "Ingresos (últimos 7 días)" : "Revenue (last 7 days)")
+        : (lang === "es" ? "Ingresos (últimos 30 días)" : "Revenue (last 30 days)"),
       analytics: {
-        conversion: "3.4%",
-        conversionDelta: "+0.6% vs last month",
-        avgBooking: "$285",
-        avgBookingDelta: "+$24",
-        repeat: "28%",
-        repeatDelta: "+4%",
-        cancel: "2.1%",
-        cancelDelta: "-0.8%",
+        conversion: "—",
+        conversionDelta: "—",
+        avgBooking: "—",
+        avgBookingDelta: "—",
+        repeat: "—",
+        repeatDelta: "—",
+        cancel: "—",
+        cancelDelta: "—",
       },
     };
-  }, [dateRange]);
+    return zeros;
+  }, [dateRange, lang]);
 
   // Reset to placeholder vars (avoid unused warnings)
   void totalRevenue;
@@ -6940,7 +6845,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-stat-ico"><Home /></div>
                 </div>
                 <div className="adm-stat-val">{activeStays}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{lang === "es" ? "2 nuevas esta semana" : "2 new this week"}</div>
+                <div className="adm-stat-trend up"><TrendingUp />—</div>
               </div>
               <div className="adm-stat orange">
                 <div className="adm-stat-top">
