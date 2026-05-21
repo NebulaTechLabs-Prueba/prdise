@@ -2591,13 +2591,15 @@ function CheckoutForm({ type }) {
         }
         const res = await sbCreateBookingOffline(fd);
         if (!res?.ok) {
-          // eslint-disable-next-line no-console
-          console.warn("createBookingOffline:", res?.error);
+          setProcessing(false);
+          alert("No se pudo registrar la reserva: " + (res?.error || "error desconocido") + ". Verifica que iniciaste sesión.");
+          return;
         }
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("checkout persistence error:", e);
+      setProcessing(false);
+      alert("Error al procesar la reserva: " + (e?.message || e));
+      return;
     }
 
     setTimeout(() => {
@@ -3470,6 +3472,7 @@ function CartCheckoutPage() {
     // Persistir cada item del cart a Supabase si el método es offline.
     if (method === "ath" || method === "bank") {
       const itemTypeMap = { hotel: "stay", tour: "tour", transfer: "transfer" };
+      const failed = [];
       for (const it of cart) {
         try {
           const itemId = it.hotelId || it.tourId || it.routeId || (it.from && it.to ? `${it.from}:${it.to}` : it.id);
@@ -3493,14 +3496,15 @@ function CartCheckoutPage() {
             fd.append("bankReceipt", form.bankReceipt || "");
           }
           const res = await sbCreateBookingOffline(fd);
-          if (!res?.ok) {
-            // eslint-disable-next-line no-console
-            console.warn("cart item createBookingOffline:", res?.error, it);
-          }
+          if (!res?.ok) failed.push({ item: it, error: res?.error || "unknown" });
         } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn("cart checkout persistence error:", e, it);
+          failed.push({ item: it, error: e?.message || String(e) });
         }
+      }
+      if (failed.length) {
+        setProcessing(false);
+        alert(`No se pudieron registrar ${failed.length} de ${cart.length} reservas. Primer error: ${failed[0].error}. Verifica que iniciaste sesión.`);
+        return;
       }
     }
 
@@ -5059,10 +5063,14 @@ function ContactPage() {
       fd.append("email", form.email);
       if (form.phone) fd.append("phone", form.phone);
       fd.append("message", `[${form.subject}] ${form.message}`);
-      await sbSubmitContact(fd);
+      const res = await sbSubmitContact(fd);
+      if (!res?.ok) {
+        alert("No se pudo enviar el mensaje: " + (res?.error || "error desconocido"));
+        return;
+      }
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("submitContact:", e);
+      alert("Error al enviar el mensaje: " + (e?.message || e));
+      return;
     }
     setSent(true);
     setTimeout(() => { setSent(false); setForm({ name: "", email: "", phone: "", subject: "General Inquiry", message: "" }); }, 4000);
@@ -5549,10 +5557,11 @@ function RegisterPage() {
           <div style={{ width: 76, height: 76, borderRadius: 20, background: "linear-gradient(135deg,#8DC63F,#22C55E)", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 36px rgba(141,198,63,.35)" }}>
             <CheckCircle style={{ width: 38, height: 38, color: "#fff" }} />
           </div>
-          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 30, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>WELCOME ABOARD!</h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,.7)", lineHeight: 1.6, marginBottom: 8 }}>Your account has been created.</p>
-          <p style={{ fontFamily: "Dancing Script, cursive", fontSize: 22, color: "var(--gold)", marginBottom: 20 }}>Welcome to Living in Paradise.</p>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>Redirecting to your account...</div>
+          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 30, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>CHECK YOUR EMAIL</h1>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 8 }}>Te enviamos un enlace de confirmación a <strong style={{ color: "#F5A623" }}>{form.email}</strong>.</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,.55)", lineHeight: 1.6, marginBottom: 20 }}>Haz click en el enlace dentro del correo para activar tu cuenta y poder iniciar sesión.</p>
+          <a href="#/login" style={{ display: "inline-block", padding: "12px 28px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff", textDecoration: "none", fontWeight: 800, fontSize: 13, letterSpacing: ".12em", textTransform: "uppercase", boxShadow: "0 8px 24px rgba(239,108,43,.3)" }}>Ir a iniciar sesión</a>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 16 }}>¿No te llegó el correo? Revisa la carpeta de spam.</div>
         </div>
       </div>
     );
@@ -5759,12 +5768,17 @@ function ForgotPasswordPage() {
     if (!email.trim()) { setError("Please enter your email"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Please enter a valid email address"); return; }
     setLoading(true);
-    const fd = new FormData();
-    fd.append("email", email.trim().toLowerCase());
-    await sbRequestPasswordReset(fd);
-    // Siempre marcamos como enviado, sin revelar si el email existe.
-    setLoading(false);
-    setSent(true);
+    try {
+      const fd = new FormData();
+      fd.append("email", email.trim().toLowerCase());
+      await sbRequestPasswordReset(fd);
+      // Siempre marcamos como enviado, sin revelar si el email existe (anti-enumeration).
+      setSent(true);
+    } catch (e) {
+      setError("Error de red. Intenta de nuevo en unos segundos.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -6622,37 +6636,69 @@ function AdminPanel({ onClose }) {
     const list = type === "hotels" ? hotels : type === "tours" ? tours : vehicles;
     const item = list.find((it) => it.id === id);
     if (!item) return;
+    const prev = list;
     const nextActive = item.status !== "published";
     setter(list.map((it) => it.id === id ? { ...it, status: nextActive ? "published" : "hidden" } : it));
-    // Persistir cambio a Supabase.
+    let res = { ok: false, error: "" };
     try {
       const fd = new FormData();
       fd.append("id", id);
       fd.append("active", nextActive ? "true" : "false");
-      if (type === "hotels") await sbUpdateStay(fd);
-      else if (type === "tours") await sbUpdateTour(fd);
-      else if (type === "vehicles") await sbUpdateVehicle(fd);
+      const priceCents = String(Math.round((item.price || 0) * 100));
+      if (type === "hotels") {
+        fd.append("slug", item.slug || item.id || "");
+        fd.append("title_es", item.name || "");
+        fd.append("title_en", item.name || "");
+        fd.append("price_cents", priceCents);
+        fd.append("max_guests", String(item.sleeps || 1));
+        fd.append("bedrooms", String(item.bedrooms || 0));
+        fd.append("bathrooms", String(item.bathrooms || 0));
+        fd.append("location", item.zone || "");
+        res = await sbUpdateStay(fd);
+      } else if (type === "tours") {
+        fd.append("slug", item.slug || item.id || "");
+        fd.append("title_es", item.name || "");
+        fd.append("title_en", item.name || "");
+        fd.append("price_cents", priceCents);
+        fd.append("duration_minutes", String((item.duration || "").match(/\d+/)?.[0] ? Number((item.duration || "").match(/\d+/)[0]) * 60 : 60));
+        fd.append("max_pax", String(item.capacity || 10));
+        fd.append("location", item.location || "");
+        res = await sbUpdateTour(fd);
+      } else if (type === "vehicles") {
+        fd.append("name", item.name || "");
+        fd.append("type", item.type || (item.name || "").toLowerCase());
+        fd.append("max_pax", String(item.seats || 4));
+        fd.append("max_luggage", String(item.bags || 2));
+        fd.append("price_cents", String(Math.round((item.base || 0) * 100)));
+        res = await sbUpdateVehicle(fd);
+      }
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("toggleStatus:", e);
+      res = { ok: false, error: e?.message || String(e) };
+    }
+    if (!res?.ok) {
+      setter(prev);
+      alert("No se pudo cambiar estado: " + (res?.error || "error desconocido"));
     }
   };
   const deleteItem = async (type, id) => {
     if (!confirm("Delete this item? This cannot be undone.")) return;
     const setter = type === "hotels" ? setHotels : type === "tours" ? setTours : setVehicles;
     const list = type === "hotels" ? hotels : type === "tours" ? tours : vehicles;
-    setter(list.filter((it) => it.id !== id));
-    // Soft delete a Supabase.
+    let res = { ok: false, error: "" };
     try {
       const fd = new FormData();
       fd.append("id", id);
-      if (type === "hotels") await sbDeleteStay(fd);
-      else if (type === "tours") await sbDeleteTour(fd);
-      else if (type === "vehicles") await sbDeleteVehicle(fd);
+      if (type === "hotels") res = await sbDeleteStay(fd);
+      else if (type === "tours") res = await sbDeleteTour(fd);
+      else if (type === "vehicles") res = await sbDeleteVehicle(fd);
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("deleteItem:", e);
+      res = { ok: false, error: e?.message || String(e) };
     }
+    if (!res?.ok) {
+      alert("No se pudo eliminar: " + (res?.error || "error desconocido"));
+      return;
+    }
+    setter(list.filter((it) => it.id !== id));
   };
 
 
@@ -7549,23 +7595,38 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td>
                             <div className="adm-row-actions">
                               <button className="adm-icon-btn" title={p.featured ? "Unfeature" : "Feature"} onClick={async () => {
+                                const prev = posts;
                                 setPosts(posts.map(x => x.id === p.id ? { ...x, featured: !x.featured } : x));
-                                try { const fd = new FormData(); fd.append("id", p.id); await sbTogglePostFeatured(fd); } catch (e) { console.warn("togglePostFeatured:", e); }
+                                try {
+                                  const fd = new FormData(); fd.append("id", p.id);
+                                  const res = await sbTogglePostFeatured(fd);
+                                  if (!res?.ok) { setPosts(prev); alert("No se pudo cambiar destacado: " + (res?.error || "error")); }
+                                } catch (e) { setPosts(prev); alert("Error: " + e.message); }
                               }}>
                                 <Star style={{ fill: p.featured ? "#F5A623" : "none", color: p.featured ? "#F5A623" : "currentColor" }} />
                               </button>
                               <button className="adm-icon-btn" title="Edit" onClick={() => setEditing({ type: "post", item: p })}><Pencil /></button>
                               <button className="adm-icon-btn" title={p.status === "published" ? "Unpublish" : "Publish"} onClick={async () => {
+                                const prev = posts;
                                 const newStatus = p.status === "published" ? "draft" : "published";
                                 setPosts(posts.map(x => x.id === p.id ? { ...x, status: newStatus } : x));
-                                try { const fd = new FormData(); fd.append("id", p.id); await sbTogglePostPublish(fd); } catch (e) { console.warn("togglePostPublish:", e); }
+                                try {
+                                  const fd = new FormData(); fd.append("id", p.id);
+                                  const res = await sbTogglePostPublish(fd);
+                                  if (!res?.ok) { setPosts(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
+                                } catch (e) { setPosts(prev); alert("Error: " + e.message); }
                               }}>
                                 {p.status === "published" ? <EyeOff /> : <Eye />}
                               </button>
                               <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
                                 if (!confirm(lang==="es"?"¿Archivar este post?":"Archive this post?")) return;
+                                const prev = posts;
                                 setPosts(posts.filter(x => x.id !== p.id));
-                                try { const fd = new FormData(); fd.append("id", p.id); await sbDeletePost(fd); } catch (e) { console.warn("deletePost:", e); }
+                                try {
+                                  const fd = new FormData(); fd.append("id", p.id);
+                                  const res = await sbDeletePost(fd);
+                                  if (!res?.ok) { setPosts(prev); alert("No se pudo archivar: " + (res?.error || "error")); }
+                                } catch (e) { setPosts(prev); alert("Error: " + e.message); }
                               }}><Trash2 /></button>
                             </div>
                           </td>
@@ -7675,15 +7736,31 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td>
                             <div className="adm-row-actions">
                               <button className="adm-icon-btn" onClick={async () => {
+                                const prev = routes;
                                 const newActive = r.status !== "active";
                                 setRoutes(routes.map(x => x.id === r.id ? { ...x, status: newActive ? "active" : "inactive" } : x));
-                                try { const fd = new FormData(); fd.append("id", r.id); fd.append("active", newActive ? "true" : "false"); await sbUpdateRoute(fd); } catch {}
+                                try {
+                                  const fd = new FormData();
+                                  fd.append("id", r.id);
+                                  fd.append("from_location", r.from || "");
+                                  fd.append("to_location", r.to || "");
+                                  fd.append("base_price_cents", String(Math.round((r.price || 0) * 100)));
+                                  fd.append("max_pax", String(r.maxPax || r.capacity || 4));
+                                  fd.append("active", newActive ? "true" : "false");
+                                  const res = await sbUpdateRoute(fd);
+                                  if (!res?.ok) { setRoutes(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
+                                } catch (e) { setRoutes(prev); alert("Error: " + e.message); }
                               }}>{r.status === "active" ? <EyeOff /> : <Eye />}</button>
                               <button className="adm-icon-btn" onClick={() => setEditing({ type: "route", item: r })}><Pencil /></button>
                               <button className="adm-icon-btn danger" onClick={async () => {
                                 if (!confirm(lang==="es"?"¿Eliminar esta ruta?":"Delete this route?")) return;
+                                const prev = routes;
                                 setRoutes(routes.filter(x => x.id !== r.id));
-                                try { const fd = new FormData(); fd.append("id", r.id); await sbDeleteRoute(fd); } catch {}
+                                try {
+                                  const fd = new FormData(); fd.append("id", r.id);
+                                  const res = await sbDeleteRoute(fd);
+                                  if (!res?.ok) { setRoutes(prev); alert("No se pudo eliminar: " + (res?.error || "error")); }
+                                } catch (e) { setRoutes(prev); alert("Error: " + e.message); }
                               }}><Trash2 /></button>
                             </div>
                           </td>
@@ -7720,8 +7797,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               <button className="adm-icon-btn" onClick={() => setEditingVehicle({...v})}><Pencil /></button>
                               <button className="adm-icon-btn danger" onClick={async () => {
                                 if (!confirm(lang==="es"?"¿Eliminar este vehículo?":"Delete this vehicle?")) return;
+                                const prev = vehicles;
                                 setVehicles(vehicles.filter(x => x.id !== v.id));
-                                try { const fd = new FormData(); fd.append("id", v.id); await sbDeleteVehicle(fd); } catch {}
+                                try {
+                                  const fd = new FormData(); fd.append("id", v.id);
+                                  const res = await sbDeleteVehicle(fd);
+                                  if (!res?.ok) { setVehicles(prev); alert("No se pudo eliminar: " + (res?.error || "error")); }
+                                } catch (e) { setVehicles(prev); alert("Error: " + e.message); }
                               }}><Trash2 /></button>
                             </div>
                           </td>
@@ -7779,21 +7861,24 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       if (!editingVehicle.name) return;
                       const isNew = editingVehicle.id === "new";
-                      // Persistir a Supabase.
+                      let res = { ok: false, error: "" };
                       try {
                         const fd = new FormData();
                         if (!isNew) fd.append("id", editingVehicle.id);
                         fd.append("name", editingVehicle.name);
                         fd.append("type", editingVehicle.type || editingVehicle.name.toLowerCase());
-                        fd.append("maxPax", String(editingVehicle.seats || 4));
-                        fd.append("maxLuggage", String(editingVehicle.bags || 2));
-                        fd.append("priceCents", String(Math.round((editingVehicle.base || 0) * 100)));
+                        fd.append("max_pax", String(editingVehicle.seats || 4));
+                        fd.append("max_luggage", String(editingVehicle.bags || 2));
+                        fd.append("price_cents", String(Math.round((editingVehicle.base || 0) * 100)));
                         fd.append("active", "true");
                         const action = isNew ? sbCreateVehicle : sbUpdateVehicle;
-                        await action(fd);
+                        res = await action(fd);
                       } catch (e) {
-                        // eslint-disable-next-line no-console
-                        console.warn("vehicle save:", e);
+                        res = { ok: false, error: e?.message || String(e) };
+                      }
+                      if (!res?.ok) {
+                        alert("No se pudo guardar el vehículo: " + (res?.error || "error desconocido"));
+                        return;
                       }
                       if (isNew) {
                         setVehicles([...vehicles, { ...editingVehicle, id: "v" + Date.now() }]);
@@ -7832,8 +7917,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{d.rating}</td>
                           <td>
                             <button onClick={async () => {
+                              const prev = drivers;
                               setDrivers(drivers.map(x => x.id === d.id ? { ...x, webVisible: !x.webVisible } : x));
-                              try { const fd = new FormData(); fd.append("id", d.id); await sbToggleDriverVisibility(fd); } catch (e) { console.warn("toggleDriverVisibility:", e); }
+                              try {
+                                const fd = new FormData(); fd.append("id", d.id);
+                                const res = await sbToggleDriverVisibility(fd);
+                                if (!res?.ok) { setDrivers(prev); alert("No se pudo cambiar visibilidad: " + (res?.error || "error")); }
+                              } catch (e) { setDrivers(prev); alert("Error: " + e.message); }
                             }}
                               style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, color: d.webVisible ? "#8DC63F" : "rgba(255,255,255,.25)" }}>
                               {d.webVisible ? <Eye style={{ width: 14, height: 14 }} /> : <EyeOff style={{ width: 14, height: 14 }} />}
@@ -7919,6 +8009,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       if (!editingDriver.name) { alert(lang === "es" ? "El nombre es requerido" : "Name is required"); return; }
                       const isNew = editingDriver.id === "new";
+                      let res = { ok: false, error: "" };
                       try {
                         const fd = new FormData();
                         if (!isNew) fd.append("id", editingDriver.id);
@@ -7927,12 +8018,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         fd.append("email", editingDriver.email || "");
                         fd.append("license", editingDriver.license || "");
                         fd.append("vehicle", editingDriver.vehicle || "");
-                        fd.append("emergencyPhone", editingDriver.emergencyPhone || "");
-                        fd.append("webVisible", editingDriver.webVisible ? "true" : "false");
+                        fd.append("emergency_phone", editingDriver.emergencyPhone || "");
+                        fd.append("web_visible", editingDriver.webVisible ? "true" : "false");
                         fd.append("status", editingDriver.status || "available");
                         const action = isNew ? sbCreateDriver : sbUpdateDriver;
-                        await action(fd);
-                      } catch (e) { console.warn("driver save:", e); }
+                        res = await action(fd);
+                      } catch (e) { res = { ok: false, error: e?.message || String(e) }; }
+                      if (!res?.ok) {
+                        alert("No se pudo guardar el conductor: " + (res?.error || "error desconocido"));
+                        return;
+                      }
                       if (isNew) setDrivers([...drivers, { ...editingDriver, id: "d" + Date.now() }]);
                       else setDrivers(drivers.map(x => x.id === editingDriver.id ? editingDriver : x));
                       setEditingDriver(null);
@@ -11259,19 +11354,24 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     return;
                   }
                 }
+                let res = { ok: false, error: "" };
                 try {
                   const fd = new FormData();
                   if (!isNew) fd.append("id", editingCoupon.id);
                   fd.append("code", editingCoupon.code.trim());
-                  fd.append("descriptionEs", editingCoupon.desc || "");
-                  fd.append("descriptionEn", editingCoupon.desc || "");
-                  fd.append("discountPct", String(editingCoupon.discount || 0));
-                  fd.append("maxUses", String(editingCoupon.maxUses || 0));
-                  if (editingCoupon.expires) fd.append("expiresAt", editingCoupon.expires);
+                  fd.append("description_es", editingCoupon.desc || "");
+                  fd.append("description_en", editingCoupon.desc || "");
+                  fd.append("discount_pct", String(editingCoupon.discount || 0));
+                  fd.append("max_uses", String(editingCoupon.maxUses || 0));
+                  if (editingCoupon.expires) fd.append("expires_at", editingCoupon.expires);
                   fd.append("active", editingCoupon.active === false ? "false" : "true");
                   const action = isNew ? sbCreateCoupon : sbUpdateCoupon;
-                  await action(fd);
-                } catch (e) { console.warn("coupon save:", e); }
+                  res = await action(fd);
+                } catch (e) { res = { ok: false, error: e?.message || String(e) }; }
+                if (!res?.ok) {
+                  alert("No se pudo guardar el cupón: " + (res?.error || "error desconocido"));
+                  return;
+                }
                 if (isNew) setCoupons([...coupons, { ...editingCoupon, id: "cp" + Date.now() }]);
                 else setCoupons(coupons.map(c => c.id === editingCoupon.id ? editingCoupon : c));
                 setEditingCoupon(null);
@@ -11311,10 +11411,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             <div className="adm-modal-actions" style={{ justifyContent: "center" }}>
               <button className="adm-btn adm-btn-ghost" onClick={() => setDeletingCoupon(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
               <button className="adm-btn adm-btn-primary" style={{ background: "#EF6C2B", borderColor: "#EF6C2B", color: "#fff" }} onClick={async () => {
+                let res = { ok: false, error: "" };
+                try { const fd = new FormData(); fd.append("id", deletingCoupon.id); res = await sbDeleteCoupon(fd); }
+                catch (e) { res = { ok: false, error: e?.message || String(e) }; }
+                if (!res?.ok) {
+                  alert("No se pudo eliminar el cupón: " + (res?.error || "error desconocido"));
+                  return;
+                }
                 const archived = { ...deletingCoupon, deletedAt: new Date().toISOString().split("T")[0] };
                 setArchivedCoupons([archived, ...archivedCoupons]);
                 setCoupons(coupons.filter(x => x.id !== deletingCoupon.id));
-                try { const fd = new FormData(); fd.append("id", deletingCoupon.id); await sbDeleteCoupon(fd); } catch (e) { console.warn("deleteCoupon:", e); }
                 setDeletingCoupon(null);
               }}>
                 <Trash2 style={{ width: 13, height: 13 }} />
@@ -11498,20 +11604,19 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
       {editing && (
         <EditModal editing={editing} onClose={() => setEditing(null)} onSave={async (updated) => {
-          // Stamp _createdBy if employee is creating a new service
           const ownedUpdate = editing.isNew && currentEmployeeId ? { ...updated, _createdBy: currentEmployeeId } : updated;
-          // Persistir a Supabase como FormData. Best-effort; si falla, igual hace update local.
+          let saveResult = { ok: false, error: "Tipo no soportado" };
           try {
             const fd = new FormData();
             const priceCents = String(Math.round((ownedUpdate.price || 0) * 100));
             if (editing.type === "hotel") {
               fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
-              fd.append("titleEs", ownedUpdate.name || "");
-              fd.append("titleEn", ownedUpdate.name || "");
-              fd.append("shortDescEs", ownedUpdate.desc || "");
-              fd.append("shortDescEn", ownedUpdate.desc || "");
-              fd.append("priceCents", priceCents);
-              fd.append("maxGuests", String(ownedUpdate.sleeps || 1));
+              fd.append("title_es", ownedUpdate.name || "");
+              fd.append("title_en", ownedUpdate.name || "");
+              fd.append("short_desc_es", ownedUpdate.desc || "");
+              fd.append("short_desc_en", ownedUpdate.desc || "");
+              fd.append("price_cents", priceCents);
+              fd.append("max_guests", String(ownedUpdate.sleeps || 1));
               fd.append("bedrooms", String(ownedUpdate.bedrooms || 0));
               fd.append("bathrooms", String(ownedUpdate.bathrooms || 0));
               fd.append("location", ownedUpdate.zone || "");
@@ -11521,17 +11626,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("active", ownedUpdate.status === "hidden" ? "false" : "true");
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
-              const res = await action(fd);
-              if (!res?.ok) console.warn("stay save:", res?.error);
+              saveResult = await action(fd);
             } else if (editing.type === "tour") {
               fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
-              fd.append("titleEs", ownedUpdate.name || "");
-              fd.append("titleEn", ownedUpdate.name || "");
-              fd.append("shortDescEs", ownedUpdate.desc || "");
-              fd.append("shortDescEn", ownedUpdate.desc || "");
-              fd.append("priceCents", priceCents);
-              fd.append("durationMinutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
-              fd.append("maxPax", String(ownedUpdate.capacity || 10));
+              fd.append("title_es", ownedUpdate.name || "");
+              fd.append("title_en", ownedUpdate.name || "");
+              fd.append("short_desc_es", ownedUpdate.desc || "");
+              fd.append("short_desc_en", ownedUpdate.desc || "");
+              fd.append("price_cents", priceCents);
+              fd.append("duration_minutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
+              fd.append("max_pax", String(ownedUpdate.capacity || 10));
               fd.append("location", ownedUpdate.location || "");
               if (ownedUpdate.lat != null) fd.append("lat", String(ownedUpdate.lat));
               if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
@@ -11539,29 +11643,41 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("active", ownedUpdate.status === "draft" ? "false" : "true");
               const action = editing.isNew ? sbCreateTour : sbUpdateTour;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
-              const res = await action(fd);
-              if (!res?.ok) console.warn("tour save:", res?.error);
+              saveResult = await action(fd);
             } else if (editing.type === "post") {
               fd.append("slug", ownedUpdate.slug || ownedUpdate.id || "");
-              fd.append("titleEs", ownedUpdate.title || "");
-              fd.append("titleEn", ownedUpdate.title || "");
-              fd.append("excerptEs", ownedUpdate.excerpt || "");
-              fd.append("excerptEn", ownedUpdate.excerpt || "");
-              fd.append("bodyEs", ownedUpdate.body || "");
-              fd.append("bodyEn", ownedUpdate.body || "");
+              fd.append("title_es", ownedUpdate.title || "");
+              fd.append("title_en", ownedUpdate.title || "");
+              fd.append("excerpt_es", ownedUpdate.excerpt || "");
+              fd.append("excerpt_en", ownedUpdate.excerpt || "");
+              fd.append("body_es", ownedUpdate.body || "");
+              fd.append("body_en", ownedUpdate.body || "");
               fd.append("category", ownedUpdate.category || "");
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               fd.append("image", ownedUpdate.img || "");
               fd.append("status", ownedUpdate.status || "draft");
               const action = editing.isNew ? sbCreatePost : sbUpdatePost;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
-              const res = await action(fd);
-              if (!res?.ok) console.warn("post save:", res?.error);
+              saveResult = await action(fd);
+            } else if (editing.type === "route") {
+              fd.append("from_location", ownedUpdate.from || "");
+              fd.append("to_location", ownedUpdate.to || "");
+              fd.append("base_price_cents", priceCents);
+              if (ownedUpdate.distanceKm != null) fd.append("distance_km", String(ownedUpdate.distanceKm));
+              if (ownedUpdate.durationMinutes != null) fd.append("duration_minutes", String(ownedUpdate.durationMinutes));
+              fd.append("max_pax", String(ownedUpdate.maxPax || ownedUpdate.capacity || 4));
+              fd.append("active", ownedUpdate.status === "inactive" ? "false" : "true");
+              const action = editing.isNew ? sbCreateRoute : sbUpdateRoute;
+              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              saveResult = await action(fd);
             }
           } catch (e) {
-            console.warn("admin save persistence error:", e);
+            saveResult = { ok: false, error: e?.message || String(e) };
           }
-          // Update local state for immediate UI feedback (Supabase es source of truth en próximo reload).
+          if (!saveResult?.ok) {
+            alert("No se pudo guardar: " + (saveResult?.error || "error desconocido"));
+            return;
+          }
           if (editing.type === "hotel") {
             if (editing.isNew) { HOTELS.push(ownedUpdate); setHotels([...HOTELS]); }
             else {
@@ -11582,6 +11698,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               const idx = A_POSTS.findIndex(p => p.id === ownedUpdate.id);
               if (idx !== -1) Object.assign(A_POSTS[idx], ownedUpdate);
               setPosts([...A_POSTS]);
+            }
+          } else if (editing.type === "route") {
+            if (editing.isNew) { setRoutes([...routes, ownedUpdate]); }
+            else {
+              setRoutes(routes.map(r => r.id === ownedUpdate.id ? { ...r, ...ownedUpdate } : r));
             }
           }
           setEditing(null);
