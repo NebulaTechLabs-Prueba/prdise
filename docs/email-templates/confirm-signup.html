@@ -16,14 +16,19 @@
       </td></tr>
       <tr><td style="padding:28px 40px 0 40px;">
         <h1 style="font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:32px;letter-spacing:.04em;color:#FFFFFF;margin:0 0 16px 0;line-height:1.1;">¡BIENVENIDO/A A PARADISE!</h1>
-        <p style="font-size:15px;line-height:1.6;color:rgba(255,255,255,.78);margin:0 0 14px 0;">Gracias por unirte a <strong style="color:#F5A623;">prdise</strong>. Solo falta un paso: confirma tu correo electrónico para activar tu cuenta y empezar a reservar estadías, tours y traslados.</p>
-        <p style="font-size:13px;line-height:1.6;color:rgba(255,255,255,.5);margin:0 0 24px 0;font-style:italic;">Welcome to paradise! One more step to activate your account: confirm your email by clicking the button below.</p>
+        <p style="font-size:15px;line-height:1.6;color:rgba(255,255,255,.78);margin:0 0 14px 0;">Gracias por unirte a <strong style="color:#F5A623;">prdise</strong>. Para activar tu cuenta, ingresa el código de abajo en la pantalla de confirmación que está abierta en tu navegador:</p>
+        <p style="font-size:13px;line-height:1.6;color:rgba(255,255,255,.5);margin:0 0 18px 0;font-style:italic;">Welcome to paradise! Enter the code below on the confirmation screen open in your browser.</p>
       </td></tr>
-      <tr><td align="center" style="padding:8px 40px 24px 40px;">
-        <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#F5A623,#EF6C2B);color:#FFFFFF;text-decoration:none;font-weight:800;font-size:14px;letter-spacing:.12em;text-transform:uppercase;border-radius:99px;box-shadow:0 8px 24px rgba(239,108,43,.35);">Confirmar mi cuenta</a>
+      <tr><td align="center" style="padding:0 40px 24px 40px;">
+        <div style="display:inline-block;padding:20px 36px;background:rgba(245,166,35,.08);border:1px dashed rgba(245,166,35,.4);border-radius:14px;">
+          <div style="font-size:10px;letter-spacing:.2em;color:rgba(255,255,255,.55);text-transform:uppercase;margin-bottom:10px;">Tu código · Your code</div>
+          <div style="font-family:'SF Mono','Monaco','Courier New',monospace;font-size:34px;letter-spacing:.5em;color:#F5A623;font-weight:700;">{{ .Token }}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:10px;letter-spacing:.05em;">Válido por 60 minutos · Valid for 60 minutes</div>
+        </div>
       </td></tr>
-      <tr><td style="padding:0 40px 24px 40px;">
-        <p style="font-size:12px;color:rgba(255,255,255,.4);line-height:1.6;margin:0;text-align:center;">Si el botón no funciona, copia y pega este enlace en tu navegador:<br><a href="{{ .ConfirmationURL }}" style="color:#F5A623;word-break:break-all;">{{ .ConfirmationURL }}</a></p>
+      <tr><td align="center" style="padding:0 40px 18px 40px;">
+        <p style="font-size:12px;color:rgba(255,255,255,.45);line-height:1.6;margin:0;">¿No tienes la pantalla abierta? También puedes usar este enlace:</p>
+        <p style="font-size:11px;color:rgba(255,255,255,.35);line-height:1.5;margin:8px 0 0 0;word-break:break-all;"><a href="{{ .ConfirmationURL }}" style="color:#F5A623;">{{ .ConfirmationURL }}</a></p>
       </td></tr>
       <tr><td style="padding:16px 40px 8px 40px;border-top:1px solid rgba(255,255,255,.06);">
         <p style="font-size:12px;line-height:1.6;color:rgba(255,255,255,.45);margin:0;">Si no creaste esta cuenta, ignora este correo. La cuenta no quedará activa sin tu confirmación.</p>
@@ -36,9 +41,9 @@
   </td></tr>
 </table>
 <noscript>
-Bienvenido/a a prdise. Para confirmar tu cuenta, visita: {{ .ConfirmationURL }}
-Welcome to prdise. To confirm your account, visit: {{ .ConfirmationURL }}
-Si no creaste esta cuenta, ignora este correo. / If you did not create an account, ignore this message.
+Tu código de confirmación de prdise: {{ .Token }}
+Your prdise confirmation code: {{ .Token }}
+Válido por 60 minutos. / Valid for 60 minutes.
 </noscript>
 </body>
 </html>

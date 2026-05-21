@@ -83,6 +83,65 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
+// ---------- Verify Email OTP -----------------------------------------------
+
+export async function verifyEmailOtp(
+  formData: FormData
+): Promise<ActionResult> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const token = String(formData.get("token") ?? "").trim().replace(/\s/g, "");
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Email inválido" };
+  }
+  if (!token || !/^\d{6}$/.test(token)) {
+    return { ok: false, error: "El código debe tener 6 dígitos" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "signup",
+  });
+
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes("expired")) {
+      return { ok: false, error: "El código expiró. Solicita uno nuevo" };
+    }
+    if (msg.includes("invalid") || msg.includes("token")) {
+      return { ok: false, error: "Código incorrecto. Revisa tu correo" };
+    }
+    return { ok: false, error: "No se pudo verificar el código" };
+  }
+
+  return { ok: true };
+}
+
+// ---------- Resend Signup OTP ----------------------------------------------
+
+export async function resendSignupOtp(
+  formData: FormData
+): Promise<ActionResult> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Email inválido" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: `${getAppUrl()}/auth/callback` },
+  });
+
+  if (error) {
+    return { ok: false, error: "No se pudo reenviar el código" };
+  }
+  return { ok: true };
+}
+
 // ---------- Sign In ---------------------------------------------------------
 
 export async function signIn(formData: FormData): Promise<SignInResult> {

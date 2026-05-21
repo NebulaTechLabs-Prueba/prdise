@@ -19,6 +19,8 @@ import {
   reactivateAccount as sbReactivateAccount,
   softDeleteAccount as sbSoftDeleteAccount,
   updateProfile as sbUpdateProfile,
+  verifyEmailOtp as sbVerifyEmailOtp,
+  resendSignupOtp as sbResendSignupOtp,
 } from "@/lib/auth/actions";
 import {
   createBookingOffline as sbCreateBookingOffline,
@@ -5480,6 +5482,37 @@ function RegisterPage() {
   const [quickTerms, setQuickTerms] = useState(true);
   const [quickPrivacy, setQuickPrivacy] = useState(true);
   const [quickError, setQuickError] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [resendCooldown]);
+  const handleVerifyOtp = async () => {
+    setOtpError("");
+    if (!/^\d{6}$/.test(otp)) { setOtpError("El código debe tener 6 dígitos"); return; }
+    setOtpLoading(true);
+    const fd = new FormData();
+    fd.append("email", form.email.trim().toLowerCase());
+    fd.append("token", otp);
+    const res = await sbVerifyEmailOtp(fd);
+    setOtpLoading(false);
+    if (res?.ok) { setOtpVerified(true); setTimeout(() => { window.location.hash = "#/login"; }, 1800); }
+    else setOtpError(res?.error || "No se pudo verificar el código");
+  };
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    setOtpError("");
+    const fd = new FormData();
+    fd.append("email", form.email.trim().toLowerCase());
+    const res = await sbResendSignupOtp(fd);
+    if (res?.ok) setResendCooldown(60);
+    else setOtpError(res?.error || "No se pudo reenviar el código");
+  };
 
   useEffect(() => {
     document.title = "Create Account — Living in PRDISE";
@@ -5550,18 +5583,65 @@ function RegisterPage() {
   const AppleIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>);
 
   if (success) {
-    return (
-      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,var(--deep),var(--ink))", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, paddingTop: 100 }}>
-        <div style={{ maxWidth: 440, width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid rgba(141,198,63,.3)", borderRadius: 24, padding: "48px 32px", textAlign: "center", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,#8DC63F,#22C55E,#10B981)" }} />
-          <div style={{ width: 76, height: 76, borderRadius: 20, background: "linear-gradient(135deg,#8DC63F,#22C55E)", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 36px rgba(141,198,63,.35)" }}>
-            <CheckCircle style={{ width: 38, height: 38, color: "#fff" }} />
+    if (otpVerified) {
+      return (
+        <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,var(--deep),var(--ink))", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, paddingTop: 100 }}>
+          <div style={{ maxWidth: 440, width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid rgba(141,198,63,.3)", borderRadius: 24, padding: "48px 32px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,#8DC63F,#22C55E,#10B981)" }} />
+            <div style={{ width: 76, height: 76, borderRadius: 20, background: "linear-gradient(135deg,#8DC63F,#22C55E)", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 36px rgba(141,198,63,.35)" }}>
+              <CheckCircle style={{ width: 38, height: 38, color: "#fff" }} />
+            </div>
+            <h1 style={{ fontFamily: "Bebas Neue", fontSize: 30, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>¡CUENTA ACTIVADA!</h1>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 8 }}>Tu correo fue confirmado correctamente.</p>
+            <p style={{ fontFamily: "Dancing Script, cursive", fontSize: 22, color: "var(--gold)", marginBottom: 20 }}>Welcome to Living in Paradise.</p>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>Redirigiendo al login...</div>
           </div>
-          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 30, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>CHECK YOUR EMAIL</h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 8 }}>Te enviamos un enlace de confirmación a <strong style={{ color: "#F5A623" }}>{form.email}</strong>.</p>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,.55)", lineHeight: 1.6, marginBottom: 20 }}>Haz click en el enlace dentro del correo para activar tu cuenta y poder iniciar sesión.</p>
-          <a href="#/login" style={{ display: "inline-block", padding: "12px 28px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff", textDecoration: "none", fontWeight: 800, fontSize: 13, letterSpacing: ".12em", textTransform: "uppercase", boxShadow: "0 8px 24px rgba(239,108,43,.3)" }}>Ir a iniciar sesión</a>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 16 }}>¿No te llegó el correo? Revisa la carpeta de spam.</div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,var(--deep),var(--ink))", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, paddingTop: 100, paddingBottom: 40 }}>
+        <div style={{ maxWidth: 460, width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid rgba(245,166,35,.25)", borderRadius: 24, padding: "40px 32px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,var(--gold),var(--orange),var(--green),var(--sky))" }} />
+          <div style={{ width: 64, height: 64, borderRadius: 18, background: "linear-gradient(135deg,var(--gold),var(--orange))", margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 32px rgba(239,108,43,.3)" }}>
+            <Lock style={{ width: 28, height: 28, color: "#fff" }} />
+          </div>
+          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 28, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>CONFIRMA TU CORREO</h1>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 6 }}>Te enviamos un código de 6 dígitos a:</p>
+          <p style={{ fontSize: 14, color: "var(--gold)", fontWeight: 700, marginBottom: 22, wordBreak: "break-all" }}>{form.email}</p>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => { if (e.key === "Enter" && !otpLoading) handleVerifyOtp(); }}
+            placeholder="000000"
+            style={{ width: "100%", padding: "16px 0", textAlign: "center", fontSize: 28, fontFamily: "monospace", letterSpacing: ".5em", background: "rgba(255,255,255,.05)", border: `1.5px solid ${otpError ? "rgba(239,68,68,.5)" : "rgba(245,166,35,.3)"}`, borderRadius: 14, color: "#fff", outline: "none", marginBottom: 12 }}
+          />
+          {otpError && (
+            <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, padding: "8px 12px", background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8 }}>
+              {otpError}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleVerifyOtp}
+            disabled={otpLoading || otp.length !== 6}
+            style={{ width: "100%", padding: "14px 0", borderRadius: 99, background: otp.length === 6 && !otpLoading ? "linear-gradient(135deg,var(--gold),var(--orange))" : "rgba(255,255,255,.08)", color: "#fff", border: "none", fontWeight: 800, fontSize: 13, letterSpacing: ".12em", textTransform: "uppercase", cursor: otp.length === 6 && !otpLoading ? "pointer" : "not-allowed", marginBottom: 16, boxShadow: otp.length === 6 && !otpLoading ? "0 8px 24px rgba(239,108,43,.3)" : "none" }}
+          >
+            {otpLoading ? "Verificando..." : "Confirmar cuenta"}
+          </button>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
+            ¿No te llegó el código? Revisa spam o
+            {" "}
+            <button type="button" onClick={handleResendOtp} disabled={resendCooldown > 0}
+              style={{ background: "none", border: "none", color: resendCooldown > 0 ? "rgba(255,255,255,.3)" : "var(--gold)", textDecoration: resendCooldown > 0 ? "none" : "underline", cursor: resendCooldown > 0 ? "default" : "pointer", padding: 0, font: "inherit" }}>
+              {resendCooldown > 0 ? `reenviar en ${resendCooldown}s` : "reenviar"}
+            </button>
+          </div>
+          <a href="#/login" style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textDecoration: "underline" }}>Ya confirmé, ir a iniciar sesión</a>
         </div>
       </div>
     );
