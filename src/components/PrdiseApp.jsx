@@ -194,6 +194,7 @@ function mapVehicleToVehicle(v) {
 
 function mapRouteToRoute(r) {
   return {
+    id: r.id,
     from: r.from_location,
     to: r.to_location,
     km: Number(r.distance_km) || 0,
@@ -267,15 +268,15 @@ const PRDISE = {
   // Returns true if saved (user was logged in), false otherwise (no account).
   addToUserCart: (booking) => {
     try {
+      // Pivote a modelo referral: stays y tours redirigen a partners
+      // y no se gestionan en el cart de prdise. Guarda defensiva por si
+      // queda algun call site legacy (HotelDetail/TourDetail ya no llaman
+      // este helper, pero esto previene regresiones futuras).
+      if (booking?.type !== "transfer") return false;
       const sess = JSON.parse(localStorage.getItem("prdise_session") || "null");
       if (!sess || sess.role !== "user") return false; // No account = don't save
       const cart = JSON.parse(localStorage.getItem("prdise_userCart") || "[]");
-      // Dedup: same type + same dates/id = replace instead of duplicating
-      const matchKey = booking.type === "hotel"
-        ? `hotel:${booking.hotelId}:${booking.checkin}:${booking.checkout}`
-        : booking.type === "tour"
-          ? `tour:${booking.tourId}:${booking.date}`
-          : `transfer:${booking.from}:${booking.to}:${booking.date}`;
+      const matchKey = `transfer:${booking.from}:${booking.to}:${booking.date}`;
       const filtered = cart.filter(c => c._matchKey !== matchKey);
       filtered.unshift({
         ...booking,
@@ -300,7 +301,7 @@ const TX = {
     // Nav
     home: "Home", about: "About", services: "Services", stays: "Stays", tours: "Tours", transfers: "Transfers", contact: "Contact", signIn: "Sign In", bookNow: "Book Now", logOut: "Log Out", myAccount: "My Account", createAccount: "Create Account",
     // Home hero
-    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "LIVING IN", heroBold: "PARADISE", heroSub: "Bespoke stays, private tours and seamless transfers on Puerto Rico's stunning west coast.", heroCta: "Explore Experiences", heroCtaSec: "View Stays",
+    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "LIVING IN", heroBold: "PARADISE", heroSub: "Seamless transfers from the airport to PR's west coast — plus our trusted partner network for stays, tours, and more.", heroCta: "Explore Experiences", heroCtaSec: "View Stays",
     // Home sections
     whyUs: "WHY US", whyTitle: "WHY CHOOSE", whyBold: "PRDISE", trustTitle: "TRUSTED BY", trustBold: "TRAVELERS",
     local: "LOCAL", localD: "Real local culture & hidden gems", private: "PRIVATE", privateD: "Small groups, personal service", safe: "SAFE", safeD: "Licensed, insured & reviewed", seamless: "SEAMLESS", seamlessD: "One team handles everything",
@@ -384,9 +385,9 @@ const TX = {
     bookNowBtn: "Book Now", smallGroups: "Small groups", maxPeople: "Max {n} people", runsOn: "Runs:", perPersonPrice: "/ PERSON",
     // Services
     svcHeroSub: "A full suite of services to make your Puerto Rico trip unforgettable.",
-    guidedTours: "Guided Tours", guidedToursD: "Expert bilingual guides lead small groups through PR's best secrets.",
-    vacationRentals: "Vacation Rentals", vacationRentalsD: "Handpicked villas, apartments, beach houses in Cabo Rojo.",
-    transfersSvc: "Transfers", transfersSvcD: "Airport pickups, private transport, group transfers anywhere.",
+    guidedTours: "Guided Tours", guidedToursD: "Curated tours from our trusted partners — booking handled on their site.",
+    vacationRentals: "Vacation Rentals", vacationRentalsD: "Villas, apartments and beach houses from our partner network in Cabo Rojo.",
+    transfersSvc: "Transfers", transfersSvcD: "Our core service: airport pickups and zone transport managed directly by prdise.",
     waterAct: "Water Activities", waterActD: "Snorkeling, jet ski, bio bay kayak, sunset sailing.",
     adventureTours: "Adventure Tours", adventureToursD: "Hiking, ziplining, river swimming, off-road adventures.",
     customPkg: "Custom Packages", customPkgD: "Tell us your dream trip and we'll design the itinerary.",
@@ -423,7 +424,7 @@ const TX = {
   },
   es: {
     home: "Inicio", about: "Nosotros", services: "Servicios", stays: "Estadías", tours: "Tours", transfers: "Traslados", contact: "Contacto", signIn: "Iniciar Sesión", bookNow: "Reservar", logOut: "Cerrar Sesión", myAccount: "Mi Cuenta", createAccount: "Crear Cuenta",
-    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "VIVIENDO EN", heroBold: "PARAÍSO", heroSub: "Estadías exclusivas, tours privados y traslados perfectos en la impresionante costa oeste de Puerto Rico.", heroCta: "Explorar Experiencias", heroCtaSec: "Ver Estadías",
+    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "VIVIENDO EN", heroBold: "PARAÍSO", heroSub: "Traslados sin fricción desde el aeropuerto hasta la costa oeste de PR — más nuestra red de aliados de hospedaje, tours y servicios.", heroCta: "Explorar Experiencias", heroCtaSec: "Ver Estadías",
     whyUs: "POR QUÉ", whyTitle: "POR QUÉ ELEGIR", whyBold: "PRDISE", trustTitle: "CONFIANZA DE", trustBold: "VIAJEROS",
     local: "LOCAL", localD: "Cultura local real y joyas escondidas", private: "PRIVADO", privateD: "Grupos pequeños, servicio personal", safe: "SEGURO", safeD: "Licenciado, asegurado y reseñado", seamless: "SIN FISURAS", seamlessD: "Un solo equipo lo maneja todo",
     valAuthentic: "AUTÉNTICO", valAuthenticD: "Te mostramos el Puerto Rico real — no la versión pulida de Instagram. Playas escondidas, comida local, lugares familiares. Sin trampas para turistas.",
@@ -484,9 +485,9 @@ const TX = {
     aboutThisTour: "SOBRE ESTE TOUR", theExperience: "LA EXPERIENCIA", whatsIncluded: "QUÉ INCLUYE", whatToBring: "QUÉ LLEVAR", itinerary: "ITINERARIO", meetingPoint: "PUNTO DE ENCUENTRO",
     bookNowBtn: "Reservar Ahora", smallGroups: "Grupos pequeños", maxPeople: "Máximo {n} personas", runsOn: "Opera:", perPersonPrice: "/ PERSONA",
     svcHeroSub: "Un conjunto completo de servicios para hacer tu viaje a Puerto Rico inolvidable.",
-    guidedTours: "Tours Guiados", guidedToursD: "Guías bilingües expertos lideran grupos pequeños por los mejores secretos de PR.",
-    vacationRentals: "Alquileres Vacacionales", vacationRentalsD: "Villas, apartamentos y casas de playa seleccionadas en Cabo Rojo.",
-    transfersSvc: "Traslados", transfersSvcD: "Recogida en aeropuerto, transporte privado, traslados grupales.",
+    guidedTours: "Tours Guiados", guidedToursD: "Tours curados por nuestros aliados — la reserva se completa en su sitio.",
+    vacationRentals: "Alquileres Vacacionales", vacationRentalsD: "Villas, apartamentos y casas de playa de nuestra red de aliados en Cabo Rojo.",
+    transfersSvc: "Traslados", transfersSvcD: "Nuestro servicio principal: recogidas en aeropuerto y movilidad por zonas gestionadas directamente por prdise.",
     waterAct: "Actividades Acuáticas", waterActD: "Snorkeling, jet ski, kayak bahía bio, vela al atardecer.",
     adventureTours: "Tours de Aventura", adventureToursD: "Senderismo, tirolesa, natación en ríos, aventuras todoterreno.",
     customPkg: "Paquetes Personalizados", customPkgD: "Cuéntanos tu viaje soñado y diseñamos el itinerario.",
@@ -1627,6 +1628,7 @@ function HotelsList() {
               </div>
               <div className="card-grid">
                 {filtered.map((h) => {
+                  const partner = h.partnerId ? PARTNERS.find((p) => p.id === h.partnerId) : null;
                   return (
                     <div key={h.id} className="listing-card">
                       <div className="listing-pic">
@@ -1644,6 +1646,12 @@ function HotelsList() {
                         <p className="listing-meta"><MapPin style={{ width: 12, height: 12 }} />{h.zone} · Sleeps {h.sleeps}</p>
                         <p className="listing-desc">{L(h.desc, h.descES)}</p>
                         <div className="listing-chips">{(h.amenities || []).slice(0, 4).map((a) => <span key={a}>{a}</span>)}</div>
+                        {partner && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, padding: "4px 9px", borderRadius: 99, background: "rgba(41,171,226,.1)", border: "1px solid rgba(41,171,226,.25)", color: "#29ABE2", fontSize: 10.5, fontWeight: 700 }}>
+                            <ExternalLink style={{ width: 10, height: 10 }} />
+                            {lang === "es" ? "Reservas en" : "Booking via"} {partner.name}
+                          </div>
+                        )}
                         <div className="listing-foot">
                           <div>
                             <span className="price">${h.price}</span>
@@ -1675,7 +1683,9 @@ function ToursList() {
         <div className="inner-wrap">
 
           <div className="card-grid">
-            {TOURS.filter(tr => !tr.status || tr.status === "published").map((tr) => (
+            {TOURS.filter(tr => !tr.status || tr.status === "published").map((tr) => {
+              const partner = tr.partnerId ? PARTNERS.find((p) => p.id === tr.partnerId) : null;
+              return (
               <div key={tr.id} className="listing-card">
                 <div className="listing-pic">
                   <img src={tr.img} alt={tr.name} />
@@ -1691,6 +1701,12 @@ function ToursList() {
                   <h3>{L(tr.name, tr.nameES)}</h3>
                   <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {tr.difficulty}</p>
                   <p className="listing-desc">{L(tr.desc, tr.descES)}</p>
+                  {partner && (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, padding: "4px 9px", borderRadius: 99, background: "rgba(41,171,226,.1)", border: "1px solid rgba(41,171,226,.25)", color: "#29ABE2", fontSize: 10.5, fontWeight: 700 }}>
+                      <ExternalLink style={{ width: 10, height: 10 }} />
+                      {lang === "es" ? "Reservas en" : "Booking via"} {partner.name}
+                    </div>
+                  )}
                   <div className="listing-foot">
                     <div>
                       <span className="price">${tr.price}</span>
@@ -1700,7 +1716,8 @@ function ToursList() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -2313,12 +2330,34 @@ function TransferResultsPage() {
   }, []);
   if (!search) return null;
   const eligible = VEHICLES.filter((v) => v.seats >= search.pax && v.bags >= search.bags);
+  // Resolver el UUID del transfer_route en Supabase a partir de from/to del
+  // search. El Server Action createBookingOffline EXIGE un UUID valido para
+  // transfer_route_id; sin esto fallaba con 'El ítem no existe'.
+  const resolveRouteId = () => {
+    if (!search) return null;
+    const exact = ROUTES.find(
+      (r) => r.from === search.from && r.to === search.to
+    );
+    if (exact?.id) return exact.id;
+    // Si la combinacion exacta from/to no esta como ruta predefinida,
+    // intentamos un fallback en cualquier ruta activa para que la reserva
+    // quede registrada y el admin pueda reconciliarla con el from/to real
+    // (que va a notes).
+    return ROUTES[0]?.id || null;
+  };
   const select = (id) => {
     const v = VEHICLES.find((x) => x.id === id);
     const distanceFee = v.perKm * search.km;
     const total = v.base + distanceFee;
+    const routeId = resolveRouteId();
+    if (!routeId) {
+      alert(lang === "es"
+        ? "No hay rutas de traslado configuradas. Contacta al administrador."
+        : "No transfer routes configured. Please contact admin.");
+      return;
+    }
     const booking = {
-      type: "transfer", vehicleId: v.id, vehicleName: v.name, name: v.name,
+      type: "transfer", routeId, vehicleId: v.id, vehicleName: v.name, name: v.name,
       from: search.from, to: search.to, date: search.date, time: search.time,
       location: `${search.from} → ${search.to}`, guests: search.pax,
       pax: search.pax, bags: search.bags, km: search.km, notes: search.notes,
@@ -2337,10 +2376,17 @@ function TransferResultsPage() {
       }
       return;
     }
+    const routeId = resolveRouteId();
+    if (!routeId) {
+      alert(lang === "es"
+        ? "No hay rutas de traslado configuradas. Contacta al administrador."
+        : "No transfer routes configured. Please contact admin.");
+      return;
+    }
     const distanceFee = v.perKm * search.km;
     const total = v.base + distanceFee;
     const booking = {
-      type: "transfer", vehicleId: v.id, vehicleName: v.name, name: v.name,
+      type: "transfer", routeId, vehicleId: v.id, vehicleName: v.name, name: v.name,
       from: search.from, to: search.to, date: search.date, time: search.time,
       location: `${search.from} → ${search.to}`, guests: search.pax,
       pax: search.pax, bags: search.bags, km: search.km, notes: search.notes,
