@@ -3073,13 +3073,11 @@ function CheckoutAuthModal({ mode, setMode, prefillEmail, prefillFirstName, pref
     fd.append("password", loginForm.password);
     try {
       const result = await sbSignIn(fd);
-      if (result && "ok" in result && !result.ok) {
-        setError(result.error || "Credenciales inválidas");
+      if (!result?.ok) {
+        setError((result && "error" in result && result.error) || "Credenciales inválidas");
         setLoading(false);
         return;
       }
-      // signIn hace redirect en éxito; AuthBridge sincroniza localStorage.
-      // Si llegamos acá sin redirect, mostramos onSuccess best-effort.
       const userObj = {
         firstName: loginForm.email.split("@")[0],
         lastName: "",
@@ -3090,7 +3088,6 @@ function CheckoutAuthModal({ mode, setMode, prefillEmail, prefillFirstName, pref
       setLoading(false);
       onSuccess(userObj);
     } catch (e) {
-      if (e && typeof e === "object" && "digest" in e && String(e.digest).startsWith("NEXT_REDIRECT")) return;
       setError("Error inesperado, intenta de nuevo");
       setLoading(false);
     }
@@ -5298,21 +5295,22 @@ function LoginPage() {
       fd.append("email", form.email.trim().toLowerCase());
       fd.append("password", form.password);
       const result = await sbSignIn(fd);
-      // Si OK, la Server Action hace redirect("/") y nunca regresa.
-      if (result && "ok" in result && !result.ok) {
-        if ("needsReactivation" in result) {
+      if (!result?.ok) {
+        if (result && "needsReactivation" in result) {
           setReactivatePrompt(true);
           setLoading(false);
           return;
         }
-        setError(result.error);
+        setError(result?.error || "Credenciales inválidas");
         setLoading(false);
-      }
-    } catch (e) {
-      // redirect() lanza una excepción especial NEXT_REDIRECT — ignorarla.
-      if (e && typeof e === "object" && "digest" in e && String(e.digest).startsWith("NEXT_REDIRECT")) {
         return;
       }
+      // Navegacion explicita por rol. window.location.assign fuerza un full
+      // navigate aunque venimos de un hash route (/#/login) y el target Next
+      // path es el mismo (router.replace seria no-op en ese caso).
+      const isStaff = result.role === "admin" || result.role === "manager" || result.role === "employee";
+      window.location.assign(isStaff ? "/#/admin" : "/#/account");
+    } catch (e) {
       setError(lang === "es" ? "Error inesperado, intenta de nuevo" : "Unexpected error, try again");
       setLoading(false);
     }

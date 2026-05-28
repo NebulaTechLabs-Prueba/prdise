@@ -19,7 +19,7 @@ export type ActionResult =
   | { ok: false; error: string };
 
 export type SignInResult =
-  | { ok: true }
+  | { ok: true; role: "admin" | "manager" | "employee" | "user" }
   | { ok: false; error: string }
   | { ok: false; needsReactivation: true; userId: string };
 
@@ -176,10 +176,10 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     return { ok: false, error: "No se pudo iniciar sesión" };
   }
 
-  // Chequear status del profile para flujo de reactivación
+  // Chequear status + role del profile.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("status")
+    .select("status, role")
     .eq("id", data.user.id)
     .single();
 
@@ -191,7 +191,19 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     return { ok: false, needsReactivation: true, userId };
   }
 
-  redirect("/");
+  // NO usamos redirect() del Server Action porque cuando el caller viene
+  // de un hash route (/#/login) y el target Next path es el mismo
+  // (también "/"), router.replace no navega y la página queda colgada en
+  // loading. En su lugar devolvemos el rol y el cliente hace una navegación
+  // explícita con window.location.assign al destino correcto.
+  return {
+    ok: true,
+    role: (profile?.role ?? "user") as
+      | "admin"
+      | "manager"
+      | "employee"
+      | "user",
+  };
 }
 
 // ---------- Sign Out --------------------------------------------------------
