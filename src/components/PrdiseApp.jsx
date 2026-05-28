@@ -1154,16 +1154,17 @@ function Navbar() {
     setSession(sess);
   }, [path]);
 
-  // Track cart count — poll localStorage because changes happen from other pages
+  // Track cart count — poll localStorage because changes happen from other pages.
+  // Pivote a modelo referral: stays/tours redirigen a partners y no se cartean.
+  // Solo transfers van al cart. Filtramos por type para no inflar el contador
+  // con items residuales del modelo antiguo.
   useEffect(() => {
     const refreshCart = () => {
       const sess = PRDISE.load("session", null);
       if (!sess || sess.role !== "user") { setCartCount(0); return; }
       const realCart = PRDISE.load("userCart", []);
-      // The Account page shows real cart items (if any) + 3 demo items
-      // So the counter should reflect what the user actually sees in the cart
-      const DEMO_COUNT = 3;
-      setCartCount(realCart.length + DEMO_COUNT);
+      const transferOnly = realCart.filter((c) => c.type === "transfer");
+      setCartCount(transferOnly.length);
     };
     refreshCart();
     const interval = setInterval(refreshCart, 1500);
@@ -3897,7 +3898,11 @@ function AccountPage() {
   const [cart, setCart] = useState(() => {
     // Cart real desde userCart en localStorage. Sin fallback demo: si el usuario
     // no ha agregado nada, el carrito queda vacío (no se muestran "items default").
-    const savedDrafts = PRDISE.load("userCart", []);
+    // Pivote a modelo referral: stays/tours se redirigen a partners y no se cartean
+    // (filtrado defensivo por si quedan items legacy en localStorage).
+    const savedDrafts = (PRDISE.load("userCart", []) || []).filter(
+      (d) => d?.type === "transfer"
+    );
     if (!savedDrafts || savedDrafts.length === 0) return [];
     return savedDrafts.map(d => ({
       id: d._cartId || d.id || ("c" + Math.random().toString(36).slice(2, 6)),
@@ -4246,10 +4251,15 @@ function AccountPage() {
                 <div style={{ textAlign: "center", padding: "32px 16px", color: "rgba(255,255,255,.4)" }}>
                   <Package style={{ width: 40, height: 40, margin: "0 auto 12px", opacity: .4 }} />
                   <h4 style={{ fontFamily: "Bebas Neue", fontSize: 18, color: "rgba(255,255,255,.55)", marginBottom: 6 }}>{t("cartEmpty")}</h4>
-                  <p style={{ fontSize: 12.5, marginBottom: 14 }}>{t("cartEmptySub")}</p>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                    <NavLink to="/stays" className="cta-sec" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Ver Estadías" : "Browse Stays"}</NavLink>
-                    <NavLink to="/tours" className="cta-sec" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Ver Tours" : "Browse Tours"}</NavLink>
+                  <p style={{ fontSize: 12.5, marginBottom: 6 }}>
+                    {lang === "es"
+                      ? "Aquí gestionas tus reservas de traslados (transfers). Las estadías y tours se reservan directamente en los sitios aliados."
+                      : "Manage your transfer bookings here. Stays and tours are booked directly on partner sites."}
+                  </p>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 14 }}>
+                    <NavLink to="/transfer-search" className="cta-pri" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Buscar Traslado" : "Find a Transfer"}</NavLink>
+                    <NavLink to="/stays" className="cta-sec" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Ver Estadías ↗" : "Browse Stays ↗"}</NavLink>
+                    <NavLink to="/tours" className="cta-sec" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Ver Tours ↗" : "Browse Tours ↗"}</NavLink>
                   </div>
                 </div>
               ) : (
@@ -4349,11 +4359,16 @@ function AccountPage() {
             )}
 
             {/* ═══ CONFIRMED BOOKINGS — Already paid ═══ */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
               <CheckCircle style={{ width: 18, height: 18, color: "#8DC63F" }} />
               <h3 style={{ margin: 0, color: "#fff", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".06em" }}>{t("confirmedBookings")}</h3>
               <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, background: "rgba(141,198,63,.15)", color: "#8DC63F", fontWeight: 800 }}>{t("paid")}</span>
             </div>
+            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.4)", marginBottom: 16, lineHeight: 1.5 }}>
+              {lang === "es"
+                ? "Solo se listan tus reservas de traslados gestionadas en prdise. Las estadías y tours se gestionan en los sitios aliados a los que fuiste redirigido."
+                : "Only your transfer bookings managed by prdise are listed here. Stays and tours are managed by the partner sites you were redirected to."}
+            </p>
 
             {[{ title: t("pending"), icon: Clock, items: pendingBookings, color: "#F5A623" },
               { title: t("active"), icon: Zap, items: activeBookings, color: "#8DC63F" },
@@ -4366,7 +4381,9 @@ function AccountPage() {
                   <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: sec.color + "18", color: sec.color, fontWeight: 800 }}>{sec.items.length}</span>
                 </div>
                 {sec.items.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.3)", padding: "10px 0" }}>No bookings in this category.</p>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.3)", padding: "10px 0" }}>
+                    {lang === "es" ? "Sin reservas en esta categoría." : "No bookings in this category."}
+                  </p>
                 ) : sec.items.map(renderBooking)}
               </div>
             ))}
@@ -4391,10 +4408,14 @@ function AccountPage() {
 
         {/* ── PREFERENCES TAB ── */}
         {tab === "preferences" && (() => {
+          // Defaults sin descuento: hasta que el admin configure beneficios reales
+          // no prometemos % off (las plantillas anteriores tenian 5/10% hardcoded
+          // que no se honraban en checkout). El admin puede sobreescribir via
+          // localStorage "loyaltyTiers" cuando exista la UI para gestionar tiers.
           const tiers = PRDISE.load("loyaltyTiers", [
             { name: "Bronze", min: 0, discount: 0, color: "#CD7F32" },
-            { name: "Silver", min: 500, discount: 5, color: "#C0C0C0" },
-            { name: "Gold", min: 2000, discount: 10, color: "#FFD700" },
+            { name: "Silver", min: 500, discount: 0, color: "#C0C0C0" },
+            { name: "Gold", min: 2000, discount: 0, color: "#FFD700" },
           ]);
           const currentTier = [...tiers].reverse().find(t => user.points >= t.min) || tiers[0];
           const nextTier = tiers.find(t => t.min > user.points);
@@ -4420,7 +4441,8 @@ function AccountPage() {
             </div>
             {nextTier && (
               <div style={{ padding: "10px 14px", background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", borderRadius: 10, marginBottom: 16, fontSize: 12, color: "rgba(255,255,255,.7)" }}>
-                <strong style={{ color: "var(--gold)" }}>{nextTier.min - user.points}</strong> {lang === "es" ? `puntos para llegar a ${nextTier.name}` : `points to reach ${nextTier.name}`} ({nextTier.discount}% {lang === "es" ? "descuento" : "off"})
+                <strong style={{ color: "var(--gold)" }}>{nextTier.min - user.points}</strong> {lang === "es" ? `puntos para llegar a ${nextTier.name}` : `points to reach ${nextTier.name}`}
+                {nextTier.discount > 0 && ` (${nextTier.discount}% ${lang === "es" ? "descuento" : "off"})`}
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 10, marginBottom: 24 }}>
@@ -4437,9 +4459,28 @@ function AccountPage() {
             </div>
             <h3>{lang === "es" ? "Alertas de notificación" : "Notification Alerts"}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {[{ key: "alertSchedule", label: "Schedule changes", desc: "Get notified of any time or date changes to your bookings" },
-                { key: "alertRecommendations", label: "Seasonal recommendations", desc: "Receive personalized recommendations based on the season" },
-                { key: "alertNewTours", label: "New tours based on your interests", desc: "Be the first to know about new tours and activities" },
+              {[
+                {
+                  key: "alertSchedule",
+                  label: lang === "es" ? "Cambios de horario" : "Schedule changes",
+                  desc: lang === "es"
+                    ? "Recibe avisos si cambian las fechas o el horario de tus reservas"
+                    : "Get notified of any time or date changes to your bookings",
+                },
+                {
+                  key: "alertRecommendations",
+                  label: lang === "es" ? "Recomendaciones por temporada" : "Seasonal recommendations",
+                  desc: lang === "es"
+                    ? "Recibe recomendaciones personalizadas según la temporada"
+                    : "Receive personalized recommendations based on the season",
+                },
+                {
+                  key: "alertNewTours",
+                  label: lang === "es" ? "Nuevos tours según tus intereses" : "New tours based on your interests",
+                  desc: lang === "es"
+                    ? "Entérate antes que nadie de nuevos tours y actividades"
+                    : "Be the first to know about new tours and activities",
+                },
               ].map(a => (
                 <div key={a.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: "1px solid rgba(255,255,255,.05)", gap: 16 }}>
                   <div style={{ flex: 1 }}>
