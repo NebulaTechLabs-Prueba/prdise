@@ -86,6 +86,8 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     lng: asNumberOrNull(formData, "lng"),
     featured: asBool(formData, "featured"),
     active: asBool(formData, "active"),
+    partner_id: formData.get("partner_id") ?? "",
+    partner_url: formData.get("partner_url") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -116,6 +118,8 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
       lng: d.lng ?? null,
       featured: d.featured,
       active: d.active,
+      partner_id: d.partner_id ?? null,
+      partner_url: d.partner_url ?? null,
       created_by: actorId,
     })
     .select("id")
@@ -158,6 +162,8 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     lng: asNumberOrNull(formData, "lng"),
     featured: asBool(formData, "featured"),
     active: asBool(formData, "active"),
+    partner_id: formData.get("partner_id") ?? "",
+    partner_url: formData.get("partner_url") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -188,6 +194,8 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
       lng: d.lng ?? null,
       featured: d.featured,
       active: d.active,
+      partner_id: d.partner_id ?? null,
+      partner_url: d.partner_url ?? null,
     })
     .eq("id", id);
 
@@ -257,6 +265,8 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     lng: asNumberOrNull(formData, "lng"),
     featured: asBool(formData, "featured"),
     active: asBool(formData, "active"),
+    partner_id: formData.get("partner_id") ?? "",
+    partner_url: formData.get("partner_url") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -288,6 +298,8 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       lng: d.lng ?? null,
       featured: d.featured,
       active: d.active,
+      partner_id: d.partner_id ?? null,
+      partner_url: d.partner_url ?? null,
       created_by: actorId,
     })
     .select("id")
@@ -331,6 +343,8 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     lng: asNumberOrNull(formData, "lng"),
     featured: asBool(formData, "featured"),
     active: asBool(formData, "active"),
+    partner_id: formData.get("partner_id") ?? "",
+    partner_url: formData.get("partner_url") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -362,6 +376,8 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
       lng: d.lng ?? null,
       featured: d.featured,
       active: d.active,
+      partner_id: d.partner_id ?? null,
+      partner_url: d.partner_url ?? null,
     })
     .eq("id", id);
 

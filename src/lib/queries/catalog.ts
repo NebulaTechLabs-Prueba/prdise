@@ -230,3 +230,26 @@ export async function getPostBySlug(
   if (error) throw error;
   return data ?? null;
 }
+
+/* ============================================================================
+ * Partners (páginas aliadas)
+ * ============================================================================ */
+
+export interface PartnerListOpts {
+  activeOnly?: boolean;
+}
+
+export async function getPartners(
+  client: CatalogClient,
+  opts: PartnerListOpts = {}
+): Promise<Tables<"partners">[]> {
+  const { activeOnly = true } = opts;
+
+  let query = client.from("partners").select("*").is("deleted_at", null);
+  if (activeOnly) query = query.eq("active", true);
+  query = query.order("name", { ascending: true });
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}

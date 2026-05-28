@@ -56,6 +56,13 @@ import {
   updateCoupon as sbUpdateCoupon,
   deleteCoupon as sbDeleteCoupon,
 } from "@/lib/admin/coupons";
+import {
+  createPartner as sbCreatePartner,
+  updatePartner as sbUpdatePartner,
+  deletePartner as sbDeletePartner,
+  listPartnerReferralCounts as sbListPartnerReferralCounts,
+} from "@/lib/admin/partners";
+import { logReferral as sbLogReferral } from "@/lib/referrals/actions";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -78,6 +85,7 @@ const HOTELS = [];
 const TOURS = [];
 const VEHICLES = [];
 const ROUTES = [];
+const PARTNERS = [];
 const ORIGINS = ["SJU Airport", "BQN Airport", "San Juan Hotel", "Ponce", "Rincón", "Other"];
 const DESTINATIONS = ["Cabo Rojo", "Boquerón", "La Parguera", "Joyuda", "Combate", "SJU Airport", "BQN Airport", "Other"];
 
@@ -109,6 +117,7 @@ function mapStayToHotel(s) {
   const imgs = Array.isArray(s.images) ? s.images : [];
   return {
     id: s.slug,
+    dbId: s.id,
     name: s.title_es || s.title_en || s.slug,
     zone: s.location || "",
     type: "Villa",
@@ -131,6 +140,8 @@ function mapStayToHotel(s) {
     services: (s.amenities || []).length,
     checkIn: "15:00",
     checkOut: "11:00",
+    partnerId: s.partner_id || null,
+    partnerUrl: s.partner_url || "",
   };
 }
 
@@ -138,6 +149,7 @@ function mapTourToTour(t) {
   const imgs = Array.isArray(t.images) ? t.images : [];
   return {
     id: t.slug,
+    dbId: t.id,
     name: t.title_es || t.title_en || t.slug,
     day: "",
     duration: t.duration_minutes ? `${Math.round(t.duration_minutes / 60)} hours` : "",
@@ -159,6 +171,8 @@ function mapTourToTour(t) {
     lng: Number(t.lng) || 0,
     status: t.active ? "published" : "draft",
     bookings: 0,
+    partnerId: t.partner_id || null,
+    partnerUrl: t.partner_url || "",
   };
 }
 
@@ -203,17 +217,18 @@ function mapPostToAdminPost(p) {
 
 async function loadInitialData() {
   try {
-    const [{ createClient }, { getStays, getTours, getTransferRoutes, getVehicles, getPublishedPosts }] = await Promise.all([
+    const [{ createClient }, { getStays, getTours, getTransferRoutes, getVehicles, getPublishedPosts, getPartners }] = await Promise.all([
       import("@/lib/supabase/client"),
       import("@/lib/queries/catalog"),
     ]);
     const sb = createClient();
-    const [stays, tours, routes, vehicles, posts] = await Promise.all([
+    const [stays, tours, routes, vehicles, posts, partners] = await Promise.all([
       getStays(sb),
       getTours(sb),
       getTransferRoutes(sb),
       getVehicles(sb),
       getPublishedPosts(sb, {}),
+      getPartners(sb, { activeOnly: false }),
     ]);
 
     HOTELS.length = 0;
@@ -230,6 +245,9 @@ async function loadInitialData() {
 
     A_POSTS.length = 0;
     (posts || []).forEach((p) => A_POSTS.push(mapPostToAdminPost(p)));
+
+    PARTNERS.length = 0;
+    (partners || []).forEach((p) => PARTNERS.push(p));
     return true;
   } catch (e) {
     console.error("loadInitialData error:", e);
@@ -1758,7 +1776,6 @@ function HotelDetail({ params }) {
   const [checkout, setCheckout] = useState("");
   const [guests, setGuests] = useState(2);
   const [user, setUser] = useState(null);
-  const [addedToCart, setAddedToCart] = useState(false);
   useEffect(() => {
     if (hotel) document.title = `${hotel.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
@@ -1791,39 +1808,25 @@ function HotelDetail({ params }) {
     );
   }
 
-  const reserve = () => {
-    if (!checkin || !checkout) { alert("Please select check-in and check-out dates"); return; }
-    if (!pricing) { alert("Check-out must be after check-in"); return; }
-    const booking = {
-      type: "hotel", hotelId: hotel.id, name: hotel.name, img: hotel.img, zone: hotel.zone,
-      location: hotel.zone, guests, checkin, checkout, nights: pricing.nights, pricePerNight: hotel.price,
-      subtotal: pricing.subtotal, cleaning: pricing.cleaning, service: pricing.service, total: pricing.total,
-    };
-    PRDISE.save("pendingBooking", booking);
-    // Auto-save to cart ONLY if user is logged in (silent, no UI interruption)
-    PRDISE.addToUserCart(booking);
-    nav("/checkout-hotel");
-  };
-  const addToCartOnly = () => {
-    if (!checkin || !checkout) { alert(lang==="es"?"Por favor selecciona fechas de entrada y salida":"Please select check-in and check-out dates"); return; }
-    if (!pricing) { alert(lang==="es"?"La salida debe ser después de la entrada":"Check-out must be after check-in"); return; }
-    const sess = PRDISE.load("session", null);
-    if (!sess || sess.role !== "user") {
-      if (window.confirm(lang==="es"?"Necesitas iniciar sesión para guardar en el carrito. ¿Ir a iniciar sesión?":"You need to sign in to save to cart. Go to sign in?")) {
-        nav("/login");
-      }
-      return;
-    }
-    const booking = {
-      type: "hotel", hotelId: hotel.id, name: hotel.name, img: hotel.img, zone: hotel.zone,
-      location: hotel.zone, guests, checkin, checkout, nights: pricing.nights, pricePerNight: hotel.price,
-      subtotal: pricing.subtotal, cleaning: pricing.cleaning, service: pricing.service, total: pricing.total,
-    };
-    const ok = PRDISE.addToUserCart(booking);
-    if (ok) {
-      setAddedToCart(true);
-      setTimeout(() => setAddedToCart(false), 2500);
-    }
+  const partner = useMemo(() => {
+    if (!hotel?.partnerId) return null;
+    return PARTNERS.find((p) => p.id === hotel.partnerId) || null;
+  }, [hotel?.partnerId]);
+  const [redirecting, setRedirecting] = useState(false);
+  const goToPartner = async () => {
+    if (!hotel?.dbId) { alert(lang==="es"?"Item no disponible":"Item not available"); return; }
+    if (!partner) { alert(lang==="es"?"Este alojamiento aún no tiene partner asignado. Contacta al administrador.":"This stay has no partner assigned yet. Contact the admin."); return; }
+    setRedirecting(true);
+    try {
+      const fd = new FormData();
+      fd.append("partner_id", partner.id);
+      fd.append("item_type", "stay");
+      fd.append("item_id", hotel.dbId);
+      const res = await sbLogReferral(fd);
+      if (!res?.ok) { alert((lang==="es"?"No se pudo abrir el partner: ":"Could not open partner: ") + (res?.error || "error")); setRedirecting(false); return; }
+      window.open(res.redirect_url, "_blank", "noopener,noreferrer");
+    } catch (e) { alert("Error: " + (e?.message || e)); }
+    setRedirecting(false);
   };
 
   return (
@@ -1976,18 +1979,19 @@ function HotelDetail({ params }) {
                     <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
                   </div>
                 )}
-                <button type="button" onClick={reserve} className="f-submit"><CheckCircle />{t("reserveNow")}</button>
-                <button type="button" onClick={addToCartOnly} className="f-secondary" style={{
-                  width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "13px",
-                  borderRadius: 99, background: addedToCart ? "rgba(141,198,63,.15)" : "rgba(255,255,255,.04)",
-                  border: `1px solid ${addedToCart ? "rgba(141,198,63,.5)" : "rgba(245,166,35,.4)"}`,
-                  color: addedToCart ? "#8DC63F" : "var(--gold)",
-                  fontSize: 12, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", marginTop: 10,
-                  cursor: "pointer", transition: "all .25s",
-                }}>
-                  {addedToCart ? <><Check style={{ width: 14, height: 14 }} />{lang==="es"?"Agregado al carrito":"Added to cart"}</> : <><ShoppingCart style={{ width: 14, height: 14 }} />{lang==="es"?"Agregar al carrito":"Add to cart"}</>}
+                <button type="button" onClick={goToPartner} disabled={redirecting || !partner} className="f-submit" style={{ opacity: !partner ? 0.55 : 1, cursor: !partner ? "not-allowed" : "pointer" }}>
+                  <ExternalLink style={{ width: 16, height: 16 }} />
+                  {redirecting
+                    ? (lang==="es"?"Abriendo…":"Opening…")
+                    : partner
+                      ? (lang==="es"?`Reservar en ${partner.name}`:`Book on ${partner.name}`)
+                      : (lang==="es"?"Sin partner asignado":"No partner assigned")}
                 </button>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", textAlign: "center", marginTop: 10 }}>{t("notCharged")}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
+                  {partner
+                    ? (lang==="es"?`Te redirigimos a nuestro aliado ${partner.name} para completar la reserva.`:`We'll redirect you to our partner ${partner.name} to complete the booking.`)
+                    : (lang==="es"?"Este alojamiento aún no está disponible para reservar.":"This stay isn't available for booking yet.")}
+                </p>
                 {user && (
                   <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,.7)" }}>
                     <CheckCircle style={{ width: 12, height: 12, color: "var(--green)", flexShrink: 0 }} />
@@ -2012,7 +2016,6 @@ function TourDetail({ params }) {
   const [date, setDate] = useState("");
   const [travelers, setTravelers] = useState(2);
   const [user, setUser] = useState(null);
-  const [tourAddedToCart, setTourAddedToCart] = useState(false);
   useEffect(() => {
     if (tour) document.title = `${tour.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
@@ -2036,36 +2039,25 @@ function TourDetail({ params }) {
       </div>
     );
   }
-  const book = () => {
-    if (!date) { alert("Please select a date"); return; }
-    const booking = {
-      type: "tour", tourId: tour.id, name: tour.name, img: tour.img, day: tour.day,
-      location: tour.location || tour.day, time: tour.day, guests: travelers,
-      date, travelers, pricePerPerson: tour.price, subtotal: pricing.subtotal, service: pricing.service, total: pricing.total,
-    };
-    PRDISE.save("pendingBooking", booking);
-    PRDISE.addToUserCart(booking);
-    nav("/checkout-tour");
-  };
-  const addTourToCart = () => {
-    if (!date) { alert(lang==="es"?"Por favor selecciona una fecha":"Please select a date"); return; }
-    const sess = PRDISE.load("session", null);
-    if (!sess || sess.role !== "user") {
-      if (window.confirm(lang==="es"?"Necesitas iniciar sesión para guardar en el carrito. ¿Ir a iniciar sesión?":"You need to sign in to save to cart. Go to sign in?")) {
-        nav("/login");
-      }
-      return;
-    }
-    const booking = {
-      type: "tour", tourId: tour.id, name: tour.name, img: tour.img, day: tour.day,
-      location: tour.location || tour.day, time: tour.day, guests: travelers,
-      date, travelers, pricePerPerson: tour.price, subtotal: pricing.subtotal, service: pricing.service, total: pricing.total,
-    };
-    const ok = PRDISE.addToUserCart(booking);
-    if (ok) {
-      setTourAddedToCart(true);
-      setTimeout(() => setTourAddedToCart(false), 2500);
-    }
+  const tourPartner = useMemo(() => {
+    if (!tour?.partnerId) return null;
+    return PARTNERS.find((p) => p.id === tour.partnerId) || null;
+  }, [tour?.partnerId]);
+  const [tourRedirecting, setTourRedirecting] = useState(false);
+  const goToTourPartner = async () => {
+    if (!tour?.dbId) { alert(lang==="es"?"Tour no disponible":"Tour not available"); return; }
+    if (!tourPartner) { alert(lang==="es"?"Este tour aún no tiene partner asignado. Contacta al administrador.":"This tour has no partner assigned yet. Contact the admin."); return; }
+    setTourRedirecting(true);
+    try {
+      const fd = new FormData();
+      fd.append("partner_id", tourPartner.id);
+      fd.append("item_type", "tour");
+      fd.append("item_id", tour.dbId);
+      const res = await sbLogReferral(fd);
+      if (!res?.ok) { alert((lang==="es"?"No se pudo abrir el partner: ":"Could not open partner: ") + (res?.error || "error")); setTourRedirecting(false); return; }
+      window.open(res.redirect_url, "_blank", "noopener,noreferrer");
+    } catch (e) { alert("Error: " + (e?.message || e)); }
+    setTourRedirecting(false);
   };
 
   return (
@@ -2219,18 +2211,19 @@ function TourDetail({ params }) {
                   <div className="summary-row"><span>Service fee (5%)</span><span>{fmt(pricing.service)}</span></div>
                   <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
                 </div>
-                <button type="button" onClick={book} className="f-submit"><CheckCircle />{t("bookNowBtn")}</button>
-                <button type="button" onClick={addTourToCart} className="f-secondary" style={{
-                  width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "13px",
-                  borderRadius: 99, background: tourAddedToCart ? "rgba(141,198,63,.15)" : "rgba(255,255,255,.04)",
-                  border: `1px solid ${tourAddedToCart ? "rgba(141,198,63,.5)" : "rgba(245,166,35,.4)"}`,
-                  color: tourAddedToCart ? "#8DC63F" : "var(--gold)",
-                  fontSize: 12, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", marginTop: 10,
-                  cursor: "pointer", transition: "all .25s",
-                }}>
-                  {tourAddedToCart ? <><Check style={{ width: 14, height: 14 }} />{lang==="es"?"Agregado al carrito":"Added to cart"}</> : <><ShoppingCart style={{ width: 14, height: 14 }} />{lang==="es"?"Agregar al carrito":"Add to cart"}</>}
+                <button type="button" onClick={goToTourPartner} disabled={tourRedirecting || !tourPartner} className="f-submit" style={{ opacity: !tourPartner ? 0.55 : 1, cursor: !tourPartner ? "not-allowed" : "pointer" }}>
+                  <ExternalLink style={{ width: 16, height: 16 }} />
+                  {tourRedirecting
+                    ? (lang==="es"?"Abriendo…":"Opening…")
+                    : tourPartner
+                      ? (lang==="es"?`Reservar en ${tourPartner.name}`:`Book on ${tourPartner.name}`)
+                      : (lang==="es"?"Sin partner asignado":"No partner assigned")}
                 </button>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", textAlign: "center", marginTop: 10 }}>{t("smallGroups")} · Max {tour.capacity} people</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
+                  {tourPartner
+                    ? (lang==="es"?`Te redirigimos a nuestro aliado ${tourPartner.name} para completar la reserva.`:`We'll redirect you to our partner ${tourPartner.name} to complete the booking.`)
+                    : (lang==="es"?"Este tour aún no está disponible para reservar.":"This tour isn't available for booking yet.")} {t("smallGroups")} · Max {tour.capacity} people
+                </p>
               </div>
             </aside>
           </div>
@@ -6379,6 +6372,22 @@ function AdminPanel({ onClose }) {
   const [customerProfileEmail, setCustomerProfileEmail] = useState(null); // email to open profile for
   const [composeEmail, setComposeEmail] = useState(null); // { to, name, subject, body }
   const [loyaltyTiers, setLoyaltyTiers] = useState(() => PRDISE.load("loyaltyTiers", A_LOYALTY_TIERS));
+  const [partnersList, setPartnersList] = useState(() => Array.isArray(PARTNERS) ? [...PARTNERS] : []);
+  const [editingPartner, setEditingPartner] = useState(null);
+  const [partnerReferralCounts, setPartnerReferralCounts] = useState({});
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await sbListPartnerReferralCounts();
+        if (cancel || !res?.ok) return;
+        const map = {};
+        (res.data || []).forEach((row) => { map[row.partner_id] = row.count_30d; });
+        setPartnerReferralCounts(map);
+      } catch {}
+    })();
+    return () => { cancel = true; };
+  }, []);
   const [coupons, setCoupons] = useState(() => PRDISE.load("coupons", A_COUPONS));
   const [archivedCoupons, setArchivedCoupons] = useState(() => PRDISE.load("archivedCoupons", []));
   const [couponHistory, setCouponHistory] = useState(() => PRDISE.load("couponHistory", A_COUPON_HISTORY));
@@ -6641,6 +6650,7 @@ function AdminPanel({ onClose }) {
       { id: "tours", label: t("adm_tours"), Icon: Compass, permModule: "tours" },
       { id: "transfers", label: t("adm_transfers"), Icon: Car, permModule: "transfers" },
       { id: "posts", label: t("adm_posts"), Icon: Edit, permModule: "posts" },
+      { id: "partners", label: lang === "es" ? "Alianzas" : "Partners", Icon: ExternalLink, adminOnly: true },
     ]},
     { group: t("adm_operations"), items: [
       { id: "payments", label: t("adm_payments"), Icon: CreditCard, permModule: "payments" },
@@ -10271,6 +10281,130 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
         )}
 
+        {section === "partners" && (
+          <>
+            <div className="adm-ph">
+              <div>
+                <h1>{lang==="es"?"GESTIÓN DE":"PARTNER"} <em>{lang==="es"?"ALIANZAS":"MANAGEMENT"}</em></h1>
+                <p className="sub">{lang==="es"?"Páginas aliadas a las que se redirigen los usuarios para reservar stays y tours.":"Partner sites to which users are redirected to book stays and tours."}</p>
+              </div>
+              <button className="adm-btn adm-btn-primary" onClick={() => setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true })}><Plus />{lang==="es"?"Nueva alianza":"New partner"}</button>
+            </div>
+            <div className="adm-card">
+              <div className="adm-card-head">
+                <div className="adm-card-title"><ExternalLink />{lang==="es"?"Partners activos":"Active partners"} <span className="adm-pill">{partnersList.length}</span></div>
+              </div>
+              <div className="adm-tbl-wrap">
+                <table className="adm-tbl">
+                  <thead><tr>
+                    <th>{lang==="es"?"Nombre":"Name"}</th>
+                    <th>URL base</th>
+                    <th>UTM source</th>
+                    <th>{lang==="es"?"Clics 30d":"Clicks 30d"}</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: "right" }}>Actions</th>
+                  </tr></thead>
+                  <tbody>
+                    {partnersList.length === 0 ? (
+                      <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.5)" }}>
+                        {lang==="es"?"Aún no hay partners. Crea el primero con el botón de arriba.":"No partners yet. Create the first one with the button above."}
+                      </td></tr>
+                    ) : partnersList.map((p) => (
+                      <tr key={p.id}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{p.name}</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", fontFamily: "monospace" }}>/{p.slug}</div>
+                        </td>
+                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.7)", maxWidth: 260, wordBreak: "break-all" }}>{p.base_url}</td>
+                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{p.utm_source || "prdise"}</td>
+                        <td style={{ fontWeight: 700, color: "#29ABE2" }}>{partnerReferralCounts[p.id] || 0}</td>
+                        <td><span className={`adm-pill ${p.active && !p.deleted_at ? "published" : "hidden"}`}>{p.active && !p.deleted_at ? "active" : "inactive"}</span></td>
+                        <td>
+                          <div className="adm-row-actions">
+                            <button className="adm-icon-btn" title="Edit" onClick={() => setEditingPartner({ ...p })}><Pencil /></button>
+                            <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                              if (!confirm(lang==="es"?"¿Eliminar este partner? Stays/tours que apunten a él perderán el link.":"Delete this partner? Stays/tours pointing to it will lose the link.")) return;
+                              const prev = partnersList;
+                              setPartnersList(partnersList.filter(x => x.id !== p.id));
+                              try {
+                                const fd = new FormData(); fd.append("id", p.id);
+                                const res = await sbDeletePartner(fd);
+                                if (!res?.ok) { setPartnersList(prev); alert("No se pudo eliminar: " + (res?.error || "error")); }
+                              } catch (e) { setPartnersList(prev); alert("Error: " + e.message); }
+                            }}><Trash2 /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {editingPartner && (
+              <div className="adm-modal-bg" onClick={() => setEditingPartner(null)}>
+                <div className="adm-modal" onClick={(e) => e.stopPropagation()}>
+                  <button className="adm-modal-close" onClick={() => setEditingPartner(null)}><X /></button>
+                  <h3>{editingPartner.id === "new" ? (lang==="es"?"NUEVA ALIANZA":"NEW PARTNER") : (lang==="es"?"EDITAR ALIANZA":"EDIT PARTNER")}</h3>
+                  <p className="adm-modal-sub">{lang==="es"?"Configura los datos de la página aliada y el tracking que se aplicará al redirigir.":"Configure the partner page details and tracking applied on redirect."}</p>
+                  <div className="adm-form-grid">
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre":"Name"} *</label><input className="adm-fi" value={editingPartner.name} onChange={(e) => setEditingPartner({ ...editingPartner, name: e.target.value })} placeholder={lang==="es"?"Ej: Cabo Rojo Villas":"e.g.: Cabo Rojo Villas"} /></div>
+                    <div className="adm-fg"><label className="adm-fl">Slug (URL-safe) *</label><input className="adm-fi" value={editingPartner.slug} onChange={(e) => setEditingPartner({ ...editingPartner, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder="cabo-rojo-villas" /></div>
+                    <div className="adm-fg" style={{ gridColumn: "1/-1" }}><label className="adm-fl">URL base *</label><input className="adm-fi" type="url" value={editingPartner.base_url} onChange={(e) => setEditingPartner({ ...editingPartner, base_url: e.target.value })} placeholder="https://partner.com" /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Email de contacto":"Contact email"}</label><input className="adm-fi" type="email" value={editingPartner.contact_email || ""} onChange={(e) => setEditingPartner({ ...editingPartner, contact_email: e.target.value })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono":"Phone"}</label><input className="adm-fi" value={editingPartner.contact_phone || ""} onChange={(e) => setEditingPartner({ ...editingPartner, contact_phone: e.target.value })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">UTM source</label><input className="adm-fi" value={editingPartner.utm_source || "prdise"} onChange={(e) => setEditingPartner({ ...editingPartner, utm_source: e.target.value })} placeholder="prdise" /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Código afiliado (opcional)":"Affiliate code (optional)"}</label><input className="adm-fi" value={editingPartner.affiliate_code || ""} onChange={(e) => setEditingPartner({ ...editingPartner, affiliate_code: e.target.value })} placeholder="REF123" /></div>
+                    <div className="adm-fg" style={{ gridColumn: "1/-1" }}><label className="adm-fl">{lang==="es"?"Notas (ES)":"Notes (ES)"}</label><textarea className="adm-fi" rows={2} value={editingPartner.notes_es || ""} onChange={(e) => setEditingPartner({ ...editingPartner, notes_es: e.target.value })} /></div>
+                    <div className="adm-fg" style={{ gridColumn: "1/-1" }}><label className="adm-fl">{lang==="es"?"Notas (EN)":"Notes (EN)"}</label><textarea className="adm-fi" rows={2} value={editingPartner.notes_en || ""} onChange={(e) => setEditingPartner({ ...editingPartner, notes_en: e.target.value })} /></div>
+                    <div className="adm-fg" style={{ gridColumn: "1/-1" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
+                        <input type="checkbox" checked={editingPartner.active} onChange={() => setEditingPartner({ ...editingPartner, active: !editingPartner.active })} style={{ accentColor: "#8DC63F", width: 16, height: 16 }} />
+                        {lang==="es"?"Activo (visible en catálogo y disponible para redirigir)":"Active (visible in catalog and available to redirect)"}
+                      </label>
+                    </div>
+                  </div>
+                  <div className="adm-modal-actions">
+                    <button className="adm-btn adm-btn-ghost" onClick={() => setEditingPartner(null)}>{lang==="es"?"Cancelar":"Cancel"}</button>
+                    <button className="adm-btn adm-btn-primary" onClick={async () => {
+                      if (!editingPartner.name || !editingPartner.slug || !editingPartner.base_url) {
+                        alert(lang==="es"?"Nombre, slug y URL base son requeridos":"Name, slug and base URL are required"); return;
+                      }
+                      const isNew = editingPartner.id === "new";
+                      let res = { ok: false, error: "" };
+                      try {
+                        const fd = new FormData();
+                        if (!isNew) fd.append("id", editingPartner.id);
+                        fd.append("name", editingPartner.name);
+                        fd.append("slug", editingPartner.slug);
+                        fd.append("base_url", editingPartner.base_url);
+                        if (editingPartner.logo) fd.append("logo", editingPartner.logo);
+                        if (editingPartner.contact_email) fd.append("contact_email", editingPartner.contact_email);
+                        if (editingPartner.contact_phone) fd.append("contact_phone", editingPartner.contact_phone);
+                        if (editingPartner.notes_es) fd.append("notes_es", editingPartner.notes_es);
+                        if (editingPartner.notes_en) fd.append("notes_en", editingPartner.notes_en);
+                        if (editingPartner.utm_source) fd.append("utm_source", editingPartner.utm_source);
+                        if (editingPartner.affiliate_code) fd.append("affiliate_code", editingPartner.affiliate_code);
+                        fd.append("active", editingPartner.active ? "true" : "false");
+                        const action = isNew ? sbCreatePartner : sbUpdatePartner;
+                        res = await action(fd);
+                      } catch (e) { res = { ok: false, error: e?.message || String(e) }; }
+                      if (!res?.ok) { alert("No se pudo guardar la alianza: " + (res?.error || "error")); return; }
+                      // Refrescar lista (sin reload de página): añade local provisional.
+                      if (isNew) {
+                        setPartnersList([...partnersList, { ...editingPartner, id: "p" + Date.now() }]);
+                      } else {
+                        setPartnersList(partnersList.map(x => x.id === editingPartner.id ? editingPartner : x));
+                      }
+                      setEditingPartner(null);
+                    }}><Check />{lang==="es"?"Guardar":"Save"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {section === "settings" && (
           <>
             <div className="adm-ph">
@@ -11704,6 +11838,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               fd.append("active", ownedUpdate.status === "hidden" ? "false" : "true");
+              if (ownedUpdate.partnerId) fd.append("partner_id", ownedUpdate.partnerId);
+              if (ownedUpdate.partnerUrl) fd.append("partner_url", ownedUpdate.partnerUrl);
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
@@ -11721,6 +11857,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               fd.append("active", ownedUpdate.status === "draft" ? "false" : "true");
+              if (ownedUpdate.partnerId) fd.append("partner_id", ownedUpdate.partnerId);
+              if (ownedUpdate.partnerUrl) fd.append("partner_url", ownedUpdate.partnerUrl);
               const action = editing.isNew ? sbCreateTour : sbUpdateTour;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
@@ -11833,6 +11971,13 @@ function EditModal({ editing, onClose, onSave }) {
   const [highlightsList, setHighlightsList] = useState(about.highlights || []);
   const [hlInput, setHlInput] = useState("");
   const [translating, setTranslating] = useState(false);
+  // Partner (referral) — solo aplica a stays/tours
+  const [partnerId, setPartnerId] = useState(it.partnerId || "");
+  const [partnerUrl, setPartnerUrl] = useState(it.partnerUrl || "");
+  const partnerOptions = useMemo(
+    () => (Array.isArray(PARTNERS) ? PARTNERS.filter((p) => p.active && !p.deleted_at) : []),
+    []
+  );
 
   const autoTranslate = async () => {
     // Collect all EN fields that have content
@@ -12060,6 +12205,11 @@ function EditModal({ editing, onClose, onSave }) {
     if (imageUrl) updated.img = imageUrl;
     if (imageList.length) updated.gallery = imageList;
 
+    // Partner (referral) — stays/tours only
+    if (type === "hotel" || type === "tour") {
+      updated.partnerId = partnerId || null;
+      updated.partnerUrl = partnerUrl || "";
+    }
     // Hotel-specific
     if (type === "hotel") {
       if (vals.location) updated.zone = vals.location;
@@ -12490,6 +12640,39 @@ function EditModal({ editing, onClose, onSave }) {
                   Este servicio existe pero <strong>no aparece en la página pública</strong>.
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {(type === "hotel" || type === "tour") && (
+          <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <ExternalLink style={{ width: 14, height: 14, color: "#29ABE2" }} />
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "#29ABE2" }}>Alianza / Partner de referido</div>
+            </div>
+            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", lineHeight: 1.5, margin: "0 0 12px 0" }}>
+              Selecciona la página aliada a la que se redirigirá al usuario cuando haga click en "Reservar". Si no asignas un partner, el botón aparecerá deshabilitado.
+            </p>
+            <div className="adm-fg">
+              <label className="adm-fl">Partner</label>
+              <select className="adm-fi" value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
+                <option value="">— Sin partner asignado —</option>
+                {partnerOptions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {partnerOptions.length === 0 && (
+                <div style={{ fontSize: 10.5, color: "rgba(245,166,35,.85)", marginTop: 4 }}>
+                  ⚠ No hay partners activos. Crea uno en la sección "Alianzas" del menú.
+                </div>
+              )}
+            </div>
+            <div className="adm-fg" style={{ marginTop: 8 }}>
+              <label className="adm-fl">URL del item en el partner (deeplink, opcional)</label>
+              <input className="adm-fi" type="url" value={partnerUrl} onChange={(e) => setPartnerUrl(e.target.value)} placeholder="https://partner.com/listing/abc123  ó  /listing/abc123" />
+              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4, lineHeight: 1.4 }}>
+                Si vacío, usamos el base URL del partner. Acepta URL completa o ruta relativa (/listing/abc).
+              </div>
             </div>
           </div>
         )}

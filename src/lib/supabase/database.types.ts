@@ -453,6 +453,122 @@ export type Database = {
         }
         Relationships: []
       }
+      partner_referrals: {
+        Row: {
+          id: string
+          ip: unknown
+          item_id: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          partner_id: string
+          redirected_at: string
+          referrer: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          id?: string
+          ip?: unknown
+          item_id: string
+          item_type: Database["public"]["Enums"]["item_type"]
+          partner_id: string
+          redirected_at?: string
+          referrer?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          id?: string
+          ip?: unknown
+          item_id?: string
+          item_type?: Database["public"]["Enums"]["item_type"]
+          partner_id?: string
+          redirected_at?: string
+          referrer?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_referrals_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_referrals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partners: {
+        Row: {
+          active: boolean
+          affiliate_code: string | null
+          base_url: string
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          logo: string | null
+          name: string
+          notes_en: string | null
+          notes_es: string | null
+          slug: string
+          updated_at: string
+          utm_source: string
+        }
+        Insert: {
+          active?: boolean
+          affiliate_code?: string | null
+          base_url: string
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          logo?: string | null
+          name: string
+          notes_en?: string | null
+          notes_es?: string | null
+          slug: string
+          updated_at?: string
+          utm_source?: string
+        }
+        Update: {
+          active?: boolean
+          affiliate_code?: string | null
+          base_url?: string
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          logo?: string | null
+          name?: string
+          notes_en?: string | null
+          notes_es?: string | null
+          slug?: string
+          updated_at?: string
+          utm_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partners_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_cents: number
@@ -772,6 +888,8 @@ export type Database = {
           lng: number | null
           location: string | null
           max_guests: number
+          partner_id: string | null
+          partner_url: string | null
           price_cents: number
           rating_avg: number
           rating_count: number
@@ -798,6 +916,8 @@ export type Database = {
           lng?: number | null
           location?: string | null
           max_guests?: number
+          partner_id?: string | null
+          partner_url?: string | null
           price_cents: number
           rating_avg?: number
           rating_count?: number
@@ -824,6 +944,8 @@ export type Database = {
           lng?: number | null
           location?: string | null
           max_guests?: number
+          partner_id?: string | null
+          partner_url?: string | null
           price_cents?: number
           rating_avg?: number
           rating_count?: number
@@ -840,6 +962,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stays_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
             referencedColumns: ["id"]
           },
         ]
@@ -862,6 +991,8 @@ export type Database = {
           location: string | null
           max_pax: number
           meeting_point: string | null
+          partner_id: string | null
+          partner_url: string | null
           price_cents: number
           rating_avg: number
           rating_count: number
@@ -889,6 +1020,8 @@ export type Database = {
           location?: string | null
           max_pax?: number
           meeting_point?: string | null
+          partner_id?: string | null
+          partner_url?: string | null
           price_cents: number
           rating_avg?: number
           rating_count?: number
@@ -916,6 +1049,8 @@ export type Database = {
           location?: string | null
           max_pax?: number
           meeting_point?: string | null
+          partner_id?: string | null
+          partner_url?: string | null
           price_cents?: number
           rating_avg?: number
           rating_count?: number
@@ -932,6 +1067,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tours_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
             referencedColumns: ["id"]
           },
         ]

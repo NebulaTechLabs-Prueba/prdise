@@ -159,6 +159,20 @@ export const completeBookingSchema = z.object({
 
 // ─── Catalog: Stays ─────────────────────────────────────────────────────────
 
+const partnerLinkSchema = z.object({
+  partner_id: z
+    .union([uuidSchema, z.literal("")])
+    .optional()
+    .transform((v) => (v ? v : null)),
+  partner_url: z
+    .string()
+    .trim()
+    .max(2000, "URL del partner demasiado larga")
+    .optional()
+    .or(z.literal(""))
+    .transform((v) => (v ? v : null)),
+});
+
 const stayBaseSchema = z.object({
   slug: slugSchema,
   title_es: optionalNonEmptyText(160, "Título (ES)"),
@@ -178,7 +192,7 @@ const stayBaseSchema = z.object({
   lng: lngSchema,
   featured: booleanFlagSchema.default(false),
   active: booleanFlagSchema.default(true),
-});
+}).merge(partnerLinkSchema);
 
 export const createStaySchema = stayBaseSchema;
 export const updateStaySchema = stayBaseSchema.extend({ id: uuidSchema });
@@ -210,7 +224,7 @@ const tourBaseSchema = z.object({
   lng: lngSchema,
   featured: booleanFlagSchema.default(false),
   active: booleanFlagSchema.default(true),
-});
+}).merge(partnerLinkSchema);
 
 export const createTourSchema = tourBaseSchema;
 export const updateTourSchema = tourBaseSchema.extend({ id: uuidSchema });
@@ -410,6 +424,44 @@ export const toggleUserStatusSchema = z.object({
   targetUserId: uuidSchema,
 });
 
+// ─── Partners (páginas aliadas) ─────────────────────────────────────────────
+
+const partnerBaseSchema = z.object({
+  name: optionalNonEmptyText(160, "Nombre"),
+  slug: slugSchema,
+  base_url: z
+    .string({ required_error: "URL base requerida" })
+    .trim()
+    .min(1, "URL base requerida")
+    .max(500, "URL demasiado larga")
+    .regex(/^https?:\/\//i, "Debe iniciar con http:// o https://"),
+  logo: optionalText(2000, "Logo URL"),
+  contact_email: z
+    .string()
+    .trim()
+    .max(200, "Email demasiado largo")
+    .optional()
+    .or(z.literal("")),
+  contact_phone: optionalText(50, "Teléfono"),
+  notes_es: optionalText(2000, "Notas (ES)"),
+  notes_en: optionalText(2000, "Notas (EN)"),
+  utm_source: optionalText(80, "UTM source").transform((v) =>
+    v && v.length > 0 ? v : "prdise"
+  ),
+  affiliate_code: optionalText(120, "Código afiliado"),
+  active: booleanFlagSchema.default(true),
+});
+
+export const createPartnerSchema = partnerBaseSchema;
+export const updatePartnerSchema = partnerBaseSchema.extend({ id: uuidSchema });
+export const deletePartnerSchema = z.object({ id: uuidSchema });
+
+export const logReferralSchema = z.object({
+  partner_id: uuidSchema,
+  item_type: z.enum(ITEM_TYPES),
+  item_id: uuidSchema,
+});
+
 // ─── Inferred input types ───────────────────────────────────────────────────
 
 export type ConfirmPaymentInput = z.infer<typeof confirmPaymentSchema>;
@@ -432,3 +484,6 @@ export type CreateDriverInput = z.infer<typeof createDriverSchema>;
 export type UpdateDriverInput = z.infer<typeof updateDriverSchema>;
 export type CreateCouponInput = z.infer<typeof createCouponSchema>;
 export type UpdateCouponInput = z.infer<typeof updateCouponSchema>;
+export type CreatePartnerInput = z.infer<typeof createPartnerSchema>;
+export type UpdatePartnerInput = z.infer<typeof updatePartnerSchema>;
+export type LogReferralInput = z.infer<typeof logReferralSchema>;

@@ -16,6 +16,7 @@ export const PERMISSION_AREAS = [
   "posts",
   "reviews",
   "settings",
+  "partners",
 ] as const;
 
 export type PermissionArea = (typeof PERMISSION_AREAS)[number];
@@ -43,7 +44,11 @@ export type PermissionKey =
   | "reviews:read"
   | "reviews:approve"
   | "settings:read"
-  | "settings:write";
+  | "settings:write"
+  | "partners:read"
+  | "partners:write"
+  | "partners:delete"
+  | "referrals:read";
 
 /**
  * Lista runtime de TODAS las keys conocidas. Útil para validar input
@@ -73,6 +78,10 @@ export const ALL_PERMISSION_KEYS: readonly PermissionKey[] = [
   "reviews:approve",
   "settings:read",
   "settings:write",
+  "partners:read",
+  "partners:write",
+  "partners:delete",
+  "referrals:read",
 ] as const;
 
 /**
