@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import LoadingSplash from "./LoadingSplash";
 import {
   SlidersHorizontal, Star, MapPin, Heart, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Search,
   Users, Home, Check, CheckCircle, Clock, Zap, Info, User, ArrowLeft,
@@ -13713,7 +13712,7 @@ export default function PrdiseApp() {
     return () => { mounted = false; };
   }, []);
   if (!dataReady) {
-    return <LoadingSplash />;
+    return null;
   }
   let page;
   switch (path) {
