@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import WelcomeSplash from "@/components/WelcomeSplash";
 
 /**
  * Stub: la página de login real vive embebida en el JSX monolítico
@@ -13,5 +14,5 @@ export default function LoginRedirect() {
   useEffect(() => {
     window.location.replace("/#/login");
   }, []);
-  return null;
+  return <WelcomeSplash />;
 }

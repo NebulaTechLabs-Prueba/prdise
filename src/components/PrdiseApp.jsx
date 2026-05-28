@@ -5305,11 +5305,14 @@ function LoginPage() {
         setLoading(false);
         return;
       }
-      // Navegacion explicita por rol. window.location.assign fuerza un full
-      // navigate aunque venimos de un hash route (/#/login) y el target Next
-      // path es el mismo (router.replace seria no-op en ese caso).
+      // Navegacion por path (no hash) para forzar un full page reload
+      // que aplique las cookies recien seteadas por el Server Action. Si
+      // solo cambiaramos el hash (#/admin), el browser no recarga y el
+      // cliente Supabase de AdminPanelRoute no encuentra la sesion ->
+      // getUser() retorna null -> rebote al login.
+      // Los stubs /admin y /account redirigen al hash route correspondiente.
       const isStaff = result.role === "admin" || result.role === "manager" || result.role === "employee";
-      window.location.assign(isStaff ? "/#/admin" : "/#/account");
+      window.location.assign(isStaff ? "/admin" : "/account");
     } catch (e) {
       setError(lang === "es" ? "Error inesperado, intenta de nuevo" : "Unexpected error, try again");
       setLoading(false);
