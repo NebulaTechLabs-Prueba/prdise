@@ -58,6 +58,8 @@ import {
   updateCoupon as sbUpdateCoupon,
   deleteCoupon as sbDeleteCoupon,
 } from "@/lib/admin/coupons";
+import { validateCoupon as sbValidateCoupon } from "@/lib/coupons/actions";
+import { getEnabledPaymentMethods } from "@/lib/payments/registry";
 import {
   createPartner as sbCreatePartner,
   updatePartner as sbUpdatePartner,
@@ -2416,7 +2418,14 @@ function CheckoutForm({ type }) {
   const [user, setUser] = useState(null);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", country: "United States", notes: "", cardNum: "", cardExp: "", cardCvc: "", cardName: "", terms: false, athPhone: "", athAmount: "", athTime: "", athHolder: "", athReceipt: "", bankHolder: "", bankLast4: "", bankAmount: "", bankDate: "", bankReference: "", bankReceipt: "", paypalReceipt: "" });
   const [errors, setErrors] = useState({});
-  const [method, setMethod] = useState("stripe");
+  // Inicializar el metodo seleccionado al primer metodo habilitado del
+  // registry. Si solo ATH/Bank estan activos (estado actual sin credenciales
+  // online), arranca con el primero (ath). Cuando se habilite Stripe pasa a
+  // ser el default automaticamente.
+  const [method, setMethod] = useState(() => {
+    const enabled = getEnabledPaymentMethods();
+    return enabled[0]?.id ?? "ath";
+  });
   const [processing, setProcessing] = useState(false);
   const [saveProfile, setSaveProfile] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
@@ -2673,12 +2682,16 @@ function CheckoutForm({ type }) {
   };
 
   if (!booking) return null;
-  const payMethods = [
-    { id: "stripe", label: "Card", Icon: CreditCard },
-    { id: "paypal", label: "PayPal", Icon: Star },
-    { id: "ath", label: "ATH Móvil", Icon: Smartphone },
-    { id: "bank", label: "Bank", Icon: Building2 },
-  ];
+  // Métodos habilitados: filtrados por flag `enabled` en el registry. Stripe
+  // y PayPal aparecen solo si el admin/dev seteo enabled=true (requieren
+  // credenciales del procesador). ATH/Bank siempre habilitados (offline,
+  // admin reconcilia manualmente).
+  const PAY_ICONS = { stripe: CreditCard, paypal: Star, ath: Smartphone, bank: Building2 };
+  const payMethods = getEnabledPaymentMethods().map((m) => ({
+    id: m.id,
+    label: m.label[lang === "es" ? "es" : "en"],
+    Icon: PAY_ICONS[m.id] || CreditCard,
+  }));
   const crumbs = type === "hotel" ? [{ to: "/", label: "Home" }, { to: "/stays", label: "Stays" }, { label: "Checkout" }]
     : type === "tour" ? [{ to: "/", label: "Home" }, { to: "/tours", label: "Tours" }, { label: "Checkout" }]
     : [{ to: "/", label: "Home" }, { to: "/transfer-search", label: "Transfer" }, { label: "Checkout" }];
@@ -3241,6 +3254,7 @@ function CheckoutAuthModal({ mode, setMode, prefillEmail, prefillFirstName, pref
 
 /* ═══════════════ CONFIRMATION (hotel | tour | transfer) ═══════════════ */
 function ConfirmationPage({ type }) {
+  const { lang } = useLang();
   const [conf, setConf] = useState(null);
   const [notFound, setNotFound] = useState(false);
   useEffect(() => {
@@ -3253,47 +3267,101 @@ function ConfirmationPage({ type }) {
     return (
       <div className="conf-wrap">
         <div className="conf-card">
-          <h1>NO BOOKING FOUND</h1>
-          <p className="conf-sub">We couldn't find a recent booking. Please start over.</p>
-          <NavLink to="/" className="cta-pri"><ArrowLeft style={{ width: 14, height: 14 }} />Back to Home</NavLink>
+          <h1>{lang === "es" ? "NO ENCONTRAMOS LA RESERVA" : "NO BOOKING FOUND"}</h1>
+          <p className="conf-sub">{lang === "es" ? "No encontramos una reserva reciente. Empieza de nuevo." : "We couldn't find a recent booking. Please start over."}</p>
+          <NavLink to="/" className="cta-pri"><ArrowLeft style={{ width: 14, height: 14 }} />{lang === "es" ? "Volver al inicio" : "Back to Home"}</NavLink>
         </div>
       </div>
     );
   }
   if (!conf) return null;
 
+  // Offline methods (ath / bank) requieren reconciliacion manual del admin
+  // antes de considerarse confirmados. No prometemos "confirmado" porque el
+  // monto/comprobante podria no coincidir o ser fraudulento.
+  const isOffline = conf.paymentMethod === "ath" || conf.paymentMethod === "bank";
+  const totalLabel = isOffline
+    ? (lang === "es" ? "Monto declarado" : "Amount declared")
+    : (lang === "es" ? "Total pagado" : "Total Paid");
+
   const rows = type === "hotel" ? [
-    ["Stay", conf.name], ["Zone", conf.zone], ["Check-in", conf.checkin], ["Check-out", conf.checkout],
-    ["Guests", conf.guests], ["Nights", conf.nights], ["Total Paid", fmt(conf.total)],
+    [lang === "es" ? "Alojamiento" : "Stay", conf.name],
+    [lang === "es" ? "Zona" : "Zone", conf.zone],
+    [lang === "es" ? "Entrada" : "Check-in", conf.checkin],
+    [lang === "es" ? "Salida" : "Check-out", conf.checkout],
+    [lang === "es" ? "Huéspedes" : "Guests", conf.guests],
+    [lang === "es" ? "Noches" : "Nights", conf.nights],
+    [totalLabel, fmt(conf.total)],
   ] : type === "tour" ? [
-    ["Tour", conf.name], ["Day", conf.day], ["Date", conf.date], ["Travelers", conf.travelers],
-    ["Price per person", fmt(conf.pricePerPerson)], ["Total Paid", fmt(conf.total)],
+    [lang === "es" ? "Tour" : "Tour", conf.name],
+    [lang === "es" ? "Día" : "Day", conf.day],
+    [lang === "es" ? "Fecha" : "Date", conf.date],
+    [lang === "es" ? "Viajeros" : "Travelers", conf.travelers],
+    [lang === "es" ? "Precio por persona" : "Price per person", fmt(conf.pricePerPerson)],
+    [totalLabel, fmt(conf.total)],
   ] : [
-    ["Vehicle", conf.vehicleName], ["From", conf.from], ["To", conf.to], ["Date", conf.date],
-    ["Time", conf.time], ["Passengers", conf.pax], ["Bags", conf.bags],
-    ["Distance", `${conf.km} km`], ["Total Paid", fmt(conf.total)],
+    [lang === "es" ? "Vehículo" : "Vehicle", conf.vehicleName],
+    [lang === "es" ? "Desde" : "From", conf.from],
+    [lang === "es" ? "Hasta" : "To", conf.to],
+    [lang === "es" ? "Fecha" : "Date", conf.date],
+    [lang === "es" ? "Hora" : "Time", conf.time],
+    [lang === "es" ? "Pasajeros" : "Passengers", conf.pax],
+    [lang === "es" ? "Maletas" : "Bags", conf.bags],
+    [lang === "es" ? "Distancia" : "Distance", `${conf.km} km`],
+    [totalLabel, fmt(conf.total)],
   ];
-  const title = type === "hotel" ? "BOOKING CONFIRMED" : type === "tour" ? "TOUR CONFIRMED" : "TRANSFER CONFIRMED";
+
+  const title = isOffline
+    ? (lang === "es" ? "SOLICITUD RECIBIDA · EN REVISIÓN" : "REQUEST RECEIVED · UNDER REVIEW")
+    : type === "hotel" ? (lang === "es" ? "RESERVA CONFIRMADA" : "BOOKING CONFIRMED")
+    : type === "tour" ? (lang === "es" ? "TOUR CONFIRMADO" : "TOUR CONFIRMED")
+    : (lang === "es" ? "TRASLADO CONFIRMADO" : "TRANSFER CONFIRMED");
+  const subtitle = isOffline
+    ? (lang === "es"
+        ? <>Recibimos tu solicitud y comprobante. Nuestro equipo verificará el pago manualmente y te enviaremos un correo a <strong style={{ color: "#fff" }}>{conf.email}</strong> cuando esté confirmada. Esto puede tomar entre algunas horas y 1 día hábil.</>
+        : <>We received your request and proof of payment. Our team will verify the payment manually and email you at <strong style={{ color: "#fff" }}>{conf.email}</strong> once confirmed. This usually takes a few hours to 1 business day.</>)
+    : (lang === "es"
+        ? <>Gracias por reservar con Living in PRDISE. Te enviamos un correo de confirmación a <strong style={{ color: "#fff" }}>{conf.email}</strong></>
+        : <>Thank you for booking with Living in PRDISE. A confirmation email has been sent to <strong style={{ color: "#fff" }}>{conf.email}</strong></>);
+
   const backTo = type === "hotel" ? "/stays" : type === "tour" ? "/tours" : "/transfer-search";
-  const nextSteps = type === "hotel" ? {
-    Icon: Home, color: "sky", title: "What's Next?",
-    text: "You'll receive a check-in guide 48h before arrival with the exact address, door codes, and host contact info.",
+  const nextSteps = isOffline ? {
+    Icon: Clock,
+    color: "gold",
+    title: lang === "es" ? "Próximos pasos" : "Next steps",
+    text: lang === "es"
+      ? "Mientras tanto, no realices otro pago. Si necesitas modificar o cancelar la solicitud antes de la confirmación, escríbenos al correo. Tu reserva NO está confirmada hasta que el equipo valide la transacción."
+      : "In the meantime, do NOT submit another payment. If you need to modify or cancel the request before it's confirmed, email us. Your booking is NOT confirmed until the team validates the transaction.",
+  } : type === "hotel" ? {
+    Icon: Home, color: "sky",
+    title: lang === "es" ? "Próximos pasos" : "What's Next?",
+    text: lang === "es"
+      ? "Recibirás una guía de check-in 48h antes con la dirección exacta, códigos de puerta y contacto del anfitrión."
+      : "You'll receive a check-in guide 48h before arrival with the exact address, door codes, and host contact info.",
   } : type === "tour" ? {
-    Icon: Compass, color: "green", title: "Before Your Tour",
-    text: "We'll send pickup details 24h before the tour. Please arrive at the meeting point 10 minutes early and bring what's listed in your confirmation email.",
+    Icon: Compass, color: "green",
+    title: lang === "es" ? "Antes de tu tour" : "Before Your Tour",
+    text: lang === "es"
+      ? "Te enviaremos detalles de recogida 24h antes. Llega al punto de encuentro 10 min antes y trae lo que indique tu correo."
+      : "We'll send pickup details 24h before the tour. Please arrive at the meeting point 10 minutes early and bring what's listed in your confirmation email.",
   } : {
-    Icon: Car, color: "orange", title: "Driver Contact",
-    text: "Your driver's name and phone will be sent 2 hours before pickup. Please be ready 5 minutes early at the agreed location.",
+    Icon: Car, color: "orange",
+    title: lang === "es" ? "Contacto del conductor" : "Driver Contact",
+    text: lang === "es"
+      ? "Te enviaremos el nombre y teléfono del conductor 2h antes de la recogida. Está listo 5 min antes en el punto acordado."
+      : "Your driver's name and phone will be sent 2 hours before pickup. Please be ready 5 minutes early at the agreed location.",
   };
 
   return (
     <div className="conf-wrap">
       <div className="conf-card">
-        <div className="conf-icon"><Check /></div>
+        <div className="conf-icon" style={isOffline ? { background: "linear-gradient(135deg,#F5A623,#EF6C2B)" } : {}}>
+          {isOffline ? <Clock /> : <Check />}
+        </div>
         <h1>{title}</h1>
-        <p className="conf-sub">Thank you for booking with Living in PRDISE. A confirmation email has been sent to <strong style={{ color: "#fff" }}>{conf.email}</strong></p>
+        <p className="conf-sub">{subtitle}</p>
         <div className="conf-ref-box">
-          <div className="conf-ref-lab">Booking Reference</div>
+          <div className="conf-ref-lab">{lang === "es" ? "Referencia de reserva" : "Booking Reference"}</div>
           <div className="conf-ref-val">{conf.ref}</div>
         </div>
         <div className="conf-rows">
@@ -3308,11 +3376,11 @@ function ConfirmationPage({ type }) {
           <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.65)", lineHeight: 1.6 }}>{nextSteps.text}</p>
         </div>
         <div className="cta-row">
-          <NavLink to="/account" className="cta-pri"><User style={{ width: 14, height: 14 }} />View My Account</NavLink>
-          <NavLink to={backTo} className="cta-sec">Book Another</NavLink>
+          <NavLink to="/account" className="cta-pri"><User style={{ width: 14, height: 14 }} />{lang === "es" ? "Ver mi cuenta" : "View My Account"}</NavLink>
+          <NavLink to={backTo} className="cta-sec">{lang === "es" ? "Reservar otra" : "Book Another"}</NavLink>
         </div>
         <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", marginTop: 20 }}>
-          Questions? <a href="mailto:info@livinginprdise.com" style={{ color: "var(--gold)" }}>info@livinginprdise.com</a> · (787) 237-9519
+          {lang === "es" ? "¿Preguntas?" : "Questions?"} <a href="mailto:info@livinginprdise.com" style={{ color: "var(--gold)" }}>info@livinginprdise.com</a> · (787) 237-9519
         </p>
       </div>
     </div>
@@ -3329,7 +3397,10 @@ function CartCheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [method, setMethod] = useState("stripe");
+  const [method, setMethod] = useState(() => {
+    const enabled = getEnabledPaymentMethods();
+    return enabled[0]?.id ?? "ath";
+  });
   const [useSavedMethod, setUseSavedMethod] = useState(false);
 
   useEffect(() => {
@@ -3358,25 +3429,53 @@ function CartCheckoutPage() {
   const couponDiscount = appliedCoupon ? subtotal * appliedCoupon.discount / 100 : 0;
   const total = Math.max(0, subtotal - tierDiscount - couponDiscount);
 
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     setCouponError("");
     const code = couponCode.trim().toUpperCase();
     if (!code) { setCouponError(lang === "es" ? "Ingresa un código" : "Enter a code"); return; }
-    // Check personal coupons
+    // 1) Cupones personales asignados al usuario (localStorage; el admin
+    //    podrá asignar cupones a usuarios desde el panel a futuro). Se honran
+    //    sin pasar por Supabase porque son personales (no compartidos).
     const userCoupons = PRDISE.load("userCoupons", []);
     const personal = userCoupons.find(c => c.code === code && !c.used);
     if (personal) {
       setAppliedCoupon({ ...personal, _kind: "personal" });
       return;
     }
-    // Check global admin coupons
-    const adminCoupons = PRDISE.load("coupons", []);
-    const found = adminCoupons.find(c => c.code === code);
-    if (!found) { setCouponError(lang === "es" ? "Código inválido" : "Invalid code"); return; }
-    if (!found.active) { setCouponError(lang === "es" ? "Cupón inactivo" : "Coupon inactive"); return; }
-    if (found.expires && new Date(found.expires) < new Date()) { setCouponError(lang === "es" ? "Cupón vencido" : "Coupon expired"); return; }
-    if (found.used >= found.maxUses) { setCouponError(lang === "es" ? "Cupón agotado" : "Coupon exhausted"); return; }
-    setAppliedCoupon({ ...found, _kind: "global" });
+    // 2) Cupones globales: validar contra la tabla `coupons` de Supabase via
+    //    Server Action (no contra PRDISE.load("coupons") que era localStorage
+    //    demo). Solo cupones reales creados por admin se aceptan.
+    try {
+      const fd = new FormData();
+      fd.append("code", code);
+      const res = await sbValidateCoupon(fd);
+      if (!res?.ok) {
+        // Traducir el mensaje del server al idioma actual.
+        const map = {
+          "Código inválido": lang === "es" ? "Código inválido" : "Invalid code",
+          "Cupón inactivo": lang === "es" ? "Cupón inactivo" : "Coupon inactive",
+          "Cupón vencido": lang === "es" ? "Cupón vencido" : "Coupon expired",
+          "Cupón agotado": lang === "es" ? "Cupón agotado" : "Coupon exhausted",
+          "Ingresa un código": lang === "es" ? "Ingresa un código" : "Enter a code",
+        };
+        setCouponError(map[res?.error] || res?.error || (lang === "es" ? "Código inválido" : "Invalid code"));
+        return;
+      }
+      const c = res.coupon;
+      // Normalizar al shape que ya consume el JSX (discount, maxUses, used, expires).
+      setAppliedCoupon({
+        id: c.id,
+        code: c.code,
+        desc: lang === "es" ? (c.description_es || "") : (c.description_en || ""),
+        discount: c.discount_pct,
+        maxUses: c.max_uses ?? Infinity,
+        used: c.used_count,
+        expires: c.expires_at,
+        _kind: "global",
+      });
+    } catch (e) {
+      setCouponError(lang === "es" ? "Error al validar cupón" : "Error validating coupon");
+    }
   };
 
   const removeFromCart = (id) => {
@@ -3694,14 +3793,23 @@ function CartCheckoutPage() {
 
               {!useSavedMethod && (
                 <>
-                  {/* Method selector */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 16 }}>
-                    {[
-                      { id: "stripe", label: lang === "es" ? "Tarjeta" : "Card", Icon: CreditCard, color: "#635BFF" },
-                      { id: "paypal", label: "PayPal", Icon: Star, color: "#0070BA" },
-                      { id: "ath", label: "ATH Móvil", Icon: Smartphone, color: "#F5A623" },
-                      { id: "bank", label: lang === "es" ? "Banco" : "Bank", Icon: Building2, color: "#8DC63F" },
-                    ].map(({ id, label, Icon, color }) => (
+                  {/* Method selector — filtrado por flag enabled del registry */}
+                  {(() => {
+                    const PAY_META = {
+                      stripe: { Icon: CreditCard, color: "#635BFF" },
+                      paypal: { Icon: Star, color: "#0070BA" },
+                      ath: { Icon: Smartphone, color: "#F5A623" },
+                      bank: { Icon: Building2, color: "#8DC63F" },
+                    };
+                    const enabledMethods = getEnabledPaymentMethods().map((m) => ({
+                      id: m.id,
+                      label: m.label[lang === "es" ? "es" : "en"],
+                      Icon: PAY_META[m.id]?.Icon || CreditCard,
+                      color: PAY_META[m.id]?.color || "#F5A623",
+                    }));
+                    return (
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(enabledMethods.length, 1)}, 1fr)`, gap: 6, marginBottom: 16 }}>
+                    {enabledMethods.map(({ id, label, Icon, color }) => (
                       <button key={id} type="button" onClick={() => setMethod(id)} style={{
                         display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "12px 6px", borderRadius: 10,
                         background: method === id ? color + "15" : "rgba(255,255,255,.03)",
@@ -3714,6 +3822,8 @@ function CartCheckoutPage() {
                       </button>
                     ))}
                   </div>
+                    );
+                  })()}
 
                   {/* Method-specific forms */}
                   {method === "stripe" && (
