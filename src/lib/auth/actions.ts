@@ -247,7 +247,19 @@ export async function confirmPasswordReset(
   const { newPassword } = parsed.data;
   const supabase = await createClient();
 
-  // El token del flow de Supabase ya vive en las cookies del cliente server.
+  // Validar que haya sesión activa antes de intentar el update (sin esto
+  // el error de Supabase es "Auth session missing" que confunde al usuario).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      ok: false,
+      error:
+        "El enlace expiró o ya fue usado. Solicita un nuevo enlace de restablecimiento.",
+    };
+  }
+
   const { error } = await supabase.auth.updateUser({ password: newPassword });
 
   if (error) {
@@ -258,9 +270,15 @@ export async function confirmPasswordReset(
         error: "La nueva contraseña debe ser distinta a la anterior",
       };
     }
+    if (msg.includes("weak") || msg.includes("password")) {
+      return {
+        ok: false,
+        error: `Contraseña rechazada: ${error.message}`,
+      };
+    }
     return {
       ok: false,
-      error: "No se pudo actualizar la contraseña. Solicita un nuevo enlace",
+      error: `No se pudo actualizar la contraseña: ${error.message}`,
     };
   }
 

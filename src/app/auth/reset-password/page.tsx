@@ -1,14 +1,78 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { confirmPasswordReset } from "@/lib/auth/actions";
+import { createClient } from "@/lib/supabase/client";
+
+type SessionState =
+  | { kind: "loading" }
+  | { kind: "ready" }
+  | { kind: "error"; message: string };
 
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [sessionState, setSessionState] = useState<SessionState>({ kind: "loading" });
+
+  // Consumir el hash de Supabase (implicit flow) ANTES de habilitar el form.
+  // Sin esto hay una carrera: el form se submite antes que el cliente
+  // del navegador haya seteado cookies con setSession, y el server action
+  // falla con "Auth session missing".
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const hash = window.location.hash;
+      // Path 1: ya hay sesión activa (cookies presentes desde otra navegacion).
+      if (!hash.includes("access_token=")) {
+        const { data } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (data.user) setSessionState({ kind: "ready" });
+        else
+          setSessionState({
+            kind: "error",
+            message:
+              "Enlace inválido o expirado. Solicita un nuevo enlace de restablecimiento.",
+          });
+        return;
+      }
+      // Path 2: tokens en el fragmento. Parsear y aplicar setSession.
+      const params = new URLSearchParams(hash.slice(1));
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+      if (!access_token || !refresh_token) {
+        setSessionState({
+          kind: "error",
+          message:
+            "El enlace está incompleto. Solicita un nuevo enlace de restablecimiento.",
+        });
+        return;
+      }
+      const { error: setErr } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (cancelled) return;
+      if (setErr) {
+        setSessionState({
+          kind: "error",
+          message:
+            "El enlace expiró o ya fue usado. Solicita un nuevo enlace de restablecimiento.",
+        });
+        return;
+      }
+      // Limpiar el hash de la URL para evitar que el token vuelva a procesarse
+      // en un refresh.
+      window.history.replaceState(null, "", window.location.pathname);
+      setSessionState({ kind: "ready" });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,7 +117,34 @@ export default function ResetPasswordPage() {
           Ingresa una contraseña nueva. Después podrás iniciar sesión con ella.
         </p>
 
-        {success ? (
+        {sessionState.kind === "loading" && (
+          <div style={{ padding: 14, fontSize: 13, opacity: 0.7 }}>
+            Validando enlace…
+          </div>
+        )}
+
+        {sessionState.kind === "error" && (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 10,
+              background: "rgba(248,113,113,.1)",
+              border: "1px solid rgba(248,113,113,.3)",
+              color: "#f87171",
+              fontSize: 13,
+              marginBottom: 16,
+            }}
+          >
+            {sessionState.message}
+            <div style={{ marginTop: 12 }}>
+              <a href="#/forgot-password" style={{ color: "#f5a623", fontWeight: 700 }}>
+                Solicitar nuevo enlace →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {sessionState.kind === "ready" && success ? (
           <div
             style={{
               padding: 14,
@@ -66,7 +157,7 @@ export default function ResetPasswordPage() {
           >
             ✓ Contraseña actualizada. Redirigiendo a inicio de sesión…
           </div>
-        ) : (
+        ) : sessionState.kind === "ready" ? (
           <form onSubmit={onSubmit}>
             <div style={{ marginBottom: 14 }}>
               <label
@@ -162,7 +253,7 @@ export default function ResetPasswordPage() {
               {pending ? "Actualizando…" : "Actualizar contraseña"}
             </button>
           </form>
-        )}
+        ) : null}
       </div>
     </div>
   );
