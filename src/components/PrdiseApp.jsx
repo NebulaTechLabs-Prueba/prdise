@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import LoadingSplash from "./LoadingSplash";
 import {
   SlidersHorizontal, Star, MapPin, Heart, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Search,
   Users, Home, Check, CheckCircle, Clock, Zap, Info, User, ArrowLeft,
@@ -13712,16 +13713,7 @@ export default function PrdiseApp() {
     return () => { mounted = false; };
   }, []);
   if (!dataReady) {
-    return (
-      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0a1628,#0e1a2e)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "system-ui, sans-serif" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: "linear-gradient(135deg,#f5a623,#ef6c2b)", margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 32px rgba(239,108,43,.3)" }}>
-            <Compass style={{ width: 26, height: 26, color: "#fff" }} />
-          </div>
-          <div style={{ fontSize: 14, opacity: 0.7 }}>Cargando…</div>
-        </div>
-      </div>
-    );
+    return <LoadingSplash />;
   }
   let page;
   switch (path) {
