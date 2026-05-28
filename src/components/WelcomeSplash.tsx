@@ -17,12 +17,10 @@ function computeProgress(): number {
 }
 
 export default function WelcomeSplash() {
-  const [progress, setProgress] = useState(() => {
-    if (typeof window !== "undefined" && startedAt === null) {
-      startedAt = Date.now();
-    }
-    return computeProgress();
-  });
+  // Initial render: SIEMPRE 0 en SSR y en la primera hidratación del client,
+  // para evitar React error #418 (text/style mismatch entre SSR y client).
+  // La animación arranca en useEffect (solo se ejecuta en client).
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     if (startedAt === null) startedAt = Date.now();

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { confirmPasswordReset } from "@/lib/auth/actions";
 import { createClient } from "@/lib/supabase/client";
 
@@ -124,24 +125,45 @@ export default function ResetPasswordPage() {
         )}
 
         {sessionState.kind === "error" && (
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 10,
-              background: "rgba(248,113,113,.1)",
-              border: "1px solid rgba(248,113,113,.3)",
-              color: "#f87171",
-              fontSize: 13,
-              marginBottom: 16,
-            }}
-          >
-            {sessionState.message}
-            <div style={{ marginTop: 12 }}>
-              <a href="#/forgot-password" style={{ color: "#f5a623", fontWeight: 700 }}>
-                Solicitar nuevo enlace →
-              </a>
+          <>
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 10,
+                background: "rgba(248,113,113,.1)",
+                border: "1px solid rgba(248,113,113,.3)",
+                color: "#f87171",
+                fontSize: 13,
+                marginBottom: 16,
+              }}
+            >
+              {sessionState.message}
+              <div style={{ marginTop: 12 }}>
+                <Link href="/#/forgot-password" style={{ color: "#f5a623", fontWeight: 700 }}>
+                  Solicitar nuevo enlace →
+                </Link>
+              </div>
             </div>
-          </div>
+            <Link
+              href="/"
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.12)",
+                color: "rgba(255,255,255,.85)",
+                fontSize: 13,
+                fontWeight: 700,
+                textAlign: "center",
+                textDecoration: "none",
+                letterSpacing: ".06em",
+              }}
+            >
+              ← Volver al inicio
+            </Link>
+          </>
         )}
 
         {sessionState.kind === "ready" && success ? (
@@ -252,6 +274,19 @@ export default function ResetPasswordPage() {
             >
               {pending ? "Actualizando…" : "Actualizar contraseña"}
             </button>
+            <Link
+              href="/"
+              style={{
+                display: "block",
+                marginTop: 14,
+                textAlign: "center",
+                fontSize: 12,
+                color: "rgba(255,255,255,.5)",
+                textDecoration: "none",
+              }}
+            >
+              ← Volver al inicio
+            </Link>
           </form>
         ) : null}
       </div>
