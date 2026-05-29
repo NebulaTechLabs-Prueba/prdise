@@ -86,6 +86,11 @@ import {
 import {
   listAllUsers as sbListAllUsers,
 } from "@/lib/admin/users";
+import {
+  listInvoices as sbListInvoices,
+  createInvoiceFromBookings as sbCreateInvoiceFromBookings,
+  markInvoicePaid as sbMarkInvoicePaid,
+} from "@/lib/admin/invoices";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -199,10 +204,14 @@ function mapTourToTour(t) {
 }
 
 function mapVehicleToVehicle(v) {
+  // El schema `vehicles` de Supabase tiene name, type, max_pax, max_luggage,
+  // price_cents, active. NO tiene plate/driver/trips/status enum — esos
+  // campos del JSX legacy se rellenan con defaults sensatos para que la UI
+  // no crashee (.status.replace() en la tabla del admin requeria string).
   return {
     id: v.id, // UUID Supabase (necesario para admin CRUD update/delete)
     slug: (v.type || v.name || "").toLowerCase().replace(/\s+/g, "-"),
-    name: v.name,
+    name: v.name || "",
     type: v.type || "",
     seats: v.max_pax || 4,
     bags: v.max_luggage || 2,
@@ -211,6 +220,10 @@ function mapVehicleToVehicle(v) {
     desc: "",
     features: ["A/C", "Pro driver", "Water", "WiFi"],
     active: v.active !== false,
+    status: v.active === false ? "out_of_service" : "available",
+    plate: "",
+    driver: "",
+    trips: 0,
   };
 }
 
@@ -3611,6 +3624,7 @@ function CartCheckoutPage() {
     setProcessing(true);
 
     // Persistir cada item del cart a Supabase si el método es offline.
+    const createdBookingIds = [];
     if (method === "ath" || method === "bank") {
       const itemTypeMap = { hotel: "stay", tour: "tour", transfer: "transfer" };
       const failed = [];
@@ -3637,10 +3651,29 @@ function CartCheckoutPage() {
             fd.append("bankReceipt", form.bankReceipt || "");
           }
           const res = await sbCreateBookingOffline(fd);
-          if (!res?.ok) failed.push({ item: it, error: res?.error || "unknown" });
+          if (!res?.ok) {
+            failed.push({ item: it, error: res?.error || "unknown" });
+          } else if (res.bookingId) {
+            createdBookingIds.push(res.bookingId);
+          }
         } catch (e) {
           failed.push({ item: it, error: e?.message || String(e) });
         }
+      }
+      // Crear invoice agrupando todos los bookings recien creados.
+      // Service → Payment → Invoice cycle: 1 cart checkout = 1 invoice con N
+      // items (uno por booking). Status inicial 'sent'; pasa a 'paid' cuando
+      // el admin confirma cada payment (confirmPayment marca paid las
+      // invoices vinculadas via invoice_items.booking_id).
+      if (createdBookingIds.length > 0) {
+        try {
+          const invFd = new FormData();
+          invFd.append("bookingIds", createdBookingIds.join(","));
+          invFd.append("customerName", `${form.firstName} ${form.lastName}`.trim());
+          invFd.append("customerEmail", form.email);
+          if (form.phone) invFd.append("customerPhone", form.phone);
+          await sbCreateInvoiceFromBookings(invFd);
+        } catch (e) { console.warn("invoice create:", e); }
       }
       if (failed.length) {
         setProcessing(false);
@@ -6877,13 +6910,46 @@ function AdminPanel({ onClose }) {
     let cancel = false;
     (async () => {
       try {
-        const [drv, msgs, bks, usrs] = await Promise.all([
+        const [drv, msgs, bks, usrs, invs] = await Promise.all([
           sbListDrivers(),
           sbListContactMessages(),
           sbListAllBookings({ itemType: "transfer", pageSize: 100 }),
           sbListAllUsers({ pageSize: 200 }),
+          sbListInvoices(),
         ]);
         if (cancel) return;
+        if (Array.isArray(invs)) {
+          // Mapeo Supabase → shape JSX legacy. Mantenemos solo invoices
+          // reales (de Supabase); las locales generadas en cart-checkout
+          // ahora estan duplicadas con sb- prefix, asi que filtramos por
+          // prefix al mergear.
+          const mappedInvoices = invs.map((i) => ({
+            id: "sb-" + i.id,
+            num: i.number,
+            customer: i.customer_name,
+            email: i.customer_email,
+            issued: i.issued_at,
+            due: i.due_at || "",
+            paidDate: i.paid_at ? i.paid_at.slice(0, 10) : "",
+            items: Array.isArray(i.items) ? i.items.length : 1,
+            total: (i.total_cents || 0) / 100,
+            subtotal: (i.subtotal_cents || 0) / 100,
+            status: i.status,
+            link: true,
+            source: "supabase",
+            paymentRef: i.payment_ref || "",
+            lineItems: (i.items || []).map((it) => ({
+              description: it.description,
+              quantity: it.quantity,
+              unit: (it.unit_cents || 0) / 100,
+              total: (it.line_total_cents || 0) / 100,
+            })),
+          }));
+          setInvoices((prev) => {
+            const localOnly = prev.filter((i) => i.source !== "supabase" && !String(i.id || "").startsWith("sb-"));
+            return [...mappedInvoices, ...localOnly];
+          });
+        }
         if (usrs?.ok && Array.isArray(usrs.data?.items)) {
           setUsers(usrs.data.items.map((u) => ({
             id: u.id,
@@ -8297,7 +8363,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td style={{ color: "rgba(255,255,255,.7)" }}>{v.driver}</td>
                           <td style={{ color: "#F5A623", fontWeight: 700 }}>${v.base}</td>
                           <td>{v.trips}</td>
-                          <td><span className={`adm-pill ${v.status === "available" ? "available" : v.status === "in_use" ? "in_use" : "hidden"}`}>{v.status.replace("_", " ")}</span></td>
+                          <td><span className={`adm-pill ${v.status === "available" ? "available" : v.status === "in_use" ? "in_use" : "hidden"}`}>{(v.status || "available").replace("_", " ")}</span></td>
                           <td>
                             <div className="adm-row-actions">
                               <button className="adm-icon-btn" onClick={() => setEditingVehicle({...v})}><Pencil /></button>

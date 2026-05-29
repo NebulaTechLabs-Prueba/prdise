@@ -194,7 +194,29 @@ export async function confirmPayment(
     }
   }
 
-  // 4) Audit log (no falla la acción).
+  // 4) Sincronizar invoices: marcar como 'paid' todas las invoices que tengan
+  // este booking entre sus items. Cierra el ciclo Service → Payment → Invoice
+  // para que la UI de Invoices refleje el pago confirmado automaticamente.
+  try {
+    const { data: items } = await supabase
+      .from("invoice_items")
+      .select("invoice_id")
+      .eq("booking_id", payment.booking_id);
+    const invoiceIds = Array.from(
+      new Set((items ?? []).map((i) => i.invoice_id).filter(Boolean))
+    );
+    if (invoiceIds.length > 0) {
+      await supabase
+        .from("invoices")
+        .update({ status: "paid", paid_at: nowIso })
+        .in("id", invoiceIds)
+        .neq("status", "paid");
+    }
+  } catch (e) {
+    console.warn("[confirmPayment] invoice sync failed:", e);
+  }
+
+  // 5) Audit log (no falla la acción).
   await writeAuditLog(actorId, "payment.confirm", "payment", paymentId, {
     booking_id: payment.booking_id,
     notes: notes || null,
