@@ -2365,8 +2365,17 @@ function TransferResultsPage() {
       img: IMG_VAN_ROAD, base: v.base, distanceFee, total,
     };
     PRDISE.save("pendingBooking", booking);
-    PRDISE.addToUserCart(booking);
-    nav("/checkout-transfer");
+    const added = PRDISE.addToUserCart(booking);
+    if (!added) {
+      if (window.confirm(lang==="es"?"Necesitas iniciar sesión para reservar. ¿Ir a iniciar sesión?":"You need to sign in to book. Go to sign in?")) {
+        nav("/login");
+      }
+      return;
+    }
+    // Checkout unificado: el booking ya está en el carrito, vamos a la unica
+    // pantalla de checkout (carrito) en vez del CheckoutForm que era una
+    // duplicación que confundia al usuario.
+    nav("/checkout-cart");
   };
   const addTransferToCart = (id) => {
     const v = VEHICLES.find((x) => x.id === id);
@@ -3448,6 +3457,8 @@ function CartCheckoutPage() {
     return enabled[0]?.id ?? "ath";
   });
   const [useSavedMethod, setUseSavedMethod] = useState(false);
+  // Modal de exito post-checkout (reemplaza alert() nativo).
+  const [successModal, setSuccessModal] = useState(null);
 
   useEffect(() => {
     const sess = PRDISE.load("session", null);
@@ -3614,10 +3625,12 @@ function CartCheckoutPage() {
     }
 
     setTimeout(() => {
-      // Award points (10 points per dollar spent)
+      // Puntos: solo se acreditan cuando el admin marca el booking como
+      // 'completed' (trigger DB tg_award_points_on_booking_completed). Antes
+      // se updateaba localStorage user.points optimisticamente lo que daba
+      // un valor falso al usuario hasta que AuthBridge sincronizaba con el
+      // profile real. Removido para no engañar.
       const pointsEarned = Math.floor(total * 0.1);
-      const updatedUser = { ...user, points: (user.points || 0) + pointsEarned };
-      PRDISE.save("user", updatedUser);
       // Mark coupon as used
       if (appliedCoupon) {
         if (appliedCoupon._kind === "personal") {
@@ -3749,10 +3762,15 @@ function CartCheckoutPage() {
         ref: masterRef, invoiceNum, date: new Date().toISOString(),
       });
       setProcessing(false);
-      alert(lang === "es"
-        ? `¡Pago exitoso! Total: ${fmt(total)}. Ganaste ${pointsEarned} puntos.\n\nFactura: ${invoiceNum}\nReferencia: ${masterRef}\n\nTus reservas aparecen en "Pendientes" mientras se confirman.`
-        : `Payment successful! Total: ${fmt(total)}. You earned ${pointsEarned} points.\n\nInvoice: ${invoiceNum}\nReference: ${masterRef}\n\nYour bookings appear in "Pending" while we confirm.`);
-      nav("/account");
+      // Modal branded en vez de alert() nativo. Notar: pointsEarned no se
+      // suma todavia al saldo del usuario — el trigger DB lo hace cuando el
+      // admin marca el booking 'completed'. Comunicamos eso explicitamente.
+      setSuccessModal({
+        total: fmt(total),
+        pointsEarned,
+        invoiceNum,
+        masterRef,
+      });
     }, 1200);
   };
 
@@ -3776,7 +3794,44 @@ function CartCheckoutPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", paddingTop: 100, paddingBottom: 60, background: "linear-gradient(135deg,var(--deep),var(--ink))" }}>
+    <div style={{ minHeight: "100vh", paddingTop: 140, paddingBottom: 60, background: "linear-gradient(135deg,var(--deep),var(--ink))" }}>
+      {successModal && (
+        <div onClick={() => { setSuccessModal(null); nav("/account"); }} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: "100%", background: "linear-gradient(180deg,#142030,#0E1824)", border: "1px solid rgba(245,166,35,.3)", borderRadius: 20, padding: "36px 28px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,#F5A623,#EF6C2B,#8DC63F,#29ABE2)" }} />
+            <div style={{ width: 68, height: 68, borderRadius: 18, background: "linear-gradient(135deg,#F5A623,#EF6C2B)", margin: "0 auto 18px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 32px rgba(239,108,43,.4)" }}>
+              <Clock style={{ width: 30, height: 30, color: "#fff" }} />
+            </div>
+            <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".04em", color: "#fff", marginBottom: 8 }}>
+              {lang === "es" ? "SOLICITUD RECIBIDA" : "REQUEST RECEIVED"}
+            </h2>
+            <p style={{ fontSize: 13.5, color: "rgba(255,255,255,.7)", lineHeight: 1.55, marginBottom: 18 }}>
+              {lang === "es"
+                ? "Tu solicitud y comprobante fueron registrados. El equipo verificará el pago manualmente y recibirás un correo cuando se confirme."
+                : "Your request and proof of payment were registered. Our team will verify the payment manually and email you when it's confirmed."}
+            </p>
+            <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", marginBottom: 14, display: "grid", gridTemplateColumns: "auto 1fr", gap: 6, fontSize: 12.5, textAlign: "left" }}>
+              <span style={{ color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Total" : "Total"}:</span>
+              <span style={{ color: "var(--gold)", fontWeight: 700, fontFamily: "monospace" }}>{successModal.total}</span>
+              <span style={{ color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Referencia" : "Reference"}:</span>
+              <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>{successModal.masterRef}</span>
+              <span style={{ color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Factura" : "Invoice"}:</span>
+              <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>{successModal.invoiceNum}</span>
+            </div>
+            <div style={{ padding: "10px 12px", borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", marginBottom: 18, fontSize: 11.5, color: "rgba(255,255,255,.7)", display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <Star style={{ width: 13, height: 13, color: "#8DC63F", flexShrink: 0, marginTop: 1 }} />
+              <span>
+                {lang === "es"
+                  ? <><strong style={{ color: "#8DC63F" }}>{successModal.pointsEarned} puntos</strong> se acreditarán a tu cuenta cuando se confirme el pago.</>
+                  : <><strong style={{ color: "#8DC63F" }}>{successModal.pointsEarned} points</strong> will be credited to your account when payment is confirmed.</>}
+              </span>
+            </div>
+            <button onClick={() => { setSuccessModal(null); nav("/account"); }} style={{ width: "100%", padding: "13px 0", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 8px 24px rgba(245,166,35,.3)" }}>
+              {lang === "es" ? "Ir a mi cuenta" : "Go to my account"}
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px" }}>
         <div style={{ marginBottom: 24 }}>
           <button onClick={() => nav("/account")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 99, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: 700, cursor: "pointer", marginBottom: 14 }}>
@@ -4073,12 +4128,11 @@ function AccountPage() {
   const [showRewardsModal, setShowRewardsModal] = useState(false);
   const [showCouponsModal, setShowCouponsModal] = useState(false);
   const [redeemSuccess, setRedeemSuccess] = useState(null);
-  const [bookings, setBookings] = useState(() => {
-    // Sin defaults demo. Bookings reales se cargan en useEffect desde Supabase.
-    // userPendingBookings es para items pagados offline aún sin confirmar por admin.
-    const paidItems = PRDISE.load("userPendingBookings", []);
-    return paidItems;
-  });
+  // Source of truth: tabla bookings de Supabase (cargada en useEffect). Antes
+  // se inicializaba con userPendingBookings de localStorage, lo que duplicaba
+  // las reservas — una vez creada en Supabase aparecía dos veces: una desde
+  // localStorage (sin sb- prefix) y otra desde Supabase (con sb- prefix).
+  const [bookings, setBookings] = useState([]);
   const [cart, setCart] = useState(() => {
     // Cart real desde userCart en localStorage. Sin fallback demo: si el usuario
     // no ha agregado nada, el carrito queda vacío. Solo transfers Y con routeId
@@ -4178,32 +4232,47 @@ function AccountPage() {
           level: progress.currentTier?.label?.es || "Bronze",
           avatarUrl: profile.avatar_url || null,
         }));
-        // Bookings reales del usuario
+        // Bookings reales del usuario con JOINs a las tablas relacionadas para
+        // poder mostrar from→to (transfers), title (stays/tours) y diferenciar
+        // el formato de fecha por tipo (transfers usan start_date + start_time;
+        // stays usan checkin/checkout).
         const { data: bookingsData } = await sb
           .from("bookings")
-          .select("id, item_type, stay_id, tour_id, transfer_route_id, start_date, end_date, pax, total_cents, status, created_at, payments(id, method, status, amount_cents)")
+          .select(
+            "id, item_type, stay_id, tour_id, transfer_route_id, start_date, end_date, start_time, pax, total_cents, status, created_at, payments(id, method, status, amount_cents), transfer_route:transfer_routes(from_location, to_location), stay:stays(title_es, title_en), tour:tours(title_es, title_en)"
+          )
           .eq("user_id", authUser.id)
           .order("created_at", { ascending: false });
         if (bookingsData && mounted) {
-          const mapped = bookingsData.map((b) => ({
-            id: "sb-" + b.id,
-            ref: "PRD-" + b.id.slice(0, 8).toUpperCase(),
-            type: b.item_type === "stay" ? "hotel" : b.item_type === "tour" ? "tour" : "transfer",
-            name: b.item_type === "stay" ? "Stay" : b.item_type === "tour" ? "Tour" : "Transfer",
-            status: b.status === "completed" ? "completed" : b.status === "confirmed" ? "active" : "pending",
-            checkin: b.start_date,
-            checkout: b.end_date,
-            date: b.start_date,
-            time: "",
-            location: "",
-            guests: b.pax || 1,
-            total: (b.total_cents || 0) / 100,
-            notes: "",
-          }));
-          setBookings((prev) => {
-            const localOnly = prev.filter((p) => !String(p.id || "").startsWith("sb-"));
-            return [...mapped, ...localOnly];
+          const mapped = bookingsData.map((b) => {
+            const type = b.item_type === "stay" ? "hotel" : b.item_type === "tour" ? "tour" : "transfer";
+            let name = type === "hotel" ? "Stay" : type === "tour" ? "Tour" : "Transfer";
+            let location = "";
+            if (type === "transfer" && b.transfer_route) {
+              location = `${b.transfer_route.from_location} → ${b.transfer_route.to_location}`;
+            } else if (type === "hotel" && b.stay) {
+              name = (lang === "es" ? b.stay.title_es : b.stay.title_en) || b.stay.title_es || name;
+            } else if (type === "tour" && b.tour) {
+              name = (lang === "es" ? b.tour.title_es : b.tour.title_en) || b.tour.title_es || name;
+            }
+            const baseFields = {
+              id: "sb-" + b.id,
+              ref: "PRD-" + b.id.slice(0, 8).toUpperCase(),
+              type,
+              name,
+              status: b.status === "completed" ? "completed" : b.status === "confirmed" ? "active" : "pending",
+              location,
+              guests: b.pax || 1,
+              total: (b.total_cents || 0) / 100,
+              notes: "",
+            };
+            // Transfers usan date + time; stays/tours usan checkin/checkout.
+            if (type === "transfer") {
+              return { ...baseFields, date: b.start_date, time: b.start_time || "" };
+            }
+            return { ...baseFields, checkin: b.start_date, checkout: b.end_date };
           });
+          setBookings(mapped);
         }
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -4262,7 +4331,11 @@ function AccountPage() {
   const renderBooking = (b) => {
     const meta = TYPE_META[b.type] || TYPE_META.hotel;
     const sm = STATUS_META[b.status];
-    const dateStr = b.checkin ? `${b.checkin} → ${b.checkout}` : `${b.date} · ${b.time}`;
+    const dateStr = b.type === "transfer"
+      ? `${b.date || ""}${b.time ? " · " + b.time : ""}`
+      : b.checkin
+        ? `${b.checkin}${b.checkout ? " → " + b.checkout : ""}`
+        : `${b.date || ""}${b.time ? " · " + b.time : ""}`;
     return (
       <div key={b.id} style={{ padding: "18px 16px", borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", marginBottom: 10, borderLeft: `3px solid ${meta.color}` }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
