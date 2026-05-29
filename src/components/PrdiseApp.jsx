@@ -83,6 +83,9 @@ import {
 import {
   listDrivers as sbListDrivers,
 } from "@/lib/admin/drivers";
+import {
+  listAllUsers as sbListAllUsers,
+} from "@/lib/admin/users";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -197,14 +200,17 @@ function mapTourToTour(t) {
 
 function mapVehicleToVehicle(v) {
   return {
-    id: (v.type || v.name || "").toLowerCase().replace(/\s+/g, "-"),
+    id: v.id, // UUID Supabase (necesario para admin CRUD update/delete)
+    slug: (v.type || v.name || "").toLowerCase().replace(/\s+/g, "-"),
     name: v.name,
+    type: v.type || "",
     seats: v.max_pax || 4,
     bags: v.max_luggage || 2,
     base: Math.round((v.price_cents || 0) / 100),
     perKm: 2.5,
     desc: "",
     features: ["A/C", "Pro driver", "Water", "WiFi"],
+    active: v.active !== false,
   };
 }
 
@@ -6207,7 +6213,13 @@ const A_DRIVERS = [];
 const A_USERS = [];
 const A_ROLES = [];
 const A_TRANSACTIONS = [];
-const A_LOYALTY_TIERS = [];
+// Tiers default — admin puede editarlos desde Settings → Lealtad y Cupones.
+// Persisten en localStorage como 'loyaltyTiers' hasta que exista tabla en DB.
+const A_LOYALTY_TIERS = [
+  { name: "Bronze", min: 0, discount: 0, color: "#CD7F32" },
+  { name: "Silver", min: 500, discount: 0, color: "#C0C0C0" },
+  { name: "Gold", min: 2000, discount: 0, color: "#FFD700" },
+];
 const A_COUPONS = [];
 const A_COUPON_HISTORY = [];
 const A_INVOICES = [];
@@ -6361,8 +6373,11 @@ function AdminPanel({ onClose }) {
   });
   const [hotels, setHotels] = useState(HOTELS);
   const [tours, setTours] = useState(TOURS);
-  const [vehicles, setVehicles] = useState(A_VEHICLES);
-  const [routes, setRoutes] = useState(A_ROUTES);
+  // Inicializar desde los globals ROUTES/VEHICLES que loadInitialData ya pobló
+  // desde Supabase. Antes usaba A_ROUTES/A_VEHICLES (arrays vacíos paralelos)
+  // por lo que el admin siempre veía 0 rutas y 0 vehículos aunque existieran.
+  const [vehicles, setVehicles] = useState(() => [...VEHICLES]);
+  const [routes, setRoutes] = useState(() => [...ROUTES]);
   const [transferBookings, setTransferBookings] = useState(A_TRANSFER_BOOKINGS);
   const [users, setUsers] = useState(A_USERS);
   const [roles, setRoles] = useState(() => {
@@ -6646,6 +6661,9 @@ function AdminPanel({ onClose }) {
   const [customerProfileEmail, setCustomerProfileEmail] = useState(null); // email to open profile for
   const [composeEmail, setComposeEmail] = useState(null); // { to, name, subject, body }
   const [loyaltyTiers, setLoyaltyTiers] = useState(() => PRDISE.load("loyaltyTiers", A_LOYALTY_TIERS));
+  // Persistir cambios de tiers en localStorage para que la AccountPage del
+  // cliente y el cart checkout consuman los valores actualizados del admin.
+  useEffect(() => { PRDISE.save("loyaltyTiers", loyaltyTiers); }, [loyaltyTiers]);
   const [partnersList, setPartnersList] = useState(() => Array.isArray(PARTNERS) ? [...PARTNERS] : []);
   const [editingPartner, setEditingPartner] = useState(null);
   const [partnerReferralCounts, setPartnerReferralCounts] = useState({});
@@ -6859,12 +6877,33 @@ function AdminPanel({ onClose }) {
     let cancel = false;
     (async () => {
       try {
-        const [drv, msgs, bks] = await Promise.all([
+        const [drv, msgs, bks, usrs] = await Promise.all([
           sbListDrivers(),
           sbListContactMessages(),
           sbListAllBookings({ itemType: "transfer", pageSize: 100 }),
+          sbListAllUsers({ pageSize: 200 }),
         ]);
         if (cancel) return;
+        if (usrs?.ok && Array.isArray(usrs.data?.items)) {
+          setUsers(usrs.data.items.map((u) => ({
+            id: u.id,
+            email: u.email || "",
+            name: [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.email || "—",
+            role: u.role === "admin" ? "Admin"
+              : u.role === "manager" ? "Manager"
+              : u.role === "employee" ? "Employee"
+              : "Customer",
+            roleRaw: u.role,
+            status: u.status || "active",
+            department: u.department || "",
+            position: u.position || "",
+            phone: u.phone || "",
+            country: u.country || "",
+            points: u.points_balance || 0,
+            tier: u.tier || "bronze",
+            joinedAt: (u.created_at || "").slice(0, 10),
+          })));
+        }
         if (Array.isArray(drv)) {
           setDrivers(drv.map((d) => ({
             id: d.id,
@@ -8111,28 +8150,37 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <button className="adm-btn adm-btn-primary" onClick={() => setEditing({ type: transferTab === "routes" ? "route" : transferTab === "vehicles" ? "transfer" : transferTab === "drivers" ? "driver" : "booking", isNew: true })}><Plus />Add new</button>
               </div>
             </div>
+            {(() => {
+              const todayISO = new Date().toISOString().slice(0, 10);
+              const todaysBookings = transferBookings.filter((b) => b.date === todayISO);
+              const inProgress = transferBookings.filter((b) => b.status === "confirmed").length;
+              const availableDrivers = drivers.filter((d) => d.status === "available").length;
+              const driversPct = drivers.length > 0 ? Math.round((availableDrivers / drivers.length) * 100) : 0;
+              return (
             <div className="adm-stats">
               <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Traslados hoy":"Transfers today"}<InfoTip text="Number of transfer bookings scheduled for today. Includes confirmed, pending, and in-route. Source: Transfers → Bookings tab." /></span><div className="adm-stat-ico"><Car /></div></div>
-                <div className="adm-stat-val">87</div>
-                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"12 en progreso":"12 in progress"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Traslados hoy":"Transfers today"}<InfoTip text="Reservas de traslados con fecha de hoy. Source: tabla bookings de Supabase." /></span><div className="adm-stat-ico"><Car /></div></div>
+                <div className="adm-stat-val">{todaysBookings.length}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{inProgress} {lang==="es"?"confirmadas":"confirmed"}</div>
               </div>
               <div className="adm-stat green">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Conductores activos":"Active drivers"}<InfoTip text="Drivers with status 'available' out of total registered. Source: Transfers → Drivers tab. Synced with Users & Roles (dept: Transfers)." /></span><div className="adm-stat-ico"><Users /></div></div>
-                <div className="adm-stat-val">{drivers.filter(d => d.status !== "off").length} / {drivers.length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"77% disponible":"77% available"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Conductores activos":"Active drivers"}<InfoTip text="Conductores con status 'available'. Source: Transfers → Drivers tab." /></span><div className="adm-stat-ico"><Users /></div></div>
+                <div className="adm-stat-val">{availableDrivers} / {drivers.length}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{driversPct}% {lang==="es"?"disponible":"available"}</div>
               </div>
               <div className="adm-stat sky">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Rutas configuradas":"Configured routes"}<InfoTip text="Total active and inactive routes. Each route has assigned drivers and pricing. Source: Transfers → Routes tab." /></span><div className="adm-stat-ico"><MapPin /></div></div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Rutas configuradas":"Configured routes"}<InfoTip text="Total de rutas activas e inactivas. Source: Transfers → Routes tab." /></span><div className="adm-stat-ico"><MapPin /></div></div>
                 <div className="adm-stat-val">{routes.length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"4 zonas":"4 zones"}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{vehicles.length} {lang==="es"?"vehículos":"vehicles"}</div>
               </div>
               <div className="adm-stat orange">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Retrasos":"Delays"}<InfoTip text="Transfer bookings running behind schedule or flagged by drivers. Requires attention. Source: Real-time driver status updates." /></span><div className="adm-stat-ico"><Clock /></div></div>
-                <div className="adm-stat-val">2</div>
-                <div className="adm-stat-trend down"><AlertTriangle />{lang==="es"?"Alerta media":"Medium alert"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pendientes":"Pending"}<InfoTip text="Reservas con status 'pending_payment' o 'pending' esperando confirmación. Source: bookings Supabase." /></span><div className="adm-stat-ico"><Clock /></div></div>
+                <div className="adm-stat-val">{transferBookings.filter((b) => b.status === "pending" || b.status === "pending_payment").length}</div>
+                <div className="adm-stat-trend"><AlertTriangle />{lang==="es"?"requieren acción":"need action"}</div>
               </div>
             </div>
+              );
+            })()}
 
             <div className="adm-filter-row">
               <button className={`adm-fchip ${transferTab === "routes" ? "active" : ""}`} onClick={() => setTransferTab("routes")}>{lang === "es" ? "Rutas" : "Routes"} <span className="adm-fchip-num">{routes.length}</span></button>
@@ -11543,11 +11591,29 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             {settingsTab === "security" && (
               <div className="adm-card">
                 <div className="adm-card-head"><div className="adm-card-title">{lang==="es"?"Seguridad y Autenticación":"Security & Authentication"}</div></div>
+                <div style={{ padding: "12px 16px", marginBottom: 14, borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", fontSize: 12, color: "rgba(255,255,255,.7)", lineHeight: 1.55, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <Info style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0, marginTop: 2 }} />
+                  <span>
+                    {lang==="es"
+                      ? "Las opciones de 2FA, timeout de sesión y alertas de login están planificadas pero todavía no se aplican en el backend. Solo Cambiar Contraseña está operativo."
+                      : "2FA, session timeout and login alerts are planned but not enforced by the backend yet. Only Change Password is functional."}
+                  </span>
+                </div>
                 <NotifSetting label={lang==="es"?"Autenticación de dos factores":"Two-factor authentication"} desc={lang==="es"?"Requerir un código de verificación además de la contraseña":"Require a verification code in addition to password"} defaultOn />
                 <NotifSetting label={lang==="es"?"Tiempo de sesión (30 min)":"Session timeout (30 min)"} desc={lang==="es"?"Cerrar sesión automáticamente tras 30 minutos de inactividad":"Automatically log out after 30 minutes of inactivity"} defaultOn />
                 <NotifSetting label={lang==="es"?"Alertas de inicio de sesión":"Login alerts"} desc={lang==="es"?"Notificación por correo al iniciar sesión desde un dispositivo nuevo":"Email notification on new device login"} defaultOn />
                 <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                  <button className="adm-btn adm-btn-ghost"><Key />{lang==="es"?"Cambiar Contraseña":"Change Password"}</button>
+                  <button className="adm-btn adm-btn-ghost" onClick={async () => {
+                    const sess = PRDISE.load("session", null);
+                    const email = sess?.email;
+                    if (!email) { alert(lang==="es"?"No se pudo identificar tu correo. Cierra sesión y vuelve a entrar.":"Could not identify your email. Sign out and back in."); return; }
+                    try {
+                      const fd = new FormData(); fd.append("email", email);
+                      const res = await sbRequestPasswordReset(fd);
+                      if (res?.ok === false) { alert((lang==="es"?"Error: ":"Error: ") + (res.error || "")); return; }
+                      alert(lang==="es"?`Te enviamos un correo a ${email} con un enlace para restablecer tu contraseña.`:`We sent an email to ${email} with a link to reset your password.`);
+                    } catch { alert(lang==="es"?"No se pudo enviar el correo. Intenta más tarde.":"Could not send email. Try later."); }
+                  }}><Key />{lang==="es"?"Cambiar Contraseña":"Change Password"}</button>
                 </div>
               </div>
             )}
@@ -11891,7 +11957,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <input type="number" min={1} max={100} className="adm-fi" value={editingCoupon.discount} onChange={(e) => setEditingCoupon({ ...editingCoupon, discount: Math.max(1, Math.min(100, parseInt(e.target.value) || 0)) })} />
               </div>
               <div className="adm-fg" style={{ flex: 1 }}>
-                <label className="adm-fl">{lang === "es" ? "Usos máximos" : "Max uses"}</label>
+                <label className="adm-fl">{lang === "es" ? "Usos máximos (total)" : "Max uses (total)"}</label>
                 <input
                   type="number"
                   min={Math.max(1, editingCoupon.used || 0)}
@@ -11903,6 +11969,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     setEditingCoupon({ ...editingCoupon, maxUses: Math.max(minVal, newVal) });
                   }}
                 />
+                <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 5, lineHeight: 1.5 }}>
+                  {lang === "es"
+                    ? "Total acumulado entre TODOS los usuarios (no por usuario individual)."
+                    : "Total across ALL users combined (not per individual user)."}
+                </p>
                 {editingCoupon.id !== "new" && (editingCoupon.used || 0) > 0 && (
                   <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 5, lineHeight: 1.5 }}>
                     {lang === "es"
@@ -13656,7 +13727,11 @@ const INTEGRATIONS_CONFIG = {
 
 function IntegrationsPanel() {
   const { lang } = useLang();
-  const [connected, setConnected] = useState({ stripe: true, "google-analytics": true, whatsapp: true });
+  // Ninguna integracion esta realmente conectada todavia. Antes el estado
+  // inicial decia true para stripe/GA/whatsapp lo que era engañoso para el
+  // admin. Cuando se implementen las integraciones reales, este estado debe
+  // venir de Supabase (tabla `integrations` o similar).
+  const [connected, setConnected] = useState({ stripe: false, "google-analytics": false, whatsapp: false });
   const [openModal, setOpenModal] = useState(null);
   const [savedData, setSavedData] = useState({});
 
@@ -13685,14 +13760,13 @@ function IntegrationsPanel() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              {connected[id] && (
-                <button className="adm-btn adm-btn-ghost" onClick={() => setOpenModal(id)}><Pencil />{lang==="es"?"Configurar":"Configure"}</button>
-              )}
-              {connected[id] ? (
-                <button className="adm-btn adm-btn-ghost" onClick={() => handleDisconnect(id)}>{lang==="es"?"Desconectar":"Disconnect"}</button>
-              ) : (
-                <button className="adm-btn adm-btn-primary" onClick={() => setOpenModal(id)}><Plus />{lang==="es"?"Conectar":"Connect"}</button>
-              )}
+              {/* Boton deshabilitado: backend de integraciones aun no
+                  implementado. Mostrar 'Pronto' en lugar de permitir conectar
+                  con un modal cuyo guardado solo viviria en memoria local
+                  (engañoso). */}
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "6px 12px", borderRadius: 99, background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.45)" }}>
+                {lang==="es"?"Próximamente":"Coming soon"}
+              </span>
             </div>
           </div>
         ))}

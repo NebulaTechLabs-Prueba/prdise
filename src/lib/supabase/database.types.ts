@@ -453,6 +453,125 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_items: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          line_total_cents: number
+          quantity: number
+          unit_cents: number
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          line_total_cents: number
+          quantity?: number
+          unit_cents: number
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          line_total_cents?: number
+          quantity?: number
+          unit_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          created_at: string
+          customer_email: string
+          customer_name: string
+          customer_phone: string | null
+          discount_cents: number
+          due_at: string | null
+          id: string
+          issued_at: string
+          notes: string | null
+          number: string
+          paid_at: string | null
+          payment_ref: string | null
+          status: string
+          subtotal_cents: number
+          tax_cents: number
+          total_cents: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_email: string
+          customer_name: string
+          customer_phone?: string | null
+          discount_cents?: number
+          due_at?: string | null
+          id?: string
+          issued_at?: string
+          notes?: string | null
+          number: string
+          paid_at?: string | null
+          payment_ref?: string | null
+          status?: string
+          subtotal_cents: number
+          tax_cents?: number
+          total_cents: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string
+          customer_name?: string
+          customer_phone?: string | null
+          discount_cents?: number
+          due_at?: string | null
+          id?: string
+          issued_at?: string
+          notes?: string | null
+          number?: string
+          paid_at?: string | null
+          payment_ref?: string | null
+          status?: string
+          subtotal_cents?: number
+          tax_cents?: number
+          total_cents?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_referrals: {
         Row: {
           id: string
