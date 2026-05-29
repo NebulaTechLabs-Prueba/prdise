@@ -2460,6 +2460,7 @@ function TransferResultsPage() {
 
 /* ═══════════════ CHECKOUT (hotel | tour | transfer) ═══════════════ */
 function CheckoutForm({ type }) {
+  const { lang } = useLang();
   const [booking, setBooking] = useState(null);
   const [user, setUser] = useState(null);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", country: "United States", notes: "", cardNum: "", cardExp: "", cardCvc: "", cardName: "", terms: false, athPhone: "", athAmount: "", athTime: "", athHolder: "", athReceipt: "", bankHolder: "", bankLast4: "", bankAmount: "", bankDate: "", bankReference: "", bankReceipt: "", paypalReceipt: "" });
@@ -3461,8 +3462,36 @@ function CartCheckoutPage() {
         setUseSavedMethod(true);
       }
     }
-    const savedDrafts = PRDISE.load("userCart", []);
-    setCart(savedDrafts.length > 0 ? savedDrafts.map(d => ({ id: d._cartId || ("c" + Math.random().toString(36).slice(2, 6)), ref: d.ref || "CART-DRAFT", type: d.type, name: d.name || d.vehicleName, date: d.date || d.checkin, time: d.time || "", checkin: d.checkin, checkout: d.checkout, location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""), guests: d.guests || d.travelers || d.pax || 1, total: d.total || 0, quantity: d.travelers || d.guests || d.pax || d.nights || 1 })) : []);
+    // Solo transfers en el modelo referral. Items legacy (sin routeId UUID)
+    // se descartan: requieren ser regenerados desde /transfer-search post-fix
+    // para incluir el id de la ruta en Supabase.
+    const savedDrafts = (PRDISE.load("userCart", []) || []).filter(
+      (d) => d?.type === "transfer" && d?.routeId
+    );
+    setCart(savedDrafts.length > 0 ? savedDrafts.map(d => ({
+      id: d._cartId || ("c" + Math.random().toString(36).slice(2, 6)),
+      ref: d.ref || "CART-DRAFT",
+      type: d.type,
+      name: d.name || d.vehicleName,
+      date: d.date || d.checkin,
+      time: d.time || "",
+      checkin: d.checkin,
+      checkout: d.checkout,
+      location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""),
+      guests: d.guests || d.travelers || d.pax || 1,
+      total: d.total || 0,
+      quantity: d.travelers || d.guests || d.pax || d.nights || 1,
+      // Preservar identificadores que necesita el Server Action para resolver
+      // el item en Supabase (routeId UUID es el critico para transfers).
+      routeId: d.routeId,
+      hotelId: d.hotelId,
+      tourId: d.tourId,
+      from: d.from,
+      to: d.to,
+      vehicleId: d.vehicleId,
+      bags: d.bags,
+      km: d.km,
+    })) : []);
   }, []);
 
   const subtotal = cart.reduce((s, c) => s + (c.total || 0), 0);
