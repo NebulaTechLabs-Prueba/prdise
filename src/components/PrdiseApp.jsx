@@ -67,6 +67,22 @@ import {
   listPartnerReferralCounts as sbListPartnerReferralCounts,
 } from "@/lib/admin/partners";
 import { logReferral as sbLogReferral } from "@/lib/referrals/actions";
+import {
+  listContactMessages as sbListContactMessages,
+  updateContactStatus as sbUpdateContactStatus,
+  deleteContactMessage as sbDeleteContactMessage,
+} from "@/lib/admin/contacts";
+import {
+  getDashboardSummary as sbGetDashboardSummary,
+  getRecentBookings as sbGetRecentBookings,
+} from "@/lib/admin/aggregates";
+import {
+  listAllBookings as sbListAllBookings,
+  updateBookingStatus as sbUpdateBookingStatus,
+} from "@/lib/admin/bookings";
+import {
+  listDrivers as sbListDrivers,
+} from "@/lib/admin/drivers";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -234,6 +250,9 @@ async function loadInitialData() {
       getPublishedPosts(sb, {}),
       getPartners(sb, { activeOnly: false }),
     ]);
+    void sb; // Drivers se cargan en AdminPanel via Server Action listDrivers
+             // (requiere staff auth) — no se pre-carga en loadInitialData
+             // porque el catálogo público no necesita drivers.
 
     HOTELS.length = 0;
     (stays || []).forEach((s) => HOTELS.push(mapStayToHotel(s)));
@@ -6832,6 +6851,75 @@ function AdminPanel({ onClose }) {
   const [splashOff, setSplashOff] = useState(() => PRDISE.load("splashOff", false));
   const [transferTab, setTransferTab] = useState("routes");
   const [contactsFilter, setContactsFilter] = useState("all");
+  // Carga datos REALES de Supabase al montar AdminPanel: drivers, contacts y
+  // transfer bookings. Antes estos modulos siempre mostraban arrays vacios
+  // hardcoded (A_DRIVERS, A_CONTACTS, A_TRANSFER_BOOKINGS) y las acciones del
+  // admin se aplicaban solo a estado local sin persistir.
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const [drv, msgs, bks] = await Promise.all([
+          sbListDrivers(),
+          sbListContactMessages(),
+          sbListAllBookings({ itemType: "transfer", pageSize: 100 }),
+        ]);
+        if (cancel) return;
+        if (Array.isArray(drv)) {
+          setDrivers(drv.map((d) => ({
+            id: d.id,
+            name: d.name,
+            phone: d.phone || "",
+            email: d.email || "",
+            license: d.license || "",
+            vehicle: d.vehicle || "",
+            emergencyPhone: d.emergency_phone || "",
+            webVisible: !!d.web_visible,
+            status: d.status || "available",
+            rating: Number(d.rating) || 5,
+            trips: Number(d.trips_count) || 0,
+            plate: "",
+          })));
+        }
+        if (Array.isArray(msgs)) {
+          setContacts(msgs.map((m) => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            phone: m.phone || "",
+            message: m.message,
+            status: m.status || "new",
+            date: (m.created_at || "").slice(0, 10),
+            isCustomer: false,
+          })));
+        }
+        if (bks?.ok && Array.isArray(bks.data?.items)) {
+          setTransferBookings(bks.data.items.map((b) => {
+            const route = ROUTES.find((r) => r.id === b.transfer_route_id);
+            return {
+              id: b.id,
+              ref: "PRD-" + b.id.slice(0, 8).toUpperCase(),
+              customer: b.customer
+                ? [b.customer.first_name, b.customer.last_name].filter(Boolean).join(" ").trim() || "—"
+                : "—",
+              route: route ? `${route.from} → ${route.to}` : "—",
+              date: b.start_date,
+              time: b.start_time || "",
+              pax: b.pax || 1,
+              total: (b.total_cents || 0) / 100,
+              status: b.status,
+              driver: "",
+              vehicle: "",
+              notes: b.notes || "",
+            };
+          }));
+        }
+      } catch (e) {
+        console.warn("[admin] load real data:", e);
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
   const [hotelsFilter, setHotelsFilter] = useState("all");
   const [toursFilter, setToursFilter] = useState("all");
   const [invoicesFilter, setInvoicesFilter] = useState("all");
@@ -6939,22 +7027,44 @@ function AdminPanel({ onClose }) {
     })).filter(g => g.items.length > 0);
   })();
 
-  const allBookings = useMemo(() => PRDISE.load("bookings", []), []);
-  const totalRevenue = transactions.filter((t) => t.status === "completed" || t.status === "paid").reduce((s, t) => s + t.amount, 0);
+  // Dashboard: métricas reales desde Supabase. getDashboardSummary devuelve
+  // revenueCents/bookingsCount/activeStaysCount/newUsersCount + deltas pct.
+  // Antes mostraba zeros porque no se llamaba la query.
+  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [recentBookings, setRecentBookings] = useState([]);
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const rangeDays = dateRange === "7d" ? 7 : 30;
+        const [summary, recent] = await Promise.all([
+          sbGetDashboardSummary({ rangeDays }),
+          sbGetRecentBookings(5),
+        ]);
+        if (cancel) return;
+        if (summary) setDashboardSummary(summary);
+        if (Array.isArray(recent)) setRecentBookings(recent);
+      } catch {}
+    })();
+    return () => { cancel = true; };
+  }, [dateRange]);
+  const totalRevenue = dashboardSummary?.revenueCents != null
+    ? dashboardSummary.revenueCents / 100
+    : 0;
   const pendingPayments = transactions.filter((t) => t.status === "pending").length;
   const totalUsers = users.length;
-  const activeStays = hotels.filter((h) => h.status === "published").length;
+  const activeStays = dashboardSummary?.activeStaysCount ?? hotels.filter((h) => h.status === "published").length;
 
-  // Métricas vacías hasta que se conecten a Supabase (bookings/payments reales).
-  // Las cifras hardcoded del demo fueron eliminadas — todo arranca en cero.
   const rangeMetrics = useMemo(() => {
-    const zeros = {
-      revenue: 0,
-      revenueDelta: "—",
-      bookings: 0,
-      bookingsDelta: "—",
-      newUsers: 0,
-      newUsersDelta: "—",
+    const s = dashboardSummary;
+    const fmtPct = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`;
+    return {
+      revenue: s?.revenueCents != null ? s.revenueCents / 100 : 0,
+      revenueDelta: fmtPct(s?.deltas?.revenuePct),
+      bookings: s?.bookingsCount ?? 0,
+      bookingsDelta: fmtPct(s?.deltas?.bookingsPct),
+      newUsers: s?.newUsersCount ?? 0,
+      newUsersDelta: fmtPct(s?.deltas?.newUsersPct),
       chartData: [],
       chartTitle: dateRange === "7d"
         ? (lang === "es" ? "Ingresos (últimos 7 días)" : "Revenue (last 7 days)")
@@ -6962,7 +7072,9 @@ function AdminPanel({ onClose }) {
       analytics: {
         conversion: "—",
         conversionDelta: "—",
-        avgBooking: "—",
+        avgBooking: s?.bookingsCount && s?.revenueCents != null && s.bookingsCount > 0
+          ? `$${(s.revenueCents / s.bookingsCount / 100).toFixed(2)}`
+          : "—",
         avgBookingDelta: "—",
         repeat: "—",
         repeatDelta: "—",
@@ -6970,8 +7082,9 @@ function AdminPanel({ onClose }) {
         cancelDelta: "—",
       },
     };
-    return zeros;
-  }, [dateRange, lang]);
+  }, [dashboardSummary, dateRange, lang]);
+  // Compat con referencias antiguas: allBookings ahora es las recent bookings.
+  const allBookings = recentBookings;
 
   // Reset to placeholder vars (avoid unused warnings)
   void totalRevenue;
