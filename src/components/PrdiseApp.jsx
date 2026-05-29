@@ -708,6 +708,7 @@ input,select,textarea{font-family:inherit}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .hero-kicker span{font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.5)}
 .hero h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(3rem,10vw,8rem);line-height:.92;letter-spacing:.02em;color:#fff;margin-bottom:20px}
+.hero h1.lang-es{font-size:clamp(2.6rem,8.5vw,6.8rem);letter-spacing:0}
 .hero h1 .col-g{color:var(--gold)}.hero h1 .col-o{color:var(--orange)}
 .hero h1 .col-gr{color:var(--green)}.hero h1 .col-s{color:var(--sky)}
 .hero-sub{font-size:clamp(15px,2vw,19px);color:rgba(255,255,255,.65);max-width:500px;line-height:1.7;font-weight:300;margin-bottom:40px}
@@ -1159,15 +1160,15 @@ function Navbar() {
 
   // Track cart count — poll localStorage because changes happen from other pages.
   // Pivote a modelo referral: stays/tours redirigen a partners y no se cartean.
-  // Solo transfers van al cart. Filtramos por type para no inflar el contador
-  // con items residuales del modelo antiguo.
+  // Solo transfers con routeId UUID son procesables. Filtro consistente con
+  // AccountPage y CartCheckoutPage para que el contador refleje el cart real.
   useEffect(() => {
     const refreshCart = () => {
       const sess = PRDISE.load("session", null);
       if (!sess || sess.role !== "user") { setCartCount(0); return; }
       const realCart = PRDISE.load("userCart", []);
-      const transferOnly = realCart.filter((c) => c.type === "transfer");
-      setCartCount(transferOnly.length);
+      const valid = realCart.filter((c) => c?.type === "transfer" && c?.routeId);
+      setCartCount(valid.length);
     };
     refreshCart();
     const interval = setInterval(refreshCart, 1500);
@@ -1437,7 +1438,7 @@ function HomePage() {
             <i /><i /><i /><i />
             <span>{t("heroTag")}</span>
           </div>
-          <h1>{t("heroTitle")}<br /><span className="col-g">P</span><span className="col-o">R</span><span>DISE</span></h1>
+          <h1 className={lang === "es" ? "lang-es" : ""}>{t("heroTitle")}<br /><span className="col-g">P</span><span className="col-o">R</span><span>DISE</span></h1>
           <p className="hero-sub">{t("heroSub")}</p>
           <div className="hero-btns">
             <NavLink to="/transfer-search" className="h-btn h-btn-fill"><Car />{t("heroCtaTransfer")}</NavLink>
@@ -2531,12 +2532,10 @@ function CheckoutForm({ type }) {
     }
     if (method === "ath") {
       if (!form.athPhone.trim()) errs.athPhone = "Required";
-      if (!form.athAmount.trim()) errs.athAmount = "Required";
       if (!form.athReceipt) errs.athReceipt = "Screenshot required";
     }
     if (method === "bank") {
       if (!form.bankHolder.trim()) errs.bankHolder = "Required";
-      if (!form.bankAmount.trim()) errs.bankAmount = "Required";
       if (!form.bankDate) errs.bankDate = "Required";
       if (!form.bankReceipt) errs.bankReceipt = "Receipt required";
     }
@@ -2886,9 +2885,9 @@ function CheckoutForm({ type }) {
                         {errors.athPhone && <p className="err-msg">{errors.athPhone}</p>}
                       </div>
                       <div>
-                        <label className="f-lab">Amount Sent *</label>
-                        <input type="text" className={`f-in ${errors.athAmount?"err":""}`} placeholder={fmt(booking.total)} value={form.athAmount} onChange={(e) => upd("athAmount", e.target.value)} />
-                        {errors.athAmount && <p className="err-msg">{errors.athAmount}</p>}
+                        <label className="f-lab">Amount to Send</label>
+                        <input type="text" className="f-in" value={fmt(booking.total)} readOnly disabled style={{ opacity: 0.75, cursor: "not-allowed" }} />
+                        <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4 }}>Send this exact amount via ATH Móvil.</p>
                       </div>
                     </div>
                     <div className="f-row">
@@ -2933,7 +2932,7 @@ function CheckoutForm({ type }) {
                         <span style={{ color: "rgba(255,255,255,.5)" }}>Account Holder:</span>
                         <span style={{ color: "#fff", fontWeight: 600 }}>Living in PRDISE LLC</span>
                         <span style={{ color: "rgba(255,255,255,.5)" }}>Account #:</span>
-                        <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>••• ••• 4821</span>
+                        <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>0123-4567-8901</span>
                         <span style={{ color: "rgba(255,255,255,.5)" }}>Routing:</span>
                         <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>021502011</span>
                       </div>
@@ -2948,9 +2947,9 @@ function CheckoutForm({ type }) {
                         {errors.bankHolder && <p className="err-msg">{errors.bankHolder}</p>}
                       </div>
                       <div>
-                        <label className="f-lab">Amount Sent *</label>
-                        <input type="text" className={`f-in ${errors.bankAmount?"err":""}`} placeholder={fmt(booking.total)} value={form.bankAmount} onChange={(e) => upd("bankAmount", e.target.value)} />
-                        {errors.bankAmount && <p className="err-msg">{errors.bankAmount}</p>}
+                        <label className="f-lab">Amount to Send</label>
+                        <input type="text" className="f-in" value={fmt(booking.total)} readOnly disabled style={{ opacity: 0.75, cursor: "not-allowed" }} />
+                        <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4 }}>Transfer this exact amount.</p>
                       </div>
                     </div>
                     <div className="f-row">
@@ -4082,14 +4081,21 @@ function AccountPage() {
   });
   const [cart, setCart] = useState(() => {
     // Cart real desde userCart en localStorage. Sin fallback demo: si el usuario
-    // no ha agregado nada, el carrito queda vacío (no se muestran "items default").
-    // Pivote a modelo referral: stays/tours se redirigen a partners y no se cartean
-    // (filtrado defensivo por si quedan items legacy en localStorage).
-    const savedDrafts = (PRDISE.load("userCart", []) || []).filter(
-      (d) => d?.type === "transfer"
+    // no ha agregado nada, el carrito queda vacío. Solo transfers Y con routeId
+    // UUID (filtro consistente con CartCheckoutPage). Items legacy sin routeId
+    // se descartan: no son procesables por el Server Action y solo confunden
+    // al usuario si los mostramos en una vista pero fallan al checkout.
+    // Sanitize: limpiamos localStorage de items inválidos para que el navbar
+    // counter y otros consumidores queden consistentes.
+    const rawCart = PRDISE.load("userCart", []) || [];
+    const validDrafts = rawCart.filter(
+      (d) => d?.type === "transfer" && d?.routeId
     );
-    if (!savedDrafts || savedDrafts.length === 0) return [];
-    return savedDrafts.map(d => ({
+    if (validDrafts.length !== rawCart.length) {
+      try { PRDISE.save("userCart", validDrafts); window.dispatchEvent(new Event("prdise-cart-update")); } catch {}
+    }
+    if (!validDrafts.length) return [];
+    return validDrafts.map(d => ({
       id: d._cartId || d.id || ("c" + Math.random().toString(36).slice(2, 6)),
       ref: d.ref || "CART-DRAFT",
       type: d.type,
@@ -4103,6 +4109,16 @@ function AccountPage() {
       total: d.total || 0,
       quantity: d.quantity || d.travelers || d.guests || d.pax || d.nights || 1,
       notes: d.notes || "Saved from your search · complete payment to confirm",
+      // Preservar identificadores que el Server Action necesita para resolver
+      // el item en Supabase. Sin esto el checkout falla con 'item no existe'.
+      routeId: d.routeId,
+      hotelId: d.hotelId,
+      tourId: d.tourId,
+      from: d.from,
+      to: d.to,
+      vehicleId: d.vehicleId,
+      bags: d.bags,
+      km: d.km,
     }));
   });
   const [removingItem, setRemovingItem] = useState(null);
