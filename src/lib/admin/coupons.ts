@@ -110,7 +110,9 @@ export async function listCouponHistory(): Promise<CouponRedemptionRow[]> {
 // SERVER ACTIONS
 // ===========================================================================
 
-export async function createCoupon(formData: FormData): Promise<ActionResult> {
+export async function createCoupon(
+  formData: FormData
+): Promise<ActionResult<{ id: string }>> {
   const guard = await getAdminOrError();
   if (!guard.ok) return guard;
 
@@ -160,7 +162,10 @@ export async function createCoupon(formData: FormData): Promise<ActionResult> {
     code: d.code.toUpperCase(),
     discount_pct: d.discount_pct,
   });
-  return { ok: true };
+  // Devolvemos el UUID generado para que el cliente actualice el item local
+  // con el id real (no un "cp" + timestamp). Sin esto, el update/delete
+  // posterior falla con 'Identificador invalido' porque el id no es UUID.
+  return { ok: true, data: { id: data?.id ?? "" } };
 }
 
 export async function updateCoupon(formData: FormData): Promise<ActionResult> {

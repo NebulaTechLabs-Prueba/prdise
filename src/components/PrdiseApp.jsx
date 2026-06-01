@@ -57,6 +57,7 @@ import {
   createCoupon as sbCreateCoupon,
   updateCoupon as sbUpdateCoupon,
   deleteCoupon as sbDeleteCoupon,
+  listCoupons as sbListCoupons,
 } from "@/lib/admin/coupons";
 import { validateCoupon as sbValidateCoupon } from "@/lib/coupons/actions";
 import { getEnabledPaymentMethods } from "@/lib/payments/registry";
@@ -6698,6 +6699,7 @@ function AdminPanel({ onClose }) {
   // cliente y el cart checkout consuman los valores actualizados del admin.
   useEffect(() => { PRDISE.save("loyaltyTiers", loyaltyTiers); }, [loyaltyTiers]);
   const [partnersList, setPartnersList] = useState(() => Array.isArray(PARTNERS) ? [...PARTNERS] : []);
+  const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
   const [partnerReferralCounts, setPartnerReferralCounts] = useState({});
   useEffect(() => {
@@ -6910,13 +6912,32 @@ function AdminPanel({ onClose }) {
     let cancel = false;
     (async () => {
       try {
-        const [drv, msgs, bks, usrs, invs] = await Promise.all([
+        const [drv, msgs, bks, usrs, invs, cps] = await Promise.all([
           sbListDrivers(),
           sbListContactMessages(),
           sbListAllBookings({ itemType: "transfer", pageSize: 100 }),
           sbListAllUsers({ pageSize: 200 }),
           sbListInvoices(),
+          sbListCoupons(),
         ]);
+        // Coupons reales desde Supabase (UUIDs validos para CRUD). Antes el
+        // estado se inicializaba con PRDISE.load('coupons') localStorage, lo
+        // que generaba ids tipo "cp1234..." que el Server Action rechazaba con
+        // 'Identificador invalido' al intentar update/delete.
+        if (cancel) return;
+        if (Array.isArray(cps)) {
+          setCoupons(cps.map((c) => ({
+            id: c.id,
+            code: c.code,
+            desc: lang === "es" ? (c.description_es || "") : (c.description_en || ""),
+            discount: c.discount_pct,
+            maxUses: c.max_uses ?? 0,
+            used: c.used_count || 0,
+            expires: c.expires_at || "",
+            active: !!c.active,
+            createdAt: (c.created_at || "").slice(0, 10),
+          })));
+        }
         if (cancel) return;
         if (Array.isArray(invs)) {
           // Mapeo Supabase → shape JSX legacy. Mantenemos solo invoices
@@ -7651,7 +7672,31 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <button className={dateRange === "7d" ? "active" : ""} onClick={() => setDateRange("7d")}>{lang === "es" ? "1 semana" : "1 week"}</button>
                   <button className={dateRange === "30d" ? "active" : ""} onClick={() => setDateRange("30d")}>{lang === "es" ? "30 días" : "30 days"}</button>
                 </div>
-                <button className="adm-btn adm-btn-primary"><Plus />{lang === "es" ? "Acción Rápida" : "Quick Action"}</button>
+                <div style={{ position: "relative" }}>
+                  <button className="adm-btn adm-btn-primary" onClick={() => setQuickActionOpen((v) => !v)}>
+                    <Plus />{lang === "es" ? "Acción Rápida" : "Quick Action"}
+                  </button>
+                  {quickActionOpen && (
+                    <div onClick={() => setQuickActionOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 998 }} />
+                  )}
+                  {quickActionOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 999, minWidth: 220, background: "#1A2634", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 6, boxShadow: "0 18px 40px rgba(0,0,0,.5)" }}>
+                      {[
+                        { label: lang === "es" ? "Nueva estadía" : "New stay", icon: Home, action: () => { setSection("hotels"); setEditing({ type: "hotel", isNew: true }); } },
+                        { label: lang === "es" ? "Nuevo tour" : "New tour", icon: Compass, action: () => { setSection("tours"); setEditing({ type: "tour", isNew: true }); } },
+                        { label: lang === "es" ? "Nueva ruta" : "New route", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("routes"); setEditing({ type: "route", isNew: true }); } },
+                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", plate: "", seats: 4, driver: "", base: 0, trips: 0, status: "available" }); } },
+                        { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true }); } },
+                        { label: lang === "es" ? "Nuevo post" : "New post", icon: Edit, action: () => { setSection("posts"); setEditing({ type: "post", isNew: true }); } },
+                      ].map((it, i) => (
+                        <button key={i} onClick={() => { it.action(); setQuickActionOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 8, background: "transparent", border: "none", color: "rgba(255,255,255,.85)", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left", transition: "background .15s" }} onMouseEnter={(e) => e.currentTarget.style.background = "rgba(245,166,35,.1)"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+                          <it.icon style={{ width: 14, height: 14, color: "var(--gold)" }} />
+                          {it.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -12091,8 +12136,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   alert("No se pudo guardar el cupón: " + (res?.error || "error desconocido"));
                   return;
                 }
-                if (isNew) setCoupons([...coupons, { ...editingCoupon, id: "cp" + Date.now() }]);
-                else setCoupons(coupons.map(c => c.id === editingCoupon.id ? editingCoupon : c));
+                if (isNew) {
+                  // Usar el UUID devuelto por createCoupon (no un id local
+                  // "cp" + timestamp) para que el update/delete posterior
+                  // resuelva contra Supabase y no falle con 'Identificador
+                  // invalido'.
+                  const newId = res?.data?.id || ("cp" + Date.now());
+                  setCoupons([...coupons, { ...editingCoupon, id: newId }]);
+                } else {
+                  setCoupons(coupons.map(c => c.id === editingCoupon.id ? editingCoupon : c));
+                }
                 setEditingCoupon(null);
               }}><Check />{lang === "es" ? "Guardar" : "Save"}</button>
             </div>
