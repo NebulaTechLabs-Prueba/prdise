@@ -5,13 +5,13 @@ import {
   SlidersHorizontal, Star, MapPin, Heart, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Search,
   Users, Home, Check, CheckCircle, Clock, Zap, Info, User, ArrowLeft,
   CreditCard, Building2, Smartphone, Shield, Menu, X, Phone, Mail,
-  Instagram, Facebook, Globe, Send, Plane, Car, Package, Compass,
+  Instagram, Facebook, Globe, Send, Plane, Car, Compass,
   Sparkles, Waves, Mountain, Sun, Calendar, MessageCircle,
   Edit, Activity, LogOut, Briefcase,
   LayoutDashboard, BarChart3, Settings, Plus, Pencil, Trash2,
   TrendingUp, TrendingDown, Eye, EyeOff, Lock, AlertTriangle, Database,
   Bell, Key, Power, Monitor,
-  Printer, FileText, Copy, Hash, DollarSign, ExternalLink, ShoppingCart,
+  Printer, FileText, Copy, Hash, DollarSign, ExternalLink,
 } from "lucide-react";
 import {
   signIn as sbSignIn,
@@ -24,15 +24,7 @@ import {
   verifyEmailOtp as sbVerifyEmailOtp,
   resendSignupOtp as sbResendSignupOtp,
 } from "@/lib/auth/actions";
-import {
-  createBookingOffline as sbCreateBookingOffline,
-  cancelBooking as sbCancelBooking,
-} from "@/lib/bookings/actions";
 import { submitContactMessage as sbSubmitContact } from "@/lib/contact/actions";
-import {
-  confirmPayment as sbConfirmPayment,
-  rejectPayment as sbRejectPayment,
-} from "@/lib/admin/payments";
 import { completeBooking as sbCompleteBooking } from "@/lib/admin/bookings";
 import {
   createStay as sbCreateStay, updateStay as sbUpdateStay, deleteStay as sbDeleteStay,
@@ -53,14 +45,6 @@ import {
   deleteDriver as sbDeleteDriver,
   toggleDriverVisibility as sbToggleDriverVisibility,
 } from "@/lib/admin/drivers";
-import {
-  createCoupon as sbCreateCoupon,
-  updateCoupon as sbUpdateCoupon,
-  deleteCoupon as sbDeleteCoupon,
-  listCoupons as sbListCoupons,
-} from "@/lib/admin/coupons";
-import { validateCoupon as sbValidateCoupon } from "@/lib/coupons/actions";
-import { getEnabledPaymentMethods } from "@/lib/payments/registry";
 import {
   createPartner as sbCreatePartner,
   updatePartner as sbUpdatePartner,
@@ -89,7 +73,6 @@ import {
 } from "@/lib/admin/users";
 import {
   listInvoices as sbListInvoices,
-  createInvoiceFromBookings as sbCreateInvoiceFromBookings,
   markInvoicePaid as sbMarkInvoicePaid,
 } from "@/lib/admin/invoices";
 
@@ -303,33 +286,6 @@ const PRDISE = {
   load: (k, d = null) => { try { const v = localStorage.getItem("prdise_" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
   del: (k) => { try { localStorage.removeItem("prdise_" + k); } catch {} },
   genRef: (p) => p + "-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2, 4).toUpperCase(),
-  // Auto-cart: save booking draft to user's cart ONLY if they are logged in.
-  // Returns true if saved (user was logged in), false otherwise (no account).
-  addToUserCart: (booking) => {
-    try {
-      // Pivote a modelo referral: stays y tours redirigen a partners
-      // y no se gestionan en el cart de prdise. Guarda defensiva por si
-      // queda algun call site legacy (HotelDetail/TourDetail ya no llaman
-      // este helper, pero esto previene regresiones futuras).
-      if (booking?.type !== "transfer") return false;
-      const sess = JSON.parse(localStorage.getItem("prdise_session") || "null");
-      if (!sess || sess.role !== "user") return false; // No account = don't save
-      const cart = JSON.parse(localStorage.getItem("prdise_userCart") || "[]");
-      const matchKey = `transfer:${booking.from}:${booking.to}:${booking.date}`;
-      const filtered = cart.filter(c => c._matchKey !== matchKey);
-      filtered.unshift({
-        ...booking,
-        _matchKey: matchKey,
-        _cartId: "cart-" + Date.now().toString(36),
-        _savedAt: new Date().toISOString(),
-        ref: "CART-" + Date.now().toString(36).toUpperCase(),
-      });
-      // Keep max 10 items
-      localStorage.setItem("prdise_userCart", JSON.stringify(filtered.slice(0, 10)));
-      try { window.dispatchEvent(new Event("prdise-cart-update")); } catch {}
-      return true;
-    } catch { return false; }
-  },
 };
 const fmt = (n) => "$" + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -590,6 +546,34 @@ function useHashRoute() {
   return route;
 }
 const nav = (p) => { window.location.hash = p.startsWith("#") ? p : "#" + p; };
+
+// WhatsApp helper: construye un enlace wa.me con un mensaje pre-llenado para
+// que el cliente contacte al responsable PRDISE por un servicio del catálogo.
+// Pivote 2026-06-04: PRDISE = catálogo + referral, sin checkout. El contacto
+// inicial es por WhatsApp y luego admin emite invoice con Payment Link Stripe.
+const PRDISE_WA_PHONE = "17872379519";
+function buildWhatsAppHref({ user, lang, service }) {
+  const isEs = lang === "es";
+  const greeting = isEs ? "Hola, soy" : "Hi, I'm";
+  const name = (user?.firstName || user?.name || "").trim();
+  const kindLabel = isEs
+    ? ({ stay: "una estadía", tour: "un tour", transfer: "un traslado" }[service?.kind] || "un servicio")
+    : ({ stay: "a stay", tour: "a tour", transfer: "a transfer" }[service?.kind] || "a service");
+  const priceStr = service?.priceUsd != null
+    ? (isEs ? ` (referencia $${Number(service.priceUsd).toFixed(0)} USD)` : ` (reference $${Number(service.priceUsd).toFixed(0)} USD)`)
+    : "";
+  const intro = isEs
+    ? `${greeting}${name ? " " + name : ""}. Me interesa ${kindLabel}: ${service?.name || ""}${priceStr}.`
+    : `${greeting}${name ? " " + name : ""}. I'm interested in ${kindLabel}: ${service?.name || ""}${priceStr}.`;
+  const details = service?.details
+    ? (isEs ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
+    : "";
+  const ask = isEs
+    ? "\n¿Me puedes ayudar con la disponibilidad y el siguiente paso?"
+    : "\nCould you help me with availability and next steps?";
+  const text = `${intro}${details}${ask}`;
+  return `https://wa.me/${PRDISE_WA_PHONE}?text=${encodeURIComponent(text)}`;
+}
 
 function NavLink({ to, children, className, style, external, ...rest }) {
   if (external) return <a href={to} target="_blank" rel="noreferrer" className={className} style={style} {...rest}>{children}</a>;
@@ -1181,8 +1165,6 @@ function Navbar() {
   const [stuck, setStuck] = useState(false);
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(null);
-  const [cartCount, setCartCount] = useState(0);
-  const [cartBump, setCartBump] = useState(false);
   const { lang, setLang, t } = useLang();
   const { path } = useHashRoute();
   useEffect(() => {
@@ -1196,41 +1178,6 @@ function Navbar() {
     const sess = PRDISE.load("session", null);
     setSession(sess);
   }, [path]);
-
-  // Track cart count — poll localStorage because changes happen from other pages.
-  // Pivote a modelo referral: stays/tours redirigen a partners y no se cartean.
-  // Solo transfers con routeId UUID son procesables. Filtro consistente con
-  // AccountPage y CartCheckoutPage para que el contador refleje el cart real.
-  useEffect(() => {
-    const refreshCart = () => {
-      const sess = PRDISE.load("session", null);
-      if (!sess || sess.role !== "user") { setCartCount(0); return; }
-      const realCart = PRDISE.load("userCart", []);
-      const valid = realCart.filter((c) => c?.type === "transfer" && c?.routeId);
-      setCartCount(valid.length);
-    };
-    refreshCart();
-    const interval = setInterval(refreshCart, 1500);
-    const onStorage = () => refreshCart();
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("prdise-cart-update", onStorage);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("prdise-cart-update", onStorage);
-    };
-  }, [path]);
-
-  // Bump animation when count changes (and it went up)
-  const prevCountRef = useRef(cartCount);
-  useEffect(() => {
-    if (cartCount > prevCountRef.current) {
-      setCartBump(true);
-      const t = setTimeout(() => setCartBump(false), 450);
-      return () => clearTimeout(t);
-    }
-    prevCountRef.current = cartCount;
-  }, [cartCount]);
 
   const links = [
     { to: "/", label: t("home") },
@@ -1251,17 +1198,6 @@ function Navbar() {
   ) : (
     <NavLink to="/login" className="nav-login" title={t("signIn")}><Lock style={{ width: 13, height: 13 }} />{t("signIn")}</NavLink>
   );
-
-  const cartBtn = session && session.role === "user" ? (
-    <NavLink to="/account?tab=activity" className={`nav-cart ${cartBump ? "bump" : ""}`} title="View Cart">
-      <Package />
-      {cartCount > 0 ? (
-        <span className="nav-cart-count">{cartCount > 99 ? "99+" : cartCount}</span>
-      ) : (
-        <span className="nav-cart-empty">0</span>
-      )}
-    </NavLink>
-  ) : null;
 
   const langToggle = (
     <button onClick={() => setLang(lang === "en" ? "es" : "en")} className="nav-lang" title={lang === "en" ? "Cambiar a Español" : "Switch to English"}>
@@ -1291,7 +1227,6 @@ function Navbar() {
           {links.map((l) => <NavLink key={l.to} to={l.to} className={path === l.to ? "active" : ""}>{l.label}</NavLink>)}
           {langToggle}
           {authBtn}
-          {cartBtn}
           <NavLink to="/transfer-search" className="nav-cta">{t("bookNow")}</NavLink>
         </div>
         <button className="mob-btn" onClick={() => setOpen((o) => !o)}>{open ? <X /> : <Menu />}</button>
@@ -2362,91 +2297,16 @@ function TransferSearchPage() {
 function TransferResultsPage() {
   const { lang } = useLang();
   const [search, setSearch] = useState(null);
-  const [transferAddedId, setTransferAddedId] = useState(null);
+  const [user, setUser] = useState(null);
   useEffect(() => {
     const s = PRDISE.load("transferSearch", null);
     if (!s) { nav("/transfer-search"); return; }
     setSearch(s);
+    const u = PRDISE.load("user", null);
+    if (u) setUser(u);
   }, []);
   if (!search) return null;
   const eligible = VEHICLES.filter((v) => v.seats >= search.pax && v.bags >= search.bags);
-  // Resolver el UUID del transfer_route en Supabase a partir de from/to del
-  // search. El Server Action createBookingOffline EXIGE un UUID valido para
-  // transfer_route_id; sin esto fallaba con 'El ítem no existe'.
-  const resolveRouteId = () => {
-    if (!search) return null;
-    const exact = ROUTES.find(
-      (r) => r.from === search.from && r.to === search.to
-    );
-    if (exact?.id) return exact.id;
-    // Si la combinacion exacta from/to no esta como ruta predefinida,
-    // intentamos un fallback en cualquier ruta activa para que la reserva
-    // quede registrada y el admin pueda reconciliarla con el from/to real
-    // (que va a notes).
-    return ROUTES[0]?.id || null;
-  };
-  const select = (id) => {
-    const v = VEHICLES.find((x) => x.id === id);
-    const distanceFee = v.perKm * search.km;
-    const total = v.base + distanceFee;
-    const routeId = resolveRouteId();
-    if (!routeId) {
-      alert(lang === "es"
-        ? "No hay rutas de traslado configuradas. Contacta al administrador."
-        : "No transfer routes configured. Please contact admin.");
-      return;
-    }
-    const booking = {
-      type: "transfer", routeId, vehicleId: v.id, vehicleName: v.name, name: v.name,
-      from: search.from, to: search.to, date: search.date, time: search.time,
-      location: `${search.from} → ${search.to}`, guests: search.pax,
-      pax: search.pax, bags: search.bags, km: search.km, notes: search.notes,
-      img: IMG_VAN_ROAD, base: v.base, distanceFee, total,
-    };
-    PRDISE.save("pendingBooking", booking);
-    const added = PRDISE.addToUserCart(booking);
-    if (!added) {
-      if (window.confirm(lang==="es"?"Necesitas iniciar sesión para reservar. ¿Ir a iniciar sesión?":"You need to sign in to book. Go to sign in?")) {
-        nav("/login");
-      }
-      return;
-    }
-    // Checkout unificado: el booking ya está en el carrito, vamos a la unica
-    // pantalla de checkout (carrito) en vez del CheckoutForm que era una
-    // duplicación que confundia al usuario.
-    nav("/checkout-cart");
-  };
-  const addTransferToCart = (id) => {
-    const v = VEHICLES.find((x) => x.id === id);
-    const sess = PRDISE.load("session", null);
-    if (!sess || sess.role !== "user") {
-      if (window.confirm(lang==="es"?"Necesitas iniciar sesión para guardar en el carrito. ¿Ir a iniciar sesión?":"You need to sign in to save to cart. Go to sign in?")) {
-        nav("/login");
-      }
-      return;
-    }
-    const routeId = resolveRouteId();
-    if (!routeId) {
-      alert(lang === "es"
-        ? "No hay rutas de traslado configuradas. Contacta al administrador."
-        : "No transfer routes configured. Please contact admin.");
-      return;
-    }
-    const distanceFee = v.perKm * search.km;
-    const total = v.base + distanceFee;
-    const booking = {
-      type: "transfer", routeId, vehicleId: v.id, vehicleName: v.name, name: v.name,
-      from: search.from, to: search.to, date: search.date, time: search.time,
-      location: `${search.from} → ${search.to}`, guests: search.pax,
-      pax: search.pax, bags: search.bags, km: search.km, notes: search.notes,
-      img: IMG_VAN_ROAD, base: v.base, distanceFee, total,
-    };
-    const ok = PRDISE.addToUserCart(booking);
-    if (ok) {
-      setTransferAddedId(id);
-      setTimeout(() => setTransferAddedId(null), 2500);
-    }
-  };
   return (
     <>
       <PageHero tag="Vehicle Selection" title="AVAILABLE" titleEm="VEHICLES" subtitle={`${search.from} → ${search.to} · ${search.date} at ${search.time}`} />
@@ -2469,6 +2329,16 @@ function TransferResultsPage() {
             ) : eligible.map((v) => {
               const distanceFee = v.perKm * search.km;
               const total = v.base + distanceFee;
+              const waHref = buildWhatsAppHref({
+                user,
+                lang,
+                service: {
+                  kind: "transfer",
+                  name: v.name,
+                  priceUsd: total,
+                  details: `${search.from} → ${search.to} · ${search.date}${search.time ? " " + search.time : ""} · ${search.pax} pax · ${search.bags} bags`,
+                },
+              });
               return (
                 <div key={v.id} className="veh-row">
                   <div className="veh-pic">{VEHICLE_ICONS[v.id]}</div>
@@ -2485,17 +2355,16 @@ function TransferResultsPage() {
                   <div className="veh-cta">
                     <span className="veh-price">{fmt(total).replace(/\.00$/, "")}</span>
                     <span className="veh-price-sub">total fare</span>
-                    <button type="button" onClick={() => select(v.id)} className="veh-select">{lang==="es"?"Seleccionar":"Select"}</button>
-                    <button type="button" onClick={() => addTransferToCart(v.id)} style={{
-                      marginTop: 8, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 12px",
-                      borderRadius: 99, background: transferAddedId === v.id ? "rgba(141,198,63,.15)" : "rgba(255,255,255,.04)",
-                      border: `1px solid ${transferAddedId === v.id ? "rgba(141,198,63,.5)" : "rgba(245,166,35,.4)"}`,
-                      color: transferAddedId === v.id ? "#8DC63F" : "var(--gold)",
-                      fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
-                      cursor: "pointer", transition: "all .25s",
-                    }}>
-                      {transferAddedId === v.id ? <><Check style={{ width: 11, height: 11 }} />{lang==="es"?"Agregado":"Added"}</> : <><ShoppingCart style={{ width: 11, height: 11 }} />{lang==="es"?"Al carrito":"Add to cart"}</>}
-                    </button>
+                    <a
+                      href={waHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="veh-select"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, textDecoration: "none" }}
+                    >
+                      <MessageCircle style={{ width: 13, height: 13 }} />
+                      {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
+                    </a>
                   </div>
                 </div>
               );
@@ -2507,1735 +2376,19 @@ function TransferResultsPage() {
   );
 }
 
-/* ═══════════════ CHECKOUT (hotel | tour | transfer) ═══════════════ */
-function CheckoutForm({ type }) {
-  const { lang } = useLang();
-  const [booking, setBooking] = useState(null);
-  const [user, setUser] = useState(null);
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", country: "United States", notes: "", cardNum: "", cardExp: "", cardCvc: "", cardName: "", terms: false, athPhone: "", athAmount: "", athTime: "", athHolder: "", athReceipt: "", bankHolder: "", bankLast4: "", bankAmount: "", bankDate: "", bankReference: "", bankReceipt: "", paypalReceipt: "" });
-  const [errors, setErrors] = useState({});
-  // Inicializar el metodo seleccionado al primer metodo habilitado del
-  // registry. Si solo ATH/Bank estan activos (estado actual sin credenciales
-  // online), arranca con el primero (ath). Cuando se habilite Stripe pasa a
-  // ser el default automaticamente.
-  const [method, setMethod] = useState(() => {
-    const enabled = getEnabledPaymentMethods();
-    return enabled[0]?.id ?? "ath";
-  });
-  const [processing, setProcessing] = useState(false);
-  const [saveProfile, setSaveProfile] = useState(true);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [authModal, setAuthModal] = useState(null); // null | "login" | "register"
-  const [pendingConfirm, setPendingConfirm] = useState(false); // shown after validation, awaits auth
-
-  useEffect(() => {
-    const b = PRDISE.load("pendingBooking", null);
-    if (!b || b.type !== type) {
-      nav(type === "hotel" ? "/stays" : type === "tour" ? "/tours" : "/transfer-search");
-      return;
-    }
-    setBooking(b);
-    const sess = PRDISE.load("session", null);
-    const u = PRDISE.load("user", null);
-    if (sess && sess.role === "user" && u && u.firstName !== "Guest") {
-      setUser(u);
-      setForm((f) => ({
-        ...f,
-        firstName: u.firstName || "", lastName: u.lastName || "",
-        email: u.email || "", phone: u.phone || "",
-        country: u.country || "United States",
-      }));
-    }
-  }, [type]);
-
-  const upd = (k, v) => { setForm((f) => ({ ...f, [k]: v })); if (errors[k]) setErrors((e) => ({ ...e, [k]: null })); };
-  const hCardNum = (e) => { const v = e.target.value.replace(/\s/g, "").replace(/\D/g, ""); upd("cardNum", v.replace(/(.{4})/g, "$1 ").trim()); };
-  const hCardExp = (e) => { let v = e.target.value.replace(/\D/g, ""); if (v.length >= 2) v = v.slice(0, 2) + "/" + v.slice(2, 4); upd("cardExp", v); };
-  const hCardCvc = (e) => upd("cardCvc", e.target.value.replace(/\D/g, ""));
-
-  // Track step completion for progress indicator
-  useEffect(() => {
-    const guestDone = form.firstName && form.lastName && form.email && form.phone;
-    const paymentDone = method === "stripe"
-      ? (form.cardNum.replace(/\s/g, "").length >= 13 && /^\d{2}\/\d{2}$/.test(form.cardExp) && form.cardCvc.length >= 3 && form.cardName.trim())
-      : true;
-    if (guestDone && paymentDone && form.terms) setCurrentStep(4);
-    else if (guestDone && paymentDone) setCurrentStep(3);
-    else if (guestDone) setCurrentStep(2);
-    else setCurrentStep(1);
-  }, [form, method]);
-
-  const validate = () => {
-    const errs = {};
-    if (!form.firstName.trim()) errs.firstName = "Required";
-    if (!form.lastName.trim()) errs.lastName = "Required";
-    if (!form.email.trim()) errs.email = "Required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Invalid email";
-    if (!form.phone.trim()) errs.phone = "Required";
-    if (method === "stripe") {
-      if (form.cardNum.replace(/\s/g, "").length < 13) errs.cardNum = "Invalid card";
-      if (!/^\d{2}\/\d{2}$/.test(form.cardExp)) errs.cardExp = "MM/YY";
-      if (form.cardCvc.length < 3) errs.cardCvc = "3-4 digits";
-      if (!form.cardName.trim()) errs.cardName = "Required";
-    }
-    if (method === "ath") {
-      if (!form.athPhone.trim()) errs.athPhone = "Required";
-      if (!form.athReceipt) errs.athReceipt = "Screenshot required";
-    }
-    if (method === "bank") {
-      if (!form.bankHolder.trim()) errs.bankHolder = "Required";
-      if (!form.bankDate) errs.bankDate = "Required";
-      if (!form.bankReceipt) errs.bankReceipt = "Receipt required";
-    }
-    if (!form.terms) errs.terms = "Please accept terms";
-    setErrors(errs);
-    if (Object.keys(errs).length) {
-      setTimeout(() => document.querySelector(".f-in.err")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
-    }
-    return Object.keys(errs).length === 0;
-  };
-
-  const place = async () => {
-    if (!validate()) return;
-    setProcessing(true);
-
-    // Persistir en Supabase si el método es offline (ATH/Bank) y tenemos slug/id real.
-    // Best-effort: si falla (no auth, slug invalido, RLS), seguimos con el flujo
-    // local pero logueamos el error para diagnóstico.
-    try {
-      if (method === "ath" || method === "bank") {
-        const itemTypeMap = { hotel: "stay", tour: "tour", transfer: "transfer" };
-        const itemId = type === "hotel" ? booking.hotelId
-          : type === "tour" ? booking.tourId
-          : booking.routeId || booking.from + ":" + booking.to;
-        const startDate = booking.checkin || booking.date || new Date().toISOString().slice(0,10);
-        const endDate = booking.checkout || null;
-        const fd = new FormData();
-        fd.append("itemType", itemTypeMap[type] || type);
-        fd.append("itemId", String(itemId || ""));
-        fd.append("startDate", String(startDate));
-        if (endDate) fd.append("endDate", String(endDate));
-        fd.append("pax", String(booking.guests || booking.travelers || booking.pax || 1));
-        fd.append("totalCents", String(Math.round((booking.total || 0) * 100)));
-        fd.append("paymentMethod", method);
-        fd.append("notes", form.notes || "");
-        if (method === "ath") {
-          fd.append("athPhone", form.athPhone || "");
-          fd.append("athReceipt", form.athReceipt || "");
-        } else if (method === "bank") {
-          fd.append("bankHolder", form.bankHolder || "");
-          fd.append("bankReference", form.bankReference || "");
-          fd.append("bankReceipt", form.bankReceipt || "");
-        }
-        const res = await sbCreateBookingOffline(fd);
-        if (!res?.ok) {
-          setProcessing(false);
-          alert("No se pudo registrar la reserva: " + (res?.error || "error desconocido") + ". Verifica que iniciaste sesión.");
-          return;
-        }
-      }
-    } catch (e) {
-      setProcessing(false);
-      alert("Error al procesar la reserva: " + (e?.message || e));
-      return;
-    }
-
-    setTimeout(() => {
-      const prefix = type === "hotel" ? "HO" : type === "tour" ? "TO" : "TR";
-      const ref = PRDISE.genRef(prefix);
-      const conf = { ...booking, ref, firstName: form.firstName, lastName: form.lastName, email: form.email, phone: form.phone, notes: form.notes, paymentMethod: method, bookedAt: new Date().toISOString() };
-      const history = PRDISE.load("bookings", []);
-      history.unshift(conf);
-      PRDISE.save("bookings", history);
-      PRDISE.save("lastConfirmation", conf);
-      PRDISE.del("pendingBooking");
-      // Remove matching item from user's auto-cart (paid = no longer "draft")
-      try {
-        const currentCart = PRDISE.load("userCart", []);
-        const matchKey = booking.type === "hotel"
-          ? `hotel:${booking.hotelId}:${booking.checkin}:${booking.checkout}`
-          : booking.type === "tour"
-            ? `tour:${booking.tourId}:${booking.date}`
-            : `transfer:${booking.from}:${booking.to}:${booking.date}`;
-        PRDISE.save("userCart", currentCart.filter(c => c._matchKey !== matchKey));
-      } catch {}
-      // Save/update user profile if opted in
-      if (saveProfile) {
-        const existing = PRDISE.load("user", null);
-        PRDISE.save("user", {
-          firstName: form.firstName, lastName: form.lastName,
-          email: form.email, phone: form.phone, country: form.country,
-          joinedAt: existing?.joinedAt && existing.firstName !== "Guest" ? existing.joinedAt : new Date().toLocaleDateString(),
-        });
-      }
-
-      // === Create transaction, invoice, and pending booking entry for admin sync ===
-      try {
-        const total = booking.total || 0;
-        const today = new Date().toISOString().split("T")[0];
-        const methodLabel = method === "card" || method === "stripe" ? "Card"
-          : method === "paypal" ? "PayPal"
-          : method === "ath" ? "ATH Móvil"
-          : method === "bank" ? "Bank Transfer"
-          : (method ? method.charAt(0).toUpperCase() + method.slice(1) : "Card");
-        const itemName = booking.name || booking.vehicleName || (type === "hotel" ? "Stay" : type === "tour" ? "Tour" : "Transfer");
-
-        // 1. Create invoice
-        const invoiceNum = `INV-2026-${String(Date.now()).slice(-3)}`;
-        const newInvoice = {
-          id: "inv-cart-" + Date.now(),
-          num: invoiceNum,
-          customer: `${form.firstName} ${form.lastName}`.trim(),
-          email: form.email,
-          issued: today,
-          due: today,
-          items: 1,
-          total: total,
-          status: "sent",
-          link: true,
-          source: "cart-checkout",
-          bookingRef: ref,
-          lineItems: [{
-            id: "li1",
-            name: itemName,
-            type: type,
-            qty: booking.guests || booking.travelers || booking.pax || booking.nights || 1,
-            price: total,
-          }],
-        };
-        const existingInvoices = PRDISE.load("userGeneratedInvoices", []);
-        PRDISE.save("userGeneratedInvoices", [newInvoice, ...existingInvoices]);
-
-        // 2. Create transaction (status: pending — admin must verify)
-        const newTransaction = {
-          id: "tx-cart-" + Date.now(),
-          ref: "TX-" + ref.replace(/^[A-Z]+-/, ""),
-          customer: `${form.firstName} ${form.lastName}`.trim(),
-          email: form.email,
-          phone: form.phone,
-          country: form.country,
-          amount: total,
-          method: methodLabel,
-          status: "pending",
-          date: today,
-          bookingRef: ref,
-          type: type,
-          item: itemName,
-          notes: form.notes || "",
-          adminNotes: "Individual checkout · Awaiting verification",
-          invoiceNum,
-          // Full booking details snapshot
-          bookingDetails: {
-            ...booking,
-            firstName: form.firstName,
-            lastName: form.lastName,
-          },
-          // Payment-method-specific claims from customer
-          paymentClaim: method === "ath" ? {
-            phone: form.athPhone, amount: form.athAmount, time: form.athTime,
-            holder: form.athHolder, receipt: form.athReceipt,
-          } : method === "bank" ? {
-            holder: form.bankHolder, last4: form.bankLast4, amount: form.bankAmount,
-            date: form.bankDate, reference: form.bankReference, receipt: form.bankReceipt,
-          } : method === "paypal" ? {
-            receipt: form.paypalReceipt,
-          } : method === "card" || method === "stripe" ? {
-            cardLast4: (form.cardNum || "").replace(/\s/g, "").slice(-4),
-            cardName: form.cardName,
-          } : null,
-          customerPaymentClaim: method === "ath" ? `ATH-${form.athPhone || "?"}`
-            : method === "bank" ? `BANK-${form.bankReference || "?"}`
-            : method === "paypal" ? `PAYPAL-${form.paypalReceipt || "?"}`
-            : method === "card" || method === "stripe" ? `CARD-****${(form.cardNum || "0000").replace(/\s/g, "").slice(-4)}`
-            : "",
-        };
-        const existingTransactions = PRDISE.load("userGeneratedTransactions", []);
-        PRDISE.save("userGeneratedTransactions", [newTransaction, ...existingTransactions]);
-
-        // 3. Add to pending bookings (so it appears in user account)
-        const pendingBooking = {
-          ...booking,
-          ref,
-          _cartId: "cart-pending-" + Date.now(),
-          _matchKey: booking.type === "hotel"
-            ? `hotel:${booking.hotelId}:${booking.checkin}:${booking.checkout}`
-            : booking.type === "tour"
-              ? `tour:${booking.tourId}:${booking.date}`
-              : `transfer:${booking.from}:${booking.to}:${booking.date}`,
-          _paidAt: new Date().toISOString(),
-          status: "pending",
-        };
-        const existingPending = PRDISE.load("userPendingBookings", []);
-        PRDISE.save("userPendingBookings", [pendingBooking, ...existingPending]);
-      } catch (e) {
-        console.error("Failed to sync purchase to admin:", e);
-      }
-
-      nav(type === "hotel" ? "/confirmation-hotel" : type === "tour" ? "/confirmation-tour" : "/confirmation-transfer");
-    }, 1000);
-  };
-
-  if (!booking) return null;
-  // Métodos habilitados: filtrados por flag `enabled` en el registry. Stripe
-  // y PayPal aparecen solo si el admin/dev seteo enabled=true (requieren
-  // credenciales del procesador). ATH/Bank siempre habilitados (offline,
-  // admin reconcilia manualmente).
-  const PAY_ICONS = { stripe: CreditCard, paypal: Star, ath: Smartphone, bank: Building2 };
-  const payMethods = getEnabledPaymentMethods().map((m) => ({
-    id: m.id,
-    label: m.label[lang === "es" ? "es" : "en"],
-    Icon: PAY_ICONS[m.id] || CreditCard,
-  }));
-  const crumbs = type === "hotel" ? [{ to: "/", label: "Home" }, { to: "/stays", label: "Stays" }, { label: "Checkout" }]
-    : type === "tour" ? [{ to: "/", label: "Home" }, { to: "/tours", label: "Tours" }, { label: "Checkout" }]
-    : [{ to: "/", label: "Home" }, { to: "/transfer-search", label: "Transfer" }, { label: "Checkout" }];
-
-  const progressSteps = [
-    { n: 1, lab: "Details" },
-    { n: 2, lab: "Payment" },
-    { n: 3, lab: "Confirm" },
-  ];
-
-  return (
-    <>
-      <PageHero tag="Checkout" title="SECURE" titleEm="CHECKOUT" subtitle="Complete your reservation. Your details are encrypted and secure." />
-      <div className="inner-page">
-        <div className="inner-wrap">
-
-
-          {/* Progress indicator */}
-          <div className="co-progress">
-            {progressSteps.map((s, i) => (
-              <div key={s.n} style={{ display: "contents" }}>
-                <div className={`co-step ${currentStep > s.n ? "done" : ""} ${currentStep === s.n ? "active" : ""}`}>
-                  <div className="co-step-dot">{currentStep > s.n ? <Check /> : s.n}</div>
-                  <div className="co-step-lab">{s.lab}</div>
-                </div>
-                {i < progressSteps.length - 1 && <div className={`co-line ${currentStep > s.n ? "done" : ""}`} />}
-              </div>
-            ))}
-          </div>
-
-          {/* Logged-in user banner */}
-          {user && (
-            <div className="user-banner">
-              <div className="user-banner-av">{(user.firstName || "U").charAt(0).toUpperCase()}</div>
-              <div className="user-banner-txt">
-                <h5>Booking as {user.firstName} {user.lastName}</h5>
-                <p>Your info has been prefilled. You can edit any field below.</p>
-              </div>
-              <NavLink to="/account">View account</NavLink>
-            </div>
-          )}
-
-          <div className="layout-checkout">
-            <main>
-              <div className="step-card">
-                <h3 className="step-title"><span className="step-num">1</span>Guest Information</h3>
-                <p className="step-sub">{user ? "Confirm or update your info" : "Who is this booking for?"}</p>
-                <div className="f-row">
-                  <div><label className="f-lab">First Name *</label><input type="text" className={`f-in ${errors.firstName?"err":""}`} value={form.firstName} onChange={(e) => upd("firstName", e.target.value)} />{errors.firstName && <p className="err-msg">{errors.firstName}</p>}</div>
-                  <div><label className="f-lab">Last Name *</label><input type="text" className={`f-in ${errors.lastName?"err":""}`} value={form.lastName} onChange={(e) => upd("lastName", e.target.value)} />{errors.lastName && <p className="err-msg">{errors.lastName}</p>}</div>
-                </div>
-                <div className="f-row">
-                  <div><label className="f-lab">Email *</label><input type="email" className={`f-in ${errors.email?"err":""}`} value={form.email} onChange={(e) => upd("email", e.target.value)} />{errors.email && <p className="err-msg">{errors.email}</p>}</div>
-                  <div><label className="f-lab">Phone *</label><input type="tel" className={`f-in ${errors.phone?"err":""}`} value={form.phone} onChange={(e) => upd("phone", e.target.value)} />{errors.phone && <p className="err-msg">{errors.phone}</p>}</div>
-                </div>
-                <div className="f-grp">
-                  <label className="f-lab">Country</label>
-                  <select className="f-in" value={form.country} onChange={(e) => upd("country", e.target.value)}>
-                    <option>United States</option><option>Puerto Rico</option><option>Canada</option><option>Mexico</option><option>Dominican Republic</option><option>Spain</option><option>Other</option>
-                  </select>
-                </div>
-                {!user && (
-                  <label className="save-toggle">
-                    <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} />
-                    <div className="txt">
-                      <h6>Save my info for next time</h6>
-                      <p>We'll remember your details so checkout is faster on future bookings.</p>
-                    </div>
-                  </label>
-                )}
-              </div>
-              <div className="step-card">
-                <h3 className="step-title"><span className="step-num">2</span>Special Requests</h3>
-                <p className="step-sub">Any preferences? (optional)</p>
-                <textarea className="f-in" value={form.notes} onChange={(e) => upd("notes", e.target.value)} placeholder={type === "hotel" ? "Early check-in, quiet room, extra towels..." : type === "tour" ? "Dietary restrictions, accessibility needs, pickup location..." : "Child seat, flight number, extra stops..."} />
-              </div>
-              <div className="step-card">
-                <h3 className="step-title"><span className="step-num">3</span>Payment Method</h3>
-                <p className="step-sub">Select how to pay</p>
-                <div className="pay-grid">
-                  {payMethods.map(({ id, label, Icon }) => (
-                    <button key={id} type="button" onClick={() => setMethod(id)} className={`pay-btn ${method === id ? "active" : ""}`}>
-                      <Icon />{label}
-                    </button>
-                  ))}
-                </div>
-                {method === "stripe" && (
-                  <div style={{ padding: 14, borderRadius: 12, background: "rgba(99,91,255,.06)", border: "1px solid rgba(99,91,255,.15)", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                    <Shield style={{ width: 14, height: 14, color: "#635BFF", flexShrink: 0 }} />
-                    <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.55 }}>
-                      Secure payment via <strong style={{ color: "#fff" }}>Stripe</strong>. Your card details are encrypted end-to-end.
-                    </p>
-                  </div>
-                )}
-                {method === "stripe" ? (
-                  <>
-                    <div className="f-grp">
-                      <label className="f-lab">Card Number *</label>
-                      <input type="text" className={`f-in ${errors.cardNum?"err":""}`} placeholder="1234 5678 9012 3456" maxLength={19} value={form.cardNum} onChange={hCardNum} />
-                      {errors.cardNum && <p className="err-msg">{errors.cardNum}</p>}
-                    </div>
-                    <div className="f-row">
-                      <div><label className="f-lab">Expiry *</label><input type="text" className={`f-in ${errors.cardExp?"err":""}`} placeholder="MM/YY" maxLength={5} value={form.cardExp} onChange={hCardExp} />{errors.cardExp && <p className="err-msg">{errors.cardExp}</p>}</div>
-                      <div><label className="f-lab">CVC *</label><input type="text" className={`f-in ${errors.cardCvc?"err":""}`} placeholder="123" maxLength={4} value={form.cardCvc} onChange={hCardCvc} />{errors.cardCvc && <p className="err-msg">{errors.cardCvc}</p>}</div>
-                    </div>
-                    <div className="f-grp">
-                      <label className="f-lab">Name on Card *</label>
-                      <input type="text" className={`f-in ${errors.cardName?"err":""}`} value={form.cardName} onChange={(e) => upd("cardName", e.target.value)} />
-                      {errors.cardName && <p className="err-msg">{errors.cardName}</p>}
-                    </div>
-                  </>
-                ) : method === "paypal" ? (
-                  <div style={{ padding: "18px 16px", borderRadius: 12, background: "rgba(0,112,186,.08)", border: "1px solid rgba(0,112,186,.25)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: "#0070BA", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <span style={{ fontFamily: "Bebas Neue", fontSize: 14, color: "#fff" }}>P</span>
-                      </div>
-                      <h5 style={{ fontSize: 14, fontWeight: 700, color: "#fff", margin: 0 }}>Pay with PayPal</h5>
-                    </div>
-                    <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.65)", lineHeight: 1.6, marginBottom: 12 }}>
-                      You'll be redirected to PayPal to complete your payment securely. Once confirmed, you'll return here automatically.
-                    </p>
-                    <div className="f-grp" style={{ marginBottom: 0 }}>
-                      <label className="f-lab">PayPal Receipt (optional)</label>
-                      <input type="text" className="f-in" placeholder="Transaction ID or receipt number" value={form.paypalReceipt} onChange={(e) => upd("paypalReceipt", e.target.value)} />
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 5 }}>Only needed if auto-validation fails.</p>
-                    </div>
-                  </div>
-                ) : method === "ath" ? (
-                  <>
-                    <div style={{ padding: "16px 18px", borderRadius: 12, background: "rgba(245,166,35,.08)", border: "1px dashed rgba(245,166,35,.3)", marginBottom: 16 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                        <Smartphone style={{ width: 15, height: 15, color: "var(--gold)" }} />
-                        <h5 style={{ fontSize: 13, fontWeight: 800, color: "var(--gold)", margin: 0, letterSpacing: ".06em" }}>SEND PAYMENT TO</h5>
-                      </div>
-                      <div style={{ fontFamily: "monospace", fontSize: 16, color: "#fff", fontWeight: 700, letterSpacing: ".04em", marginBottom: 6 }}>@prdise · (787) 237-9519</div>
-                      <p style={{ fontSize: 12, color: "rgba(255,255,255,.6)", lineHeight: 1.55 }}>
-                        Open ATH Móvil, send the exact amount of <strong style={{ color: "var(--gold)" }}>{fmt(booking.total)}</strong>, take a screenshot of the confirmation, then fill in the details below.
-                      </p>
-                    </div>
-                    <div className="f-row">
-                      <div>
-                        <label className="f-lab">Your ATH Phone / Username *</label>
-                        <input type="text" className={`f-in ${errors.athPhone?"err":""}`} placeholder="@username or +1 787..." value={form.athPhone} onChange={(e) => upd("athPhone", e.target.value)} />
-                        {errors.athPhone && <p className="err-msg">{errors.athPhone}</p>}
-                      </div>
-                      <div>
-                        <label className="f-lab">Amount to Send</label>
-                        <input type="text" className="f-in" value={fmt(booking.total)} readOnly disabled style={{ opacity: 0.75, cursor: "not-allowed" }} />
-                        <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4 }}>Send this exact amount via ATH Móvil.</p>
-                      </div>
-                    </div>
-                    <div className="f-row">
-                      <div>
-                        <label className="f-lab">Account Holder Name</label>
-                        <input type="text" className="f-in" placeholder="Name on the account" value={form.athHolder} onChange={(e) => upd("athHolder", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="f-lab">Time Sent (optional)</label>
-                        <input type="time" className="f-in" value={form.athTime} onChange={(e) => upd("athTime", e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="f-grp">
-                      <label className="f-lab">Payment Screenshot *</label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderRadius: 12, border: `1px dashed ${errors.athReceipt ? "rgba(239,108,43,.5)" : "rgba(255,255,255,.15)"}`, cursor: "pointer", background: "rgba(255,255,255,.02)" }}>
-                        <Package style={{ width: 18, height: 18, color: "var(--gold)" }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: form.athReceipt ? "#fff" : "rgba(255,255,255,.6)", fontWeight: 600 }}>
-                            {form.athReceipt || "Upload or paste screenshot URL"}
-                          </div>
-                          <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 2 }}>PNG, JPG · max 5MB</div>
-                        </div>
-                        <input type="file" accept="image/*" onChange={(e) => upd("athReceipt", e.target.files[0]?.name || "")} style={{ display: "none" }} />
-                      </label>
-                      {errors.athReceipt && <p className="err-msg">{errors.athReceipt}</p>}
-                    </div>
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)", padding: 10, borderRadius: 8, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.15)", display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <Info style={{ width: 12, height: 12, color: "#29ABE2", flexShrink: 0, marginTop: 1 }} />
-                      <span>Your booking will be confirmed within 15 minutes after we validate the payment.</span>
-                    </p>
-                  </>
-                ) : method === "bank" ? (
-                  <>
-                    <div style={{ padding: "16px 18px", borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px dashed rgba(41,171,226,.3)", marginBottom: 16 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                        <Building2 style={{ width: 15, height: 15, color: "#29ABE2" }} />
-                        <h5 style={{ fontSize: 13, fontWeight: 800, color: "#29ABE2", margin: 0, letterSpacing: ".06em" }}>BANK TRANSFER DETAILS</h5>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 6, fontSize: 12.5 }}>
-                        <span style={{ color: "rgba(255,255,255,.5)" }}>Bank:</span>
-                        <span style={{ color: "#fff", fontWeight: 600 }}>Banco Popular de Puerto Rico</span>
-                        <span style={{ color: "rgba(255,255,255,.5)" }}>Account Holder:</span>
-                        <span style={{ color: "#fff", fontWeight: 600 }}>Living in PRDISE LLC</span>
-                        <span style={{ color: "rgba(255,255,255,.5)" }}>Account #:</span>
-                        <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>0123-4567-8901</span>
-                        <span style={{ color: "rgba(255,255,255,.5)" }}>Routing:</span>
-                        <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>021502011</span>
-                      </div>
-                      <p style={{ fontSize: 12, color: "rgba(255,255,255,.6)", marginTop: 10, lineHeight: 1.55 }}>
-                        Transfer <strong style={{ color: "#29ABE2" }}>{fmt(booking.total)}</strong> and submit your receipt below for validation.
-                      </p>
-                    </div>
-                    <div className="f-row">
-                      <div>
-                        <label className="f-lab">Sender Name *</label>
-                        <input type="text" className={`f-in ${errors.bankHolder?"err":""}`} placeholder="Full name on transfer" value={form.bankHolder} onChange={(e) => upd("bankHolder", e.target.value)} />
-                        {errors.bankHolder && <p className="err-msg">{errors.bankHolder}</p>}
-                      </div>
-                      <div>
-                        <label className="f-lab">Amount to Send</label>
-                        <input type="text" className="f-in" value={fmt(booking.total)} readOnly disabled style={{ opacity: 0.75, cursor: "not-allowed" }} />
-                        <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4 }}>Transfer this exact amount.</p>
-                      </div>
-                    </div>
-                    <div className="f-row">
-                      <div>
-                        <label className="f-lab">Last 4 Digits of Your Account</label>
-                        <input type="text" className="f-in" placeholder="0000" maxLength={4} value={form.bankLast4} onChange={(e) => upd("bankLast4", e.target.value.replace(/\D/g, ""))} />
-                      </div>
-                      <div>
-                        <label className="f-lab">Transfer Date & Time *</label>
-                        <input type="datetime-local" className={`f-in ${errors.bankDate?"err":""}`} value={form.bankDate} onChange={(e) => upd("bankDate", e.target.value)} />
-                        {errors.bankDate && <p className="err-msg">{errors.bankDate}</p>}
-                      </div>
-                    </div>
-                    <div className="f-grp">
-                      <label className="f-lab">Reference Number (if any)</label>
-                      <input type="text" className="f-in" placeholder="Transaction reference" value={form.bankReference} onChange={(e) => upd("bankReference", e.target.value)} />
-                    </div>
-                    <div className="f-grp">
-                      <label className="f-lab">Transfer Receipt *</label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderRadius: 12, border: `1px dashed ${errors.bankReceipt ? "rgba(239,108,43,.5)" : "rgba(255,255,255,.15)"}`, cursor: "pointer", background: "rgba(255,255,255,.02)" }}>
-                        <Package style={{ width: 18, height: 18, color: "#29ABE2" }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: form.bankReceipt ? "#fff" : "rgba(255,255,255,.6)", fontWeight: 600 }}>
-                            {form.bankReceipt || "Upload PDF or screenshot of transfer"}
-                          </div>
-                          <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 2 }}>PDF, PNG, JPG · max 10MB</div>
-                        </div>
-                        <input type="file" accept="image/*,application/pdf" onChange={(e) => upd("bankReceipt", e.target.files[0]?.name || "")} style={{ display: "none" }} />
-                      </label>
-                      {errors.bankReceipt && <p className="err-msg">{errors.bankReceipt}</p>}
-                    </div>
-                    <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)", padding: 10, borderRadius: 8, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.15)", display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <Info style={{ width: 12, height: 12, color: "#29ABE2", flexShrink: 0, marginTop: 1 }} />
-                      <span>Bank transfers typically validate within 1-2 business days. You'll receive a confirmation email once verified.</span>
-                    </p>
-                  </>
-                ) : null}
-              </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, marginBottom: 14, cursor: "pointer" }}>
-                <input type="checkbox" checked={form.terms} onChange={(e) => upd("terms", e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />
-                <span style={{ fontSize: 14, color: "rgba(255,255,255,.7)" }}>I agree to the <strong style={{ color: "var(--gold)" }}>terms & policies</strong> *</span>
-              </label>
-              {user ? (
-                <button type="button" onClick={place} disabled={processing} className="f-submit">
-                  {processing ? "Processing..." : <><Shield style={{ width: 16, height: 16 }} />Confirm & Pay {fmt(booking.total)}</>}
-                </button>
-              ) : (
-                <>
-                  {/* Sign-in required banner */}
-                  <div style={{ padding: "14px 16px", borderRadius: 14, background: "linear-gradient(135deg,rgba(245,166,35,.1),rgba(239,108,43,.08))", border: "1px solid rgba(245,166,35,.3)", marginBottom: 10, display: "flex", gap: 12, alignItems: "center" }}>
-                    <Lock style={{ width: 18, height: 18, color: "var(--gold)", flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <h5 style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>Sign in required to complete booking</h5>
-                      <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", lineHeight: 1.5 }}>Your info is saved — you won't lose anything.</p>
-                    </div>
-                  </div>
-
-                  {/* Disabled Confirm button */}
-                  <button type="button" disabled className="f-submit" style={{ opacity: .45, cursor: "not-allowed" }}>
-                    <Lock style={{ width: 16, height: 16 }} />Confirm & Pay {fmt(booking.total)}
-                  </button>
-
-                  {/* Auth options */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-                    <button type="button" onClick={() => { if (validate()) setAuthModal("login"); }}
-                      style={{ padding: "11px 0", borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all .2s" }}>
-                      <User style={{ width: 14, height: 14 }} />Sign In
-                    </button>
-                    <button type="button" onClick={() => { if (validate()) setAuthModal("register"); }}
-                      style={{ padding: "11px 0", borderRadius: 10, background: "linear-gradient(135deg,rgba(141,198,63,.15),rgba(107,175,42,.15))", border: "1px solid rgba(141,198,63,.35)", color: "#8DC63F", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all .2s" }}>
-                      <Plus style={{ width: 14, height: 14 }} />Create Account
-                    </button>
-                  </div>
-                </>
-              )}
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", textAlign: "center", marginTop: 12 }}>
-                <Shield style={{ width: 11, height: 11, display: "inline", verticalAlign: "-1px", marginRight: 4 }} />
-                256-bit SSL encrypted · Your card is never stored
-              </p>
-            </main>
-            <aside>
-              <div className="summary-card">
-                <h3 className="summary-title">ORDER SUMMARY</h3>
-                <div style={{ display: "flex", gap: 12, paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                  {booking.img && <img src={booking.img} alt="" style={{ width: 72, height: 72, borderRadius: 12, objectFit: "cover", flexShrink: 0 }} />}
-                  <div style={{ minWidth: 0 }}>
-                    <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{booking.name || booking.vehicleName}</h4>
-                    {type === "hotel" && (<>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.zone}</p>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.checkin} → {booking.checkout}</p>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.guests} guests · {booking.nights} nights</p>
-                    </>)}
-                    {type === "tour" && (<>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.day}</p>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.date}</p>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.travelers} traveler{booking.travelers > 1 ? "s" : ""}</p>
-                    </>)}
-                    {type === "transfer" && (<>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.from} → {booking.to}</p>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.date} at {booking.time}</p>
-                      <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{booking.pax} pax · {booking.bags} bags</p>
-                    </>)}
-                  </div>
-                </div>
-                <div style={{ padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)" }}>
-                  {type === "hotel" && (<>
-                    <div className="summary-row"><span>{booking.nights} × ${booking.pricePerNight}</span><span>{fmt(booking.subtotal)}</span></div>
-                    <div className="summary-row"><span>Cleaning</span><span>$45.00</span></div>
-                    <div className="summary-row"><span>Service (10%)</span><span>{fmt(booking.service)}</span></div>
-                  </>)}
-                  {type === "tour" && (<>
-                    <div className="summary-row"><span>{booking.travelers} × ${booking.pricePerPerson}</span><span>{fmt(booking.subtotal)}</span></div>
-                    <div className="summary-row"><span>Service (5%)</span><span>{fmt(booking.service)}</span></div>
-                  </>)}
-                  {type === "transfer" && (<>
-                    <div className="summary-row"><span>Base fare</span><span>{fmt(booking.base)}</span></div>
-                    <div className="summary-row"><span>Distance ({booking.km} km)</span><span>{fmt(booking.distanceFee)}</span></div>
-                  </>)}
-                  <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(booking.total)}</span></div>
-                </div>
-                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--green)", fontWeight: 700, marginBottom: 4 }}>
-                    <CheckCircle style={{ width: 12, height: 12 }} />FREE CANCELLATION
-                  </div>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,.6)", lineHeight: 1.5 }}>
-                    {type === "hotel" ? "Up to 48h before check-in." : type === "tour" ? "Up to 48h before the tour." : "Up to 24h before pickup."}
-                  </p>
-                </div>
-                <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textAlign: "center", marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Shield style={{ width: 12, height: 12 }} />Secure checkout · SSL encrypted
-                </p>
-              </div>
-            </aside>
-          </div>
-        </div>
-      </div>
-
-      {authModal && (
-        <CheckoutAuthModal
-          mode={authModal}
-          setMode={setAuthModal}
-          prefillEmail={form.email}
-          prefillFirstName={form.firstName}
-          prefillLastName={form.lastName}
-          prefillCountry={form.country}
-          onSuccess={(loggedUser) => {
-            setUser(loggedUser);
-            setForm(f => ({
-              ...f,
-              firstName: loggedUser.firstName || f.firstName,
-              lastName: loggedUser.lastName || f.lastName,
-              email: loggedUser.email || f.email,
-              phone: loggedUser.phone || f.phone,
-              country: loggedUser.country || f.country,
-            }));
-            setAuthModal(null);
-            setTimeout(() => place(), 300);
-          }}
-          onClose={() => setAuthModal(null)}
-        />
-      )}
-    </>
-  );
-}
-function CheckoutAuthModal({ mode, setMode, prefillEmail, prefillFirstName, prefillLastName, prefillCountry, onSuccess, onClose }) {
-  const [loginForm, setLoginForm] = useState({ email: prefillEmail || "", password: "" });
-  const [regForm, setRegForm] = useState({
-    firstName: prefillFirstName || "", lastName: prefillLastName || "",
-    email: prefillEmail || "", password: "", confirmPassword: "",
-    country: prefillCountry || "", acceptTerms: false, acceptPrivacy: false,
-  });
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleLogin = async () => {
-    setError("");
-    if (!loginForm.email.trim() || !loginForm.password.trim()) { setError("Ingresa email y contraseña."); return; }
-    setLoading(true);
-    const fd = new FormData();
-    fd.append("email", loginForm.email.trim().toLowerCase());
-    fd.append("password", loginForm.password);
-    try {
-      const result = await sbSignIn(fd);
-      if (!result?.ok) {
-        setError((result && "error" in result && result.error) || "Credenciales inválidas");
-        setLoading(false);
-        return;
-      }
-      const userObj = {
-        firstName: loginForm.email.split("@")[0],
-        lastName: "",
-        email: loginForm.email.trim().toLowerCase(),
-        phone: "", country: "",
-        joinedAt: new Date().toLocaleDateString(),
-      };
-      setLoading(false);
-      onSuccess(userObj);
-    } catch (e) {
-      setError("Error inesperado, intenta de nuevo");
-      setLoading(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    setError("");
-    if (!regForm.firstName.trim() || !regForm.lastName.trim()) { setError("Nombre y apellido requeridos."); return; }
-    if (!regForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email)) { setError("Email inválido."); return; }
-    if (!regForm.password || regForm.password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres."); return; }
-    if (regForm.password !== regForm.confirmPassword) { setError("Las contraseñas no coinciden."); return; }
-    if (!regForm.acceptTerms || !regForm.acceptPrivacy) { setError("Debes aceptar los Términos y la Política de Privacidad."); return; }
-    setLoading(true);
-    const fd = new FormData();
-    fd.append("email", regForm.email.trim().toLowerCase());
-    fd.append("password", regForm.password);
-    fd.append("firstName", regForm.firstName.trim());
-    fd.append("lastName", regForm.lastName.trim());
-    const result = await sbSignUp(fd);
-    setLoading(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setError("Revisa tu email para confirmar la cuenta. Una vez confirmada, podrás iniciar sesión.");
-  };
-
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.75)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflowY: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 440, width: "100%", background: "linear-gradient(180deg,#1A2634,#0E1824)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 22, padding: "32px 28px", position: "relative", maxHeight: "90vh", overflowY: "auto" }}
-      >
-        <button onClick={onClose} style={{ position: "absolute", top: 14, right: 14, width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.06)", border: "none", color: "rgba(255,255,255,.6)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <X style={{ width: 14, height: 14 }} />
-        </button>
-
-        <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, background: "linear-gradient(135deg,var(--gold),var(--orange))", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 28px rgba(239,108,43,.35)" }}>
-            {mode === "login" ? <User style={{ width: 22, height: 22, color: "#fff" }} /> : <Plus style={{ width: 22, height: 22, color: "#fff" }} />}
-          </div>
-          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 24, letterSpacing: ".04em", marginBottom: 6 }}>
-            {mode === "login" ? "SIGN IN TO CONTINUE" : "CREATE YOUR ACCOUNT"}
-          </h2>
-          <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", lineHeight: 1.5 }}>
-            {mode === "login" ? "Sign in to finish your booking" : "Complete your booking by creating an account"}
-          </p>
-          <div style={{ padding: "6px 12px", borderRadius: 99, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.2)", color: "#8DC63F", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10 }}>
-            <CheckCircle style={{ width: 11, height: 11 }} />Your booking info is safe
-          </div>
-        </div>
-
-        {mode === "login" ? (
-          <>
-            <div className="f-grp">
-              <label className="f-lab">Email</label>
-              <input type="email" className="f-in" placeholder="your@email.com" value={loginForm.email}
-                onChange={(e) => setLoginForm(f => ({ ...f, email: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && document.getElementById("co-pwd")?.focus()} />
-            </div>
-            <div className="f-grp">
-              <label className="f-lab">Password</label>
-              <input id="co-pwd" type="password" className="f-in" placeholder="••••••••" value={loginForm.password}
-                onChange={(e) => setLoginForm(f => ({ ...f, password: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
-            </div>
-
-            {error && (
-              <div style={{ padding: 11, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12.5, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0 }} />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button type="button" onClick={handleLogin} disabled={loading} className="f-submit">
-              {loading ? "Signing in..." : <><Lock style={{ width: 14, height: 14 }} />Sign In & Complete Booking</>}
-            </button>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0" }}>
-              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.08)" }} />
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>New here?</span>
-              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.08)" }} />
-            </div>
-
-            <button type="button" onClick={() => { setMode("register"); setError(""); }}
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "11px 0", borderRadius: 10, background: "transparent", border: "1.5px solid rgba(141,198,63,.4)", color: "#8DC63F", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
-              <Plus style={{ width: 14, height: 14 }} />Create an Account Instead
-            </button>
-          </>
-        ) : (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-              <div>
-                <label className="f-lab">First Name</label>
-                <input className="f-in" placeholder="Jane" value={regForm.firstName} onChange={(e) => setRegForm(f => ({ ...f, firstName: e.target.value }))} />
-              </div>
-              <div>
-                <label className="f-lab">Last Name</label>
-                <input className="f-in" placeholder="Doe" value={regForm.lastName} onChange={(e) => setRegForm(f => ({ ...f, lastName: e.target.value }))} />
-              </div>
-            </div>
-            <div className="f-grp">
-              <label className="f-lab">Email</label>
-              <input type="email" className="f-in" placeholder="you@email.com" value={regForm.email}
-                onChange={(e) => setRegForm(f => ({ ...f, email: e.target.value }))} />
-            </div>
-            <div className="f-grp">
-              <label className="f-lab">Password</label>
-              <input type="password" className="f-in" placeholder="At least 8 characters" value={regForm.password}
-                onChange={(e) => setRegForm(f => ({ ...f, password: e.target.value }))} />
-            </div>
-            <div className="f-grp">
-              <label className="f-lab">Confirm Password</label>
-              <input type="password" className="f-in" placeholder="Re-enter password" value={regForm.confirmPassword}
-                onChange={(e) => setRegForm(f => ({ ...f, confirmPassword: e.target.value }))} />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 9, margin: "12px 0" }}>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>
-                <input type="checkbox" checked={regForm.acceptTerms} onChange={(e) => setRegForm(f => ({ ...f, acceptTerms: e.target.checked }))}
-                  style={{ accentColor: "#F5A623", width: 15, height: 15, marginTop: 1, flexShrink: 0 }} />
-                <span>I accept the <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "var(--gold)", textDecoration: "underline" }}>Terms & Conditions</a></span>
-              </label>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>
-                <input type="checkbox" checked={regForm.acceptPrivacy} onChange={(e) => setRegForm(f => ({ ...f, acceptPrivacy: e.target.checked }))}
-                  style={{ accentColor: "#F5A623", width: 15, height: 15, marginTop: 1, flexShrink: 0 }} />
-                <span>I accept the <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "var(--gold)", textDecoration: "underline" }}>Privacy Policy</a></span>
-              </label>
-            </div>
-
-            {error && (
-              <div style={{ padding: 11, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12.5, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0 }} />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button type="button" onClick={handleRegister} disabled={loading} className="f-submit">
-              {loading ? "Creating account..." : <><CheckCircle style={{ width: 14, height: 14 }} />Create & Complete Booking</>}
-            </button>
-
-            <div style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "rgba(255,255,255,.5)" }}>
-              Already have an account? <button type="button" onClick={() => { setMode("login"); setError(""); }} style={{ background: "none", border: "none", color: "var(--gold)", fontWeight: 700, cursor: "pointer", padding: 0, fontSize: "inherit" }}>Sign In</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════ CONFIRMATION (hotel | tour | transfer) ═══════════════ */
-function ConfirmationPage({ type }) {
-  const { lang } = useLang();
-  const [conf, setConf] = useState(null);
-  const [notFound, setNotFound] = useState(false);
-  useEffect(() => {
-    const c = PRDISE.load("lastConfirmation", null);
-    if (!c || c.type !== type) setNotFound(true);
-    else setConf(c);
-  }, [type]);
-
-  if (notFound) {
-    return (
-      <div className="conf-wrap">
-        <div className="conf-card">
-          <h1>{lang === "es" ? "NO ENCONTRAMOS LA RESERVA" : "NO BOOKING FOUND"}</h1>
-          <p className="conf-sub">{lang === "es" ? "No encontramos una reserva reciente. Empieza de nuevo." : "We couldn't find a recent booking. Please start over."}</p>
-          <NavLink to="/" className="cta-pri"><ArrowLeft style={{ width: 14, height: 14 }} />{lang === "es" ? "Volver al inicio" : "Back to Home"}</NavLink>
-        </div>
-      </div>
-    );
-  }
-  if (!conf) return null;
-
-  // Offline methods (ath / bank) requieren reconciliacion manual del admin
-  // antes de considerarse confirmados. No prometemos "confirmado" porque el
-  // monto/comprobante podria no coincidir o ser fraudulento.
-  const isOffline = conf.paymentMethod === "ath" || conf.paymentMethod === "bank";
-  const totalLabel = isOffline
-    ? (lang === "es" ? "Monto declarado" : "Amount declared")
-    : (lang === "es" ? "Total pagado" : "Total Paid");
-
-  const rows = type === "hotel" ? [
-    [lang === "es" ? "Alojamiento" : "Stay", conf.name],
-    [lang === "es" ? "Zona" : "Zone", conf.zone],
-    [lang === "es" ? "Entrada" : "Check-in", conf.checkin],
-    [lang === "es" ? "Salida" : "Check-out", conf.checkout],
-    [lang === "es" ? "Huéspedes" : "Guests", conf.guests],
-    [lang === "es" ? "Noches" : "Nights", conf.nights],
-    [totalLabel, fmt(conf.total)],
-  ] : type === "tour" ? [
-    [lang === "es" ? "Tour" : "Tour", conf.name],
-    [lang === "es" ? "Día" : "Day", conf.day],
-    [lang === "es" ? "Fecha" : "Date", conf.date],
-    [lang === "es" ? "Viajeros" : "Travelers", conf.travelers],
-    [lang === "es" ? "Precio por persona" : "Price per person", fmt(conf.pricePerPerson)],
-    [totalLabel, fmt(conf.total)],
-  ] : [
-    [lang === "es" ? "Vehículo" : "Vehicle", conf.vehicleName],
-    [lang === "es" ? "Desde" : "From", conf.from],
-    [lang === "es" ? "Hasta" : "To", conf.to],
-    [lang === "es" ? "Fecha" : "Date", conf.date],
-    [lang === "es" ? "Hora" : "Time", conf.time],
-    [lang === "es" ? "Pasajeros" : "Passengers", conf.pax],
-    [lang === "es" ? "Maletas" : "Bags", conf.bags],
-    [lang === "es" ? "Distancia" : "Distance", `${conf.km} km`],
-    [totalLabel, fmt(conf.total)],
-  ];
-
-  const title = isOffline
-    ? (lang === "es" ? "SOLICITUD RECIBIDA · EN REVISIÓN" : "REQUEST RECEIVED · UNDER REVIEW")
-    : type === "hotel" ? (lang === "es" ? "RESERVA CONFIRMADA" : "BOOKING CONFIRMED")
-    : type === "tour" ? (lang === "es" ? "TOUR CONFIRMADO" : "TOUR CONFIRMED")
-    : (lang === "es" ? "TRASLADO CONFIRMADO" : "TRANSFER CONFIRMED");
-  const subtitle = isOffline
-    ? (lang === "es"
-        ? <>Recibimos tu solicitud y comprobante. Nuestro equipo verificará el pago manualmente y te enviaremos un correo a <strong style={{ color: "#fff" }}>{conf.email}</strong> cuando esté confirmada. Esto puede tomar entre algunas horas y 1 día hábil.</>
-        : <>We received your request and proof of payment. Our team will verify the payment manually and email you at <strong style={{ color: "#fff" }}>{conf.email}</strong> once confirmed. This usually takes a few hours to 1 business day.</>)
-    : (lang === "es"
-        ? <>Gracias por reservar con Living in PRDISE. Te enviamos un correo de confirmación a <strong style={{ color: "#fff" }}>{conf.email}</strong></>
-        : <>Thank you for booking with Living in PRDISE. A confirmation email has been sent to <strong style={{ color: "#fff" }}>{conf.email}</strong></>);
-
-  const backTo = type === "hotel" ? "/stays" : type === "tour" ? "/tours" : "/transfer-search";
-  const nextSteps = isOffline ? {
-    Icon: Clock,
-    color: "gold",
-    title: lang === "es" ? "Próximos pasos" : "Next steps",
-    text: lang === "es"
-      ? "Mientras tanto, no realices otro pago. Si necesitas modificar o cancelar la solicitud antes de la confirmación, escríbenos al correo. Tu reserva NO está confirmada hasta que el equipo valide la transacción."
-      : "In the meantime, do NOT submit another payment. If you need to modify or cancel the request before it's confirmed, email us. Your booking is NOT confirmed until the team validates the transaction.",
-  } : type === "hotel" ? {
-    Icon: Home, color: "sky",
-    title: lang === "es" ? "Próximos pasos" : "What's Next?",
-    text: lang === "es"
-      ? "Recibirás una guía de check-in 48h antes con la dirección exacta, códigos de puerta y contacto del anfitrión."
-      : "You'll receive a check-in guide 48h before arrival with the exact address, door codes, and host contact info.",
-  } : type === "tour" ? {
-    Icon: Compass, color: "green",
-    title: lang === "es" ? "Antes de tu tour" : "Before Your Tour",
-    text: lang === "es"
-      ? "Te enviaremos detalles de recogida 24h antes. Llega al punto de encuentro 10 min antes y trae lo que indique tu correo."
-      : "We'll send pickup details 24h before the tour. Please arrive at the meeting point 10 minutes early and bring what's listed in your confirmation email.",
-  } : {
-    Icon: Car, color: "orange",
-    title: lang === "es" ? "Contacto del conductor" : "Driver Contact",
-    text: lang === "es"
-      ? "Te enviaremos el nombre y teléfono del conductor 2h antes de la recogida. Está listo 5 min antes en el punto acordado."
-      : "Your driver's name and phone will be sent 2 hours before pickup. Please be ready 5 minutes early at the agreed location.",
-  };
-
-  return (
-    <div className="conf-wrap">
-      <div className="conf-card">
-        <div className="conf-icon" style={isOffline ? { background: "linear-gradient(135deg,#F5A623,#EF6C2B)" } : {}}>
-          {isOffline ? <Clock /> : <Check />}
-        </div>
-        <h1>{title}</h1>
-        <p className="conf-sub">{subtitle}</p>
-        <div className="conf-ref-box">
-          <div className="conf-ref-lab">{lang === "es" ? "Referencia de reserva" : "Booking Reference"}</div>
-          <div className="conf-ref-val">{conf.ref}</div>
-        </div>
-        <div className="conf-rows">
-          {rows.map(([l, v]) => (
-            <div key={l} className="row"><span className="lbl">{l}</span><span className="val">{v}</span></div>
-          ))}
-        </div>
-        <div style={{ padding: 16, borderRadius: 14, background: COLORS[nextSteps.color] + "14", border: `1px solid ${COLORS[nextSteps.color]}33`, marginBottom: 20, textAlign: "left" }}>
-          <h4 style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: COLORS[nextSteps.color], marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-            <nextSteps.Icon style={{ width: 14, height: 14 }} />{nextSteps.title}
-          </h4>
-          <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.65)", lineHeight: 1.6 }}>{nextSteps.text}</p>
-        </div>
-        <div className="cta-row">
-          <NavLink to="/account" className="cta-pri"><User style={{ width: 14, height: 14 }} />{lang === "es" ? "Ver mi cuenta" : "View My Account"}</NavLink>
-          <NavLink to={backTo} className="cta-sec">{lang === "es" ? "Reservar otra" : "Book Another"}</NavLink>
-        </div>
-        <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)", marginTop: 20 }}>
-          {lang === "es" ? "¿Preguntas?" : "Questions?"} <a href="mailto:info@livinginprdise.com" style={{ color: "var(--gold)" }}>info@livinginprdise.com</a> · (787) 237-9519
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════ CART CHECKOUT ═══════════════ */
-function CartCheckoutPage() {
-  const { lang } = useLang();
-  const [cart, setCart] = useState([]);
-  const [user, setUser] = useState(null);
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", country: "United States", notes: "", cardNum: "", cardExp: "", cardCvc: "", cardName: "", athPhone: "", athReceipt: "", bankHolder: "", bankReference: "", paypalReceipt: "" });
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
-  const [couponError, setCouponError] = useState("");
-  const [processing, setProcessing] = useState(false);
-  const [method, setMethod] = useState(() => {
-    const enabled = getEnabledPaymentMethods();
-    return enabled[0]?.id ?? "ath";
-  });
-  const [useSavedMethod, setUseSavedMethod] = useState(false);
-  // Modal de exito post-checkout (reemplaza alert() nativo).
-  const [successModal, setSuccessModal] = useState(null);
-
-  useEffect(() => {
-    const sess = PRDISE.load("session", null);
-    if (!sess || sess.role !== "user") { nav("/login"); return; }
-    const u = PRDISE.load("user", null);
-    if (u) {
-      setUser(u);
-      setForm(f => ({ ...f, firstName: u.firstName || "", lastName: u.lastName || "", email: u.email || "", phone: u.phone || "", country: u.country || "United States" }));
-      // If user has saved payment method, pre-select it
-      if (u.paymentMethod && u.paymentMethod.trim()) {
-        setUseSavedMethod(true);
-      }
-    }
-    // Solo transfers en el modelo referral. Items legacy (sin routeId UUID)
-    // se descartan: requieren ser regenerados desde /transfer-search post-fix
-    // para incluir el id de la ruta en Supabase.
-    const savedDrafts = (PRDISE.load("userCart", []) || []).filter(
-      (d) => d?.type === "transfer" && d?.routeId
-    );
-    setCart(savedDrafts.length > 0 ? savedDrafts.map(d => ({
-      id: d._cartId || ("c" + Math.random().toString(36).slice(2, 6)),
-      ref: d.ref || "CART-DRAFT",
-      type: d.type,
-      name: d.name || d.vehicleName,
-      date: d.date || d.checkin,
-      time: d.time || "",
-      checkin: d.checkin,
-      checkout: d.checkout,
-      location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""),
-      guests: d.guests || d.travelers || d.pax || 1,
-      total: d.total || 0,
-      quantity: d.travelers || d.guests || d.pax || d.nights || 1,
-      // Preservar identificadores que necesita el Server Action para resolver
-      // el item en Supabase (routeId UUID es el critico para transfers).
-      routeId: d.routeId,
-      hotelId: d.hotelId,
-      tourId: d.tourId,
-      from: d.from,
-      to: d.to,
-      vehicleId: d.vehicleId,
-      bags: d.bags,
-      km: d.km,
-    })) : []);
-  }, []);
-
-  const subtotal = cart.reduce((s, c) => s + (c.total || 0), 0);
-  // Loyalty discount auto-applied
-  const tiers = PRDISE.load("loyaltyTiers", []);
-  const userPoints = user?.points || 0;
-  const currentTier = [...tiers].reverse().find(t => userPoints >= t.min) || (tiers[0] || { discount: 0, name: "" });
-  const tierDiscountPct = currentTier.discount || 0;
-  const tierDiscount = subtotal * tierDiscountPct / 100;
-  const couponDiscount = appliedCoupon ? subtotal * appliedCoupon.discount / 100 : 0;
-  const total = Math.max(0, subtotal - tierDiscount - couponDiscount);
-
-  const applyCoupon = async () => {
-    setCouponError("");
-    const code = couponCode.trim().toUpperCase();
-    if (!code) { setCouponError(lang === "es" ? "Ingresa un código" : "Enter a code"); return; }
-    // 1) Cupones personales asignados al usuario (localStorage; el admin
-    //    podrá asignar cupones a usuarios desde el panel a futuro). Se honran
-    //    sin pasar por Supabase porque son personales (no compartidos).
-    const userCoupons = PRDISE.load("userCoupons", []);
-    const personal = userCoupons.find(c => c.code === code && !c.used);
-    if (personal) {
-      setAppliedCoupon({ ...personal, _kind: "personal" });
-      return;
-    }
-    // 2) Cupones globales: validar contra la tabla `coupons` de Supabase via
-    //    Server Action (no contra PRDISE.load("coupons") que era localStorage
-    //    demo). Solo cupones reales creados por admin se aceptan.
-    try {
-      const fd = new FormData();
-      fd.append("code", code);
-      const res = await sbValidateCoupon(fd);
-      if (!res?.ok) {
-        // Traducir el mensaje del server al idioma actual.
-        const map = {
-          "Código inválido": lang === "es" ? "Código inválido" : "Invalid code",
-          "Cupón inactivo": lang === "es" ? "Cupón inactivo" : "Coupon inactive",
-          "Cupón vencido": lang === "es" ? "Cupón vencido" : "Coupon expired",
-          "Cupón agotado": lang === "es" ? "Cupón agotado" : "Coupon exhausted",
-          "Ingresa un código": lang === "es" ? "Ingresa un código" : "Enter a code",
-        };
-        setCouponError(map[res?.error] || res?.error || (lang === "es" ? "Código inválido" : "Invalid code"));
-        return;
-      }
-      const c = res.coupon;
-      // Normalizar al shape que ya consume el JSX (discount, maxUses, used, expires).
-      setAppliedCoupon({
-        id: c.id,
-        code: c.code,
-        desc: lang === "es" ? (c.description_es || "") : (c.description_en || ""),
-        discount: c.discount_pct,
-        maxUses: c.max_uses ?? Infinity,
-        used: c.used_count,
-        expires: c.expires_at,
-        _kind: "global",
-      });
-    } catch (e) {
-      setCouponError(lang === "es" ? "Error al validar cupón" : "Error validating coupon");
-    }
-  };
-
-  const removeFromCart = (id) => {
-    const updated = cart.filter(c => c.id !== id);
-    setCart(updated);
-    // If a real cart in storage, update too
-    const saved = PRDISE.load("userCart", []);
-    if (saved.length > 0) PRDISE.save("userCart", saved.filter(c => (c._cartId || c.id) !== id));
-  };
-
-  const handlePay = async () => {
-    if (!form.firstName || !form.email) { alert(lang === "es" ? "Completa nombre y correo" : "Complete name and email"); return; }
-    // Validate based on method (skip if using saved profile method)
-    if (!useSavedMethod) {
-      if (method === "stripe") {
-        if (!form.cardNum || !form.cardExp || !form.cardCvc) { alert(lang === "es" ? "Completa los datos de la tarjeta" : "Complete card details"); return; }
-      } else if (method === "ath") {
-        if (!form.athPhone) { alert(lang === "es" ? "Ingresa el número de ATH Móvil" : "Enter ATH Móvil number"); return; }
-      } else if (method === "bank") {
-        if (!form.bankHolder || !form.bankReference) { alert(lang === "es" ? "Completa los datos de la transferencia" : "Complete bank transfer details"); return; }
-      }
-    }
-    setProcessing(true);
-
-    // Persistir cada item del cart a Supabase si el método es offline.
-    const createdBookingIds = [];
-    if (method === "ath" || method === "bank") {
-      const itemTypeMap = { hotel: "stay", tour: "tour", transfer: "transfer" };
-      const failed = [];
-      for (const it of cart) {
-        try {
-          const itemId = it.hotelId || it.tourId || it.routeId || (it.from && it.to ? `${it.from}:${it.to}` : it.id);
-          const startDate = it.checkin || it.date || new Date().toISOString().slice(0, 10);
-          const endDate = it.checkout || null;
-          const fd = new FormData();
-          fd.append("itemType", itemTypeMap[it.type] || it.type);
-          fd.append("itemId", String(itemId || ""));
-          fd.append("startDate", String(startDate));
-          if (endDate) fd.append("endDate", String(endDate));
-          fd.append("pax", String(it.guests || it.travelers || it.pax || it.quantity || 1));
-          fd.append("totalCents", String(Math.round((it.total || 0) * 100)));
-          fd.append("paymentMethod", method);
-          fd.append("notes", it.notes || "");
-          if (method === "ath") {
-            fd.append("athPhone", form.athPhone || "");
-            fd.append("athReceipt", form.athReceipt || "");
-          } else if (method === "bank") {
-            fd.append("bankHolder", form.bankHolder || "");
-            fd.append("bankReference", form.bankReference || "");
-            fd.append("bankReceipt", form.bankReceipt || "");
-          }
-          const res = await sbCreateBookingOffline(fd);
-          if (!res?.ok) {
-            failed.push({ item: it, error: res?.error || "unknown" });
-          } else if (res.bookingId) {
-            createdBookingIds.push(res.bookingId);
-          }
-        } catch (e) {
-          failed.push({ item: it, error: e?.message || String(e) });
-        }
-      }
-      // Crear invoice agrupando todos los bookings recien creados.
-      // Service → Payment → Invoice cycle: 1 cart checkout = 1 invoice con N
-      // items (uno por booking). Status inicial 'sent'; pasa a 'paid' cuando
-      // el admin confirma cada payment (confirmPayment marca paid las
-      // invoices vinculadas via invoice_items.booking_id).
-      if (createdBookingIds.length > 0) {
-        try {
-          const invFd = new FormData();
-          invFd.append("bookingIds", createdBookingIds.join(","));
-          invFd.append("customerName", `${form.firstName} ${form.lastName}`.trim());
-          invFd.append("customerEmail", form.email);
-          if (form.phone) invFd.append("customerPhone", form.phone);
-          await sbCreateInvoiceFromBookings(invFd);
-        } catch (e) { console.warn("invoice create:", e); }
-      }
-      if (failed.length) {
-        setProcessing(false);
-        alert(`No se pudieron registrar ${failed.length} de ${cart.length} reservas. Primer error: ${failed[0].error}. Verifica que iniciaste sesión.`);
-        return;
-      }
-    }
-
-    setTimeout(() => {
-      // Puntos: solo se acreditan cuando el admin marca el booking como
-      // 'completed' (trigger DB tg_award_points_on_booking_completed). Antes
-      // se updateaba localStorage user.points optimisticamente lo que daba
-      // un valor falso al usuario hasta que AuthBridge sincronizaba con el
-      // profile real. Removido para no engañar.
-      const pointsEarned = Math.floor(total * 0.1);
-      // Mark coupon as used
-      if (appliedCoupon) {
-        if (appliedCoupon._kind === "personal") {
-          const userCoupons = PRDISE.load("userCoupons", []);
-          PRDISE.save("userCoupons", userCoupons.map(c => c.code === appliedCoupon.code ? { ...c, used: true, usedAt: new Date().toISOString().split("T")[0] } : c));
-        } else {
-          const adminCoupons = PRDISE.load("coupons", []);
-          PRDISE.save("coupons", adminCoupons.map(c => c.code === appliedCoupon.code ? { ...c, used: c.used + 1 } : c));
-          // Add to history
-          const history = PRDISE.load("couponHistory", []);
-          history.push({ id: "ch" + Date.now(), code: appliedCoupon.code, date: new Date().toISOString().split("T")[0], user: `${form.firstName} ${form.lastName}`, email: form.email, amount: subtotal, discount: couponDiscount, bookingRef: "PRD-" + Math.random().toString(36).slice(2, 9).toUpperCase() });
-          PRDISE.save("couponHistory", history);
-        }
-      }
-      // Move cart items to pending bookings
-      const existingPending = PRDISE.load("userPendingBookings", []);
-      const today = new Date().toISOString().split("T")[0];
-      const masterRef = "PRD-" + Math.random().toString(36).slice(2, 9).toUpperCase();
-      const newPendingBookings = cart.map(c => ({
-        id: "b" + Date.now() + Math.random().toString(36).slice(2, 5),
-        ref: "PRD-" + Math.random().toString(36).slice(2, 9).toUpperCase(),
-        type: c.type,
-        name: c.name,
-        status: "pending",
-        date: c.date || c.checkin,
-        time: c.time || "",
-        checkin: c.checkin,
-        checkout: c.checkout,
-        location: c.location,
-        guests: c.guests,
-        total: c.total,
-        notes: c.notes || (lang === "es" ? `Pagado el ${today} · Confirmación pendiente` : `Paid on ${today} · Awaiting confirmation`),
-        paidDate: today,
-        paymentMethod: useSavedMethod ? "saved" : method,
-      }));
-      PRDISE.save("userPendingBookings", [...newPendingBookings, ...existingPending]);
-
-      // ── Generate invoice for the admin panel ──
-      // All cart payments start as "sent" (awaiting admin verification of money received)
-      // Admin must manually verify and mark as paid in the Payments module
-      const dueDateObj = new Date(today);
-      dueDateObj.setDate(dueDateObj.getDate() + 15);
-      const dueDate = dueDateObj.toISOString().split("T")[0];
-      const invoiceNum = `INV-2026-${String(Date.now()).slice(-3)}`;
-      const lineItems = cart.map(c => ({
-        type: c.type === "hotel" ? "stay" : c.type,
-        name: c.name,
-        price: c.total / (c.quantity || 1),
-        qty: c.quantity || 1,
-      }));
-      let paymentRefStr = "";
-      if (useSavedMethod) paymentRefStr = `SAVED-${user?.paymentMethod || "method"}`;
-      else if (method === "stripe") paymentRefStr = `STRIPE-****${(form.cardNum || "0000").replace(/\s/g, "").slice(-4)}`;
-      else if (method === "paypal") paymentRefStr = `PAYPAL-${form.paypalReceipt || "AUTO"}`;
-      else if (method === "ath") paymentRefStr = `ATH-${form.athReceipt || form.athPhone || "PENDING"}`;
-      else if (method === "bank") paymentRefStr = `BANK-${form.bankReference || "PENDING"}`;
-      const newInvoice = {
-        id: "inv-cart-" + Date.now(),
-        num: invoiceNum,
-        customer: `${form.firstName} ${form.lastName}`.trim(),
-        email: form.email,
-        issued: today,
-        due: dueDate,
-        items: cart.length,
-        total,
-        status: "sent",
-        link: true,
-        lineItems,
-        // Store the customer's payment claim — admin will verify
-        customerPaymentClaim: paymentRefStr,
-        bookingRef: masterRef,
-        source: "cart-checkout",
-      };
-      const existingInvoices = PRDISE.load("userGeneratedInvoices", []);
-      PRDISE.save("userGeneratedInvoices", [newInvoice, ...existingInvoices]);
-
-      // ── Generate transaction for the Payments module ──
-      const methodLabel = useSavedMethod ? "Saved Card"
-        : method === "stripe" ? "Card"
-        : method === "paypal" ? "PayPal"
-        : method === "ath" ? "ATH Móvil"
-        : method === "bank" ? "Bank Transfer"
-        : method;
-      const newTransaction = {
-        id: "tx-cart-" + Date.now(),
-        ref: "TX-" + masterRef.replace("PRD-", ""),
-        customer: `${form.firstName} ${form.lastName}`.trim(),
-        email: form.email,
-        phone: form.phone,
-        country: form.country,
-        amount: total,
-        method: methodLabel,
-        status: "pending", // Always pending — admin must verify payment
-        date: today,
-        bookingRef: masterRef,
-        type: cart.length === 1 ? cart[0].type : "cart",
-        item: cart.length === 1 ? cart[0].name : `${cart.length} ${lang === "es" ? "servicios" : "items"} (${lang === "es" ? "Carrito" : "Cart"})`,
-        notes: form.notes || "",
-        adminNotes: appliedCoupon ? `Coupon: ${appliedCoupon.code} (-${fmt(couponDiscount)})` : (lang === "es" ? "Pago de carrito · Esperando verificación" : "Cart checkout · Awaiting verification"),
-        invoiceNum,
-        customerPaymentClaim: paymentRefStr,
-        // Full cart snapshot
-        cartItems: cart.map(c => ({ ...c })),
-        subtotal, tierDiscount, couponDiscount,
-        coupon: appliedCoupon ? { code: appliedCoupon.code, discount: couponDiscount } : null,
-        // Payment-method-specific claims from customer
-        paymentClaim: method === "ath" ? {
-          phone: form.athPhone, amount: form.athAmount, time: form.athTime,
-          holder: form.athHolder, receipt: form.athReceipt,
-        } : method === "bank" ? {
-          holder: form.bankHolder, last4: form.bankLast4, amount: form.bankAmount,
-          date: form.bankDate, reference: form.bankReference, receipt: form.bankReceipt,
-        } : method === "paypal" ? {
-          receipt: form.paypalReceipt,
-        } : method === "stripe" || method === "card" ? {
-          cardLast4: (form.cardNum || "").replace(/\s/g, "").slice(-4),
-          cardName: form.cardName,
-        } : null,
-      };
-      const existingTransactions = PRDISE.load("userGeneratedTransactions", []);
-      PRDISE.save("userGeneratedTransactions", [newTransaction, ...existingTransactions]);
-
-      // Clear cart and mark as emptied so demo items don't reappear
-      PRDISE.save("userCart", []);
-      PRDISE.save("cartEmptied", true);
-      // Save confirmation info
-      PRDISE.save("lastCartCheckout", {
-        items: cart, subtotal, tierDiscount, couponDiscount, total, coupon: appliedCoupon, pointsEarned,
-        ref: masterRef, invoiceNum, date: new Date().toISOString(),
-      });
-      setProcessing(false);
-      // Modal branded en vez de alert() nativo. Notar: pointsEarned no se
-      // suma todavia al saldo del usuario — el trigger DB lo hace cuando el
-      // admin marca el booking 'completed'. Comunicamos eso explicitamente.
-      setSuccessModal({
-        total: fmt(total),
-        pointsEarned,
-        invoiceNum,
-        masterRef,
-      });
-    }, 1200);
-  };
-
-  const TYPE_META = {
-    hotel: { Icon: Home, color: "#29ABE2", label: lang === "es" ? "Estadía" : "Stay" },
-    tour: { Icon: Compass, color: "#8DC63F", label: "Tour" },
-    transfer: { Icon: Car, color: "#F5A623", label: lang === "es" ? "Traslado" : "Transfer" },
-  };
-
-  if (cart.length === 0) {
-    return (
-      <div style={{ minHeight: "100vh", paddingTop: 100, padding: 20, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center", color: "rgba(255,255,255,.6)" }}>
-          <Package style={{ width: 56, height: 56, margin: "0 auto 14px", opacity: .35 }} />
-          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>{lang === "es" ? "TU CARRITO ESTÁ VACÍO" : "YOUR CART IS EMPTY"}</h2>
-          <p style={{ marginBottom: 18, fontSize: 13 }}>{lang === "es" ? "Agrega servicios para continuar." : "Add services to continue."}</p>
-          <button onClick={() => nav("/account")} className="cta-sec">{lang === "es" ? "Volver a mi cuenta" : "Back to account"}</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ minHeight: "100vh", paddingTop: 140, paddingBottom: 60, background: "linear-gradient(135deg,var(--deep),var(--ink))" }}>
-      {successModal && (
-        <div onClick={() => { setSuccessModal(null); nav("/account"); }} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: "100%", background: "linear-gradient(180deg,#142030,#0E1824)", border: "1px solid rgba(245,166,35,.3)", borderRadius: 20, padding: "36px 28px", textAlign: "center", position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "linear-gradient(90deg,#F5A623,#EF6C2B,#8DC63F,#29ABE2)" }} />
-            <div style={{ width: 68, height: 68, borderRadius: 18, background: "linear-gradient(135deg,#F5A623,#EF6C2B)", margin: "0 auto 18px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 32px rgba(239,108,43,.4)" }}>
-              <Clock style={{ width: 30, height: 30, color: "#fff" }} />
-            </div>
-            <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".04em", color: "#fff", marginBottom: 8 }}>
-              {lang === "es" ? "SOLICITUD RECIBIDA" : "REQUEST RECEIVED"}
-            </h2>
-            <p style={{ fontSize: 13.5, color: "rgba(255,255,255,.7)", lineHeight: 1.55, marginBottom: 18 }}>
-              {lang === "es"
-                ? "Tu solicitud y comprobante fueron registrados. El equipo verificará el pago manualmente y recibirás un correo cuando se confirme."
-                : "Your request and proof of payment were registered. Our team will verify the payment manually and email you when it's confirmed."}
-            </p>
-            <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", marginBottom: 14, display: "grid", gridTemplateColumns: "auto 1fr", gap: 6, fontSize: 12.5, textAlign: "left" }}>
-              <span style={{ color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Total" : "Total"}:</span>
-              <span style={{ color: "var(--gold)", fontWeight: 700, fontFamily: "monospace" }}>{successModal.total}</span>
-              <span style={{ color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Referencia" : "Reference"}:</span>
-              <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>{successModal.masterRef}</span>
-              <span style={{ color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Factura" : "Invoice"}:</span>
-              <span style={{ color: "#fff", fontWeight: 600, fontFamily: "monospace" }}>{successModal.invoiceNum}</span>
-            </div>
-            <div style={{ padding: "10px 12px", borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", marginBottom: 18, fontSize: 11.5, color: "rgba(255,255,255,.7)", display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <Star style={{ width: 13, height: 13, color: "#8DC63F", flexShrink: 0, marginTop: 1 }} />
-              <span>
-                {lang === "es"
-                  ? <><strong style={{ color: "#8DC63F" }}>{successModal.pointsEarned} puntos</strong> se acreditarán a tu cuenta cuando se confirme el pago.</>
-                  : <><strong style={{ color: "#8DC63F" }}>{successModal.pointsEarned} points</strong> will be credited to your account when payment is confirmed.</>}
-              </span>
-            </div>
-            <button onClick={() => { setSuccessModal(null); nav("/account"); }} style={{ width: "100%", padding: "13px 0", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 8px 24px rgba(245,166,35,.3)" }}>
-              {lang === "es" ? "Ir a mi cuenta" : "Go to my account"}
-            </button>
-          </div>
-        </div>
-      )}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px" }}>
-        <div style={{ marginBottom: 24 }}>
-          <button onClick={() => nav("/account")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 99, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: 700, cursor: "pointer", marginBottom: 14 }}>
-            <ArrowLeft style={{ width: 12, height: 12 }} />{lang === "es" ? "Volver al carrito" : "Back to cart"}
-          </button>
-          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 40, letterSpacing: ".04em", marginBottom: 6 }}>{lang === "es" ? "FINALIZAR " : "COMPLETE "}<em style={{ color: "var(--gold)", fontStyle: "normal" }}>{lang === "es" ? "COMPRA" : "CHECKOUT"}</em></h1>
-          <p style={{ color: "rgba(255,255,255,.55)", fontSize: 13.5 }}>{cart.length} {lang === "es" ? (cart.length === 1 ? "servicio" : "servicios") : (cart.length === 1 ? "service" : "services")} · {lang === "es" ? "Procesa todo en un solo pago" : "Process everything in a single payment"}</p>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24 }}>
-          {/* LEFT: Cart items + Form */}
-          <div>
-            {/* Items */}
-            <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: "var(--gold)", marginBottom: 14 }}>{lang === "es" ? "TUS SERVICIOS" : "YOUR SERVICES"}</h3>
-              {cart.map((c) => {
-                const meta = TYPE_META[c.type] || TYPE_META.hotel;
-                const dateStr = c.checkin ? `${c.checkin} → ${c.checkout}` : `${c.date}${c.time ? ` · ${c.time}` : ""}`;
-                return (
-                  <div key={c.id} style={{ display: "flex", gap: 12, padding: 14, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", marginBottom: 8, borderLeft: `3px solid ${meta.color}` }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: meta.color + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <meta.Icon style={{ width: 17, height: 17, color: meta.color }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", color: meta.color, textTransform: "uppercase", marginBottom: 2 }}>{meta.label}</div>
-                          <h4 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4 }}>{c.name}</h4>
-                          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.5)" }}>{c.location} · {dateStr} · {c.guests} {lang === "es" ? (c.guests === 1 ? "huésped" : "huéspedes") : (c.guests === 1 ? "guest" : "guests")}</div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)" }}>{fmt(c.total)}</div>
-                          <button onClick={() => removeFromCart(c.id)} style={{ marginTop: 4, fontSize: 10, color: "#EF6C2B", background: "none", border: "none", cursor: "pointer", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{lang === "es" ? "Quitar" : "Remove"}</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Contact & Payment Form */}
-            <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 20 }}>
-              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: "var(--gold)", marginBottom: 14 }}>{lang === "es" ? "INFORMACIÓN DE CONTACTO" : "CONTACT INFO"}</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <div className="f-grp" style={{ marginBottom: 0 }}>
-                  <label className="f-lab">{lang === "es" ? "Nombre" : "First name"} *</label>
-                  <input className="f-in" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
-                </div>
-                <div className="f-grp" style={{ marginBottom: 0 }}>
-                  <label className="f-lab">{lang === "es" ? "Apellido" : "Last name"}</label>
-                  <input className="f-in" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-                </div>
-                <div className="f-grp" style={{ marginBottom: 0 }}>
-                  <label className="f-lab">Email *</label>
-                  <input type="email" className="f-in" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                </div>
-                <div className="f-grp" style={{ marginBottom: 0 }}>
-                  <label className="f-lab">{lang === "es" ? "Teléfono" : "Phone"}</label>
-                  <input className="f-in" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                </div>
-              </div>
-
-              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: "var(--gold)", marginBottom: 14, marginTop: 20 }}>{lang === "es" ? "MÉTODO DE PAGO" : "PAYMENT METHOD"}</h3>
-
-              {/* Saved payment method (if user has one) */}
-              {user?.paymentMethod && user.paymentMethod.trim() && (
-                <div style={{ marginBottom: 16 }}>
-                  <button onClick={() => setUseSavedMethod(!useSavedMethod)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 12, background: useSavedMethod ? "rgba(141,198,63,.1)" : "rgba(255,255,255,.03)", border: `1px solid ${useSavedMethod ? "rgba(141,198,63,.4)" : "rgba(255,255,255,.1)"}`, color: "#fff", cursor: "pointer", textAlign: "left", transition: "all .2s" }}>
-                    <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${useSavedMethod ? "#8DC63F" : "rgba(255,255,255,.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {useSavedMethod && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#8DC63F" }} />}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", color: "#8DC63F", textTransform: "uppercase", marginBottom: 2 }}>{lang === "es" ? "Método guardado en tu perfil" : "Saved on your profile"}</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{user.paymentMethod}</div>
-                    </div>
-                    <CheckCircle style={{ width: 18, height: 18, color: useSavedMethod ? "#8DC63F" : "rgba(255,255,255,.3)" }} />
-                  </button>
-                  {useSavedMethod && (
-                    <div style={{ marginTop: 8, padding: "8px 12px", fontSize: 11, color: "rgba(255,255,255,.55)", lineHeight: 1.5 }}>
-                      {lang === "es" ? "Se cobrará al método guardado en tu perfil." : "Will be charged to the method saved on your profile."}
-                      {" "}
-                      <button onClick={() => setUseSavedMethod(false)} style={{ background: "none", border: "none", color: "var(--gold)", cursor: "pointer", padding: 0, fontWeight: 700, fontSize: 11, textDecoration: "underline" }}>{lang === "es" ? "Usar otro método" : "Use a different method"}</button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!useSavedMethod && (
-                <>
-                  {/* Method selector — filtrado por flag enabled del registry */}
-                  {(() => {
-                    const PAY_META = {
-                      stripe: { Icon: CreditCard, color: "#635BFF" },
-                      paypal: { Icon: Star, color: "#0070BA" },
-                      ath: { Icon: Smartphone, color: "#F5A623" },
-                      bank: { Icon: Building2, color: "#8DC63F" },
-                    };
-                    const enabledMethods = getEnabledPaymentMethods().map((m) => ({
-                      id: m.id,
-                      label: m.label[lang === "es" ? "es" : "en"],
-                      Icon: PAY_META[m.id]?.Icon || CreditCard,
-                      color: PAY_META[m.id]?.color || "#F5A623",
-                    }));
-                    return (
-                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(enabledMethods.length, 1)}, 1fr)`, gap: 6, marginBottom: 16 }}>
-                    {enabledMethods.map(({ id, label, Icon, color }) => (
-                      <button key={id} type="button" onClick={() => setMethod(id)} style={{
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "12px 6px", borderRadius: 10,
-                        background: method === id ? color + "15" : "rgba(255,255,255,.03)",
-                        border: `1px solid ${method === id ? color + "66" : "rgba(255,255,255,.08)"}`,
-                        color: method === id ? color : "rgba(255,255,255,.7)",
-                        fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all .2s",
-                      }}>
-                        <Icon style={{ width: 18, height: 18 }} />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                    );
-                  })()}
-
-                  {/* Method-specific forms */}
-                  {method === "stripe" && (
-                    <>
-                      <div style={{ padding: 12, borderRadius: 10, background: "rgba(99,91,255,.06)", border: "1px solid rgba(99,91,255,.15)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "rgba(255,255,255,.7)" }}>
-                        <Shield style={{ width: 13, height: 13, color: "#635BFF", flexShrink: 0 }} />
-                        {lang === "es" ? "Pago seguro vía Stripe. Tu tarjeta se encripta de extremo a extremo." : "Secure payment via Stripe. Your card is encrypted end-to-end."}
-                      </div>
-                      <div className="f-grp">
-                        <label className="f-lab">{lang === "es" ? "Número de tarjeta" : "Card number"} *</label>
-                        <input className="f-in" placeholder="4242 4242 4242 4242" maxLength={19} value={form.cardNum} onChange={(e) => setForm({ ...form, cardNum: e.target.value })} />
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 10 }}>
-                        <div className="f-grp">
-                          <label className="f-lab">{lang === "es" ? "Vence" : "Expiry"} *</label>
-                          <input className="f-in" placeholder="MM/YY" maxLength={5} value={form.cardExp} onChange={(e) => setForm({ ...form, cardExp: e.target.value })} />
-                        </div>
-                        <div className="f-grp">
-                          <label className="f-lab">CVC *</label>
-                          <input className="f-in" placeholder="123" maxLength={4} value={form.cardCvc} onChange={(e) => setForm({ ...form, cardCvc: e.target.value })} />
-                        </div>
-                        <div className="f-grp">
-                          <label className="f-lab">{lang === "es" ? "Nombre en tarjeta" : "Name on card"}</label>
-                          <input className="f-in" value={form.cardName} onChange={(e) => setForm({ ...form, cardName: e.target.value })} />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {method === "paypal" && (
-                    <div style={{ padding: 16, borderRadius: 12, background: "rgba(0,112,186,.08)", border: "1px solid rgba(0,112,186,.25)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#0070BA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <span style={{ fontFamily: "Bebas Neue", fontSize: 14, color: "#fff" }}>P</span>
-                        </div>
-                        <h5 style={{ fontSize: 13, fontWeight: 700, color: "#fff", margin: 0 }}>{lang === "es" ? "Pagar con PayPal" : "Pay with PayPal"}</h5>
-                      </div>
-                      <p style={{ fontSize: 12, color: "rgba(255,255,255,.65)", lineHeight: 1.5, marginBottom: 10 }}>
-                        {lang === "es" ? "Serás redirigido a PayPal para completar el pago. Volverás aquí automáticamente." : "You'll be redirected to PayPal to complete payment. You'll return here automatically."}
-                      </p>
-                      <div className="f-grp" style={{ marginBottom: 0 }}>
-                        <label className="f-lab">{lang === "es" ? "ID de transacción PayPal" : "PayPal transaction ID"} ({lang === "es" ? "opcional" : "optional"})</label>
-                        <input className="f-in" placeholder="ABC123XYZ" value={form.paypalReceipt} onChange={(e) => setForm({ ...form, paypalReceipt: e.target.value })} />
-                      </div>
-                    </div>
-                  )}
-
-                  {method === "ath" && (
-                    <div style={{ padding: 16, borderRadius: 12, background: "rgba(245,166,35,.06)", border: "1px dashed rgba(245,166,35,.3)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                        <Smartphone style={{ width: 14, height: 14, color: "var(--gold)" }} />
-                        <h5 style={{ fontSize: 11, fontWeight: 800, color: "var(--gold)", margin: 0, letterSpacing: ".08em" }}>{lang === "es" ? "ENVIAR PAGO A" : "SEND PAYMENT TO"}</h5>
-                      </div>
-                      <div style={{ fontFamily: "monospace", fontSize: 16, color: "#fff", fontWeight: 700, marginBottom: 12 }}>@prdise · (787) 237-9519</div>
-                      <div className="f-grp">
-                        <label className="f-lab">{lang === "es" ? "Tu número de ATH Móvil" : "Your ATH Móvil number"} *</label>
-                        <input className="f-in" placeholder="(787) 555-1234" value={form.athPhone} onChange={(e) => setForm({ ...form, athPhone: e.target.value })} />
-                      </div>
-                      <div className="f-grp" style={{ marginBottom: 0 }}>
-                        <label className="f-lab">{lang === "es" ? "Confirmación / Captura" : "Confirmation / Receipt"} ({lang === "es" ? "opcional" : "optional"})</label>
-                        <input className="f-in" placeholder="ATH-XXXXX" value={form.athReceipt} onChange={(e) => setForm({ ...form, athReceipt: e.target.value })} />
-                      </div>
-                    </div>
-                  )}
-
-                  {method === "bank" && (
-                    <div style={{ padding: 16, borderRadius: 12, background: "rgba(141,198,63,.06)", border: "1px solid rgba(141,198,63,.25)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                        <Building2 style={{ width: 14, height: 14, color: "#8DC63F" }} />
-                        <h5 style={{ fontSize: 11, fontWeight: 800, color: "#8DC63F", margin: 0, letterSpacing: ".08em" }}>{lang === "es" ? "TRANSFERENCIA BANCARIA" : "BANK TRANSFER"}</h5>
-                      </div>
-                      <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.65)", lineHeight: 1.6, marginBottom: 12 }}>
-                        <div><strong style={{ color: "#fff" }}>{lang === "es" ? "Banco" : "Bank"}:</strong> Banco Popular</div>
-                        <div><strong style={{ color: "#fff" }}>{lang === "es" ? "Cuenta" : "Account"}:</strong> 0123-4567-8901</div>
-                        <div><strong style={{ color: "#fff" }}>{lang === "es" ? "Titular" : "Holder"}:</strong> Living in PRDISE LLC</div>
-                      </div>
-                      <div className="f-grp">
-                        <label className="f-lab">{lang === "es" ? "Titular de la cuenta" : "Account holder"} *</label>
-                        <input className="f-in" value={form.bankHolder} onChange={(e) => setForm({ ...form, bankHolder: e.target.value })} />
-                      </div>
-                      <div className="f-grp" style={{ marginBottom: 0 }}>
-                        <label className="f-lab">{lang === "es" ? "Número de referencia" : "Reference number"} *</label>
-                        <input className="f-in" value={form.bankReference} onChange={(e) => setForm({ ...form, bankReference: e.target.value })} />
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT: Summary + Coupon + Pay */}
-          <div>
-            <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 20, position: "sticky", top: 100 }}>
-              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: "var(--gold)", marginBottom: 14 }}>{lang === "es" ? "RESUMEN" : "SUMMARY"}</h3>
-
-              {/* Coupon input */}
-              <div style={{ marginBottom: 16 }}>
-                <label className="f-lab">{lang === "es" ? "Código de cupón" : "Coupon code"}</label>
-                {appliedCoupon ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 10, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.3)" }}>
-                    <div>
-                      <div style={{ fontSize: 11, color: "#8DC63F", fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 2 }}>{lang === "es" ? "Aplicado" : "Applied"}</div>
-                      <div style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "#fff" }}>{appliedCoupon.code} <span style={{ color: "#8DC63F" }}>({appliedCoupon.discount}% {lang === "es" ? "off" : "off"})</span></div>
-                    </div>
-                    <button onClick={() => { setAppliedCoupon(null); setCouponCode(""); }} style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(248,113,113,.15)", border: "none", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X style={{ width: 11, height: 11 }} /></button>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input className="f-in" style={{ flex: 1, fontFamily: "monospace", textTransform: "uppercase", letterSpacing: ".05em" }} placeholder="WELCOME10" value={couponCode} onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }} onKeyDown={(e) => e.key === "Enter" && applyCoupon()} />
-                      <button onClick={applyCoupon} style={{ padding: "0 14px", borderRadius: 10, background: "rgba(245,166,35,.15)", border: "1px solid rgba(245,166,35,.4)", color: "var(--gold)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", textTransform: "uppercase", letterSpacing: ".06em" }}>{lang === "es" ? "Aplicar" : "Apply"}</button>
-                    </div>
-                    {couponError && <div style={{ fontSize: 11, color: "#EF6C2B", marginTop: 6 }}>{couponError}</div>}
-                  </>
-                )}
-              </div>
-
-              {/* Breakdown */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingBottom: 12, borderBottom: "1px solid rgba(255,255,255,.08)", marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "rgba(255,255,255,.7)" }}>
-                  <span>Subtotal</span>
-                  <span style={{ fontFamily: "monospace" }}>{fmt(subtotal)}</span>
-                </div>
-                {tierDiscountPct > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#8DC63F" }}>
-                    <span>{lang === "es" ? `Descuento ${currentTier.name}` : `${currentTier.name} discount`} ({tierDiscountPct}%)</span>
-                    <span style={{ fontFamily: "monospace" }}>−{fmt(tierDiscount)}</span>
-                  </div>
-                )}
-                {appliedCoupon && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#8DC63F" }}>
-                    <span>{lang === "es" ? "Cupón" : "Coupon"} {appliedCoupon.code}</span>
-                    <span style={{ fontFamily: "monospace" }}>−{fmt(couponDiscount)}</span>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Total</span>
-                <span style={{ fontFamily: "Bebas Neue", fontSize: 32, color: "var(--gold)" }}>{fmt(total)}</span>
-              </div>
-
-              {/* Points reward preview */}
-              <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", marginBottom: 14, fontSize: 11.5, color: "rgba(255,255,255,.7)", display: "flex", alignItems: "center", gap: 6 }}>
-                <Star style={{ width: 12, height: 12, color: "var(--gold)", fill: "var(--gold)" }} />
-                {lang === "es" ? "Ganarás" : "You'll earn"} <strong style={{ color: "var(--gold)" }}>{Math.floor(total * 0.1)} {lang === "es" ? "puntos" : "points"}</strong> {lang === "es" ? "con esta compra" : "from this purchase"}
-              </div>
-
-              <button onClick={handlePay} disabled={processing} className="f-submit" style={{ width: "100%" }}>
-                {processing ? (lang === "es" ? "Procesando..." : "Processing...") : (<><Lock style={{ width: 14, height: 14 }} />{lang === "es" ? `Pagar ${fmt(total)}` : `Pay ${fmt(total)}`}</>)}
-              </button>
-              <div style={{ marginTop: 10, fontSize: 10.5, color: "rgba(255,255,255,.4)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                <Shield style={{ width: 10, height: 10 }} />{lang === "es" ? "Pago seguro · SSL" : "Secure payment · SSL"}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ═══════════════ ACCOUNT ═══════════════ */
+// Pivote 2026-06-04: PRDISE pasa a catalogo + referral. Sin checkout, sin
+// carrito, sin loyalty UI. La cuenta del cliente queda con:
+//   - "Mi Info": datos personales (read/write)
+//   - "Mis Facturas": stub read-only (Fase 2 lista facturas reales)
+//   - "Seguridad": cambiar contraseña, cerrar sesion en todos los dispositivos,
+//     desactivar cuenta.
 function AccountPage() {
   const [tab, setTab] = useState("info");
   const { t, lang } = useLang();
   const [user, setUser] = useState(null);
   const [saved, setSaved] = useState(false);
-  const [showContact, setShowContact] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [ratings, setRatings] = useState({});
-  const [ratingHover, setRatingHover] = useState({});
-  const [showRewardsModal, setShowRewardsModal] = useState(false);
-  const [showCouponsModal, setShowCouponsModal] = useState(false);
-  const [redeemSuccess, setRedeemSuccess] = useState(null);
-  // Source of truth: tabla bookings de Supabase (cargada en useEffect). Antes
-  // se inicializaba con userPendingBookings de localStorage, lo que duplicaba
-  // las reservas — una vez creada en Supabase aparecía dos veces: una desde
-  // localStorage (sin sb- prefix) y otra desde Supabase (con sb- prefix).
-  const [bookings, setBookings] = useState([]);
-  const [cart, setCart] = useState(() => {
-    // Cart real desde userCart en localStorage. Sin fallback demo: si el usuario
-    // no ha agregado nada, el carrito queda vacío. Solo transfers Y con routeId
-    // UUID (filtro consistente con CartCheckoutPage). Items legacy sin routeId
-    // se descartan: no son procesables por el Server Action y solo confunden
-    // al usuario si los mostramos en una vista pero fallan al checkout.
-    // Sanitize: limpiamos localStorage de items inválidos para que el navbar
-    // counter y otros consumidores queden consistentes.
-    const rawCart = PRDISE.load("userCart", []) || [];
-    const validDrafts = rawCart.filter(
-      (d) => d?.type === "transfer" && d?.routeId
-    );
-    if (validDrafts.length !== rawCart.length) {
-      try { PRDISE.save("userCart", validDrafts); window.dispatchEvent(new Event("prdise-cart-update")); } catch {}
-    }
-    if (!validDrafts.length) return [];
-    return validDrafts.map(d => ({
-      id: d._cartId || d.id || ("c" + Math.random().toString(36).slice(2, 6)),
-      ref: d.ref || "CART-DRAFT",
-      type: d.type,
-      name: d.name || d.vehicleName,
-      date: d.date || d.checkin,
-      time: d.time || "",
-      checkin: d.checkin,
-      checkout: d.checkout,
-      location: d.location || d.zone || (d.from && d.to ? `${d.from} → ${d.to}` : ""),
-      guests: d.guests || d.travelers || d.pax || 1,
-      total: d.total || 0,
-      quantity: d.quantity || d.travelers || d.guests || d.pax || d.nights || 1,
-      notes: d.notes || "Saved from your search · complete payment to confirm",
-      // Preservar identificadores que el Server Action necesita para resolver
-      // el item en Supabase. Sin esto el checkout falla con 'item no existe'.
-      routeId: d.routeId,
-      hotelId: d.hotelId,
-      tourId: d.tourId,
-      from: d.from,
-      to: d.to,
-      vehicleId: d.vehicleId,
-      bags: d.bags,
-      km: d.km,
-    }));
-  });
-  const [removingItem, setRemovingItem] = useState(null);
-  const [modifyingItem, setModifyingItem] = useState(null);
 
   useEffect(() => {
     const sess = PRDISE.load("session", null);
@@ -4243,17 +2396,13 @@ function AccountPage() {
     if (sess.role === "admin") { nav("/admin"); return; }
     let u = PRDISE.load("user", null);
     if (!u) {
-      // AuthBridge sincroniza profile real → localStorage; si todavía no llegó,
-      // construir un user MÍNIMO desde la sesión real (sin valores demo inventados).
       u = {
         firstName: sess.name?.split(" ")[0] || "",
         lastName:  sess.name?.split(" ").slice(1).join(" ") || "",
         email:     sess.email || "",
         phone: "", phoneCode: "+1", country: "",
-        language: "Español", passport: "", passportExp: "", localId: "", paymentMethod: "",
+        language: "Español", passport: "", passportExp: "", localId: "",
         billingAddress: "", allergies: "", dietRestrictions: "", specialNeeds: "",
-        level: "Bronze", points: 0, coupons: 0,
-        alertSchedule: false, alertRecommendations: false, alertNewTours: false,
         joinedAt: new Date().toLocaleDateString()
       };
       PRDISE.save("user", u);
@@ -4261,25 +2410,23 @@ function AccountPage() {
     setUser(u);
   }, []);
 
-  // Cargar profile + loyalty + bookings REALES desde Supabase (mejora datos demo).
+  // Cargar profile REAL desde Supabase (sobreescribe valores locales con los
+  // de la tabla profiles). Sin loyalty/tier: las columnas siguen existiendo
+  // pero la UI ya no las muestra (pivote 2026-06-04).
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [{ createClient }, { nextTierProgress }] = await Promise.all([
-          import("@/lib/supabase/client"),
-          import("@/lib/loyalty/config"),
-        ]);
+        const { createClient } = await import("@/lib/supabase/client");
         const sb = createClient();
         const { data: { user: authUser } } = await sb.auth.getUser();
         if (!authUser || !mounted) return;
         const { data: profile } = await sb
           .from("profiles")
-          .select("first_name, last_name, phone, country, points_balance, tier, avatar_url")
+          .select("first_name, last_name, phone, country, avatar_url")
           .eq("id", authUser.id)
           .maybeSingle();
         if (!profile || !mounted) return;
-        const progress = nextTierProgress(profile.points_balance || 0);
         setUser((prev) => ({
           ...(prev || {}),
           firstName: profile.first_name || prev?.firstName || "",
@@ -4287,69 +2434,8 @@ function AccountPage() {
           phone: profile.phone || prev?.phone || "",
           country: profile.country || prev?.country || "",
           email: authUser.email || prev?.email || "",
-          points: profile.points_balance || 0,
-          level: progress.currentTier?.label?.es || "Bronze",
           avatarUrl: profile.avatar_url || null,
         }));
-        // Bookings reales del usuario con JOINs a las tablas relacionadas para
-        // poder mostrar from→to (transfers), title (stays/tours) y diferenciar
-        // el formato de fecha por tipo (transfers usan start_date + start_time;
-        // stays usan checkin/checkout).
-        const { data: bookingsData } = await sb
-          .from("bookings")
-          .select(
-            "id, item_type, stay_id, tour_id, transfer_route_id, start_date, end_date, start_time, pax, total_cents, status, created_at, payments(id, method, status, amount_cents), transfer_route:transfer_routes(from_location, to_location), stay:stays(title_es, title_en), tour:tours(title_es, title_en), coupon_redemptions(id, discount_cents, coupons(code))"
-          )
-          .eq("user_id", authUser.id)
-          .order("created_at", { ascending: false });
-        if (bookingsData && mounted) {
-          const mapped = bookingsData.map((b) => {
-            const type = b.item_type === "stay" ? "hotel" : b.item_type === "tour" ? "tour" : "transfer";
-            let name = type === "hotel" ? "Stay" : type === "tour" ? "Tour" : "Transfer";
-            let location = "";
-            if (type === "transfer" && b.transfer_route) {
-              location = `${b.transfer_route.from_location} → ${b.transfer_route.to_location}`;
-            } else if (type === "hotel" && b.stay) {
-              name = (lang === "es" ? b.stay.title_es : b.stay.title_en) || b.stay.title_es || name;
-            } else if (type === "tour" && b.tour) {
-              name = (lang === "es" ? b.tour.title_es : b.tour.title_en) || b.tour.title_es || name;
-            }
-            // Pago: tomar el ultimo (mas reciente) payment del booking. Hay
-            // bookings con multiples intentos (claimed→rejected→nuevo claimed),
-            // pero el que define el metodo final es el ultimo.
-            const lastPayment = Array.isArray(b.payments) && b.payments.length > 0
-              ? b.payments[b.payments.length - 1]
-              : null;
-            const paymentMethodLabel = lastPayment?.method
-              ? ({ stripe: "Card", paypal: "PayPal", ath: "ATH Móvil", bank: "Bank transfer" }[lastPayment.method] || lastPayment.method)
-              : null;
-            // Coupon redemption linked al booking (si hubo).
-            const redemption = Array.isArray(b.coupon_redemptions) && b.coupon_redemptions.length > 0
-              ? b.coupon_redemptions[0]
-              : null;
-            const baseFields = {
-              id: "sb-" + b.id,
-              ref: "PRD-" + b.id.slice(0, 8).toUpperCase(),
-              type,
-              name,
-              status: b.status === "completed" ? "completed" : b.status === "confirmed" ? "active" : "pending",
-              location,
-              guests: b.pax || 1,
-              total: (b.total_cents || 0) / 100,
-              notes: "",
-              paymentMethod: paymentMethodLabel,
-              paymentStatus: lastPayment?.status || null,
-              couponCode: redemption?.coupons?.code || redemption?.code || null,
-              couponDiscount: redemption?.discount_cents ? redemption.discount_cents / 100 : 0,
-            };
-            // Transfers usan date + time; stays/tours usan checkin/checkout.
-            if (type === "transfer") {
-              return { ...baseFields, date: b.start_date, time: b.start_time || "" };
-            }
-            return { ...baseFields, checkin: b.start_date, checkout: b.end_date };
-          });
-          setBookings(mapped);
-        }
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn("account load real:", e);
@@ -4357,16 +2443,6 @@ function AccountPage() {
     })();
     return () => { mounted = false; };
   }, []);
-
-  // Sync cart removals back to PRDISE.userCart (only non-demo items matter for persistence)
-  useEffect(() => {
-    // Identify "real" saved cart items by checking for the CART-DRAFT-ish ref format or _cartId
-    const nonDemo = cart.filter(c => !["c1", "c2", "c3"].includes(c.id));
-    if (nonDemo.length > 0 || PRDISE.load("userCart", []).length > 0) {
-      PRDISE.save("userCart", nonDemo);
-      try { window.dispatchEvent(new Event("prdise-cart-update")); } catch {}
-    }
-  }, [cart]);
 
   if (!user) return null;
 
@@ -4379,7 +2455,6 @@ function AccountPage() {
   const doLogout = async () => {
     try { await sbSignOut(); } catch { /* el redirect interno puede lanzar NEXT_REDIRECT */ }
     try { PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession"); } catch {}
-    // Hard reload garantizado: invalida bfcache y obliga a re-validar sesión con Supabase.
     window.location.replace("/");
   };
 
@@ -4387,142 +2462,12 @@ function AccountPage() {
     setConfirmLogout(true);
   };
 
-  const TYPE_META = {
-    hotel: { Icon: Building2, color: "#29ABE2", name: "Stay" },
-    tour: { Icon: Mountain, color: "#8DC63F", name: "Tour" },
-    transfer: { Icon: Car, color: "#EF6C2B", name: "Transfer" },
-  };
-  const STATUS_META = {
-    pending: { label: "Pending", color: "#F5A623", bg: "rgba(245,166,35,.12)" },
-    active: { label: "Active", color: "#8DC63F", bg: "rgba(141,198,63,.12)" },
-    completed: { label: "Completed", color: "rgba(255,255,255,.4)", bg: "rgba(255,255,255,.05)" },
-  };
-
-  const pendingBookings = bookings.filter(b => b.status === "pending");
-  const activeBookings = bookings.filter(b => b.status === "active");
-  const completedBookings = bookings.filter(b => b.status === "completed");
-  const cartTotal = cart.reduce((s, c) => s + c.total, 0);
-  const LEVELS = { Bronze: { min: 0, color: "#CD7F32" }, Silver: { min: 500, color: "#C0C0C0" }, Gold: { min: 2000, color: "#FFD700" } };
-
-  const renderBooking = (b) => {
-    const meta = TYPE_META[b.type] || TYPE_META.hotel;
-    const sm = STATUS_META[b.status];
-    const dateStr = b.type === "transfer"
-      ? `${b.date || ""}${b.time ? " · " + b.time : ""}`
-      : b.checkin
-        ? `${b.checkin}${b.checkout ? " → " + b.checkout : ""}`
-        : `${b.date || ""}${b.time ? " · " + b.time : ""}`;
-    return (
-      <div key={b.id} style={{ padding: "18px 16px", borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", marginBottom: 10, borderLeft: `3px solid ${meta.color}` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: meta.color + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <meta.Icon style={{ width: 17, height: 17, color: meta.color }} />
-            </div>
-            <div>
-              <h4 style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{b.name}</h4>
-              <span style={{ fontSize: 11, fontFamily: "monospace", color: meta.color, fontWeight: 700 }}>{b.ref}</span>
-            </div>
-          </div>
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 99, background: sm.bg, color: sm.color }}>{sm.label}</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, fontSize: 12, color: "rgba(255,255,255,.6)", marginBottom: 10 }}>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Fecha" : "Date"}</span><br/>{dateStr}</div>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Ubicación" : "Location"}</span><br/>{b.location || "—"}</div>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Huéspedes" : "Guests"}</span><br/>{b.guests}</div>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Total" : "Total"}</span><br/><span style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(b.total)}</span></div>
-          {b.paymentMethod && (
-            <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Método pago" : "Payment method"}</span><br/>
-              <span style={{ color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{b.paymentMethod}</span>
-              {b.paymentStatus && b.paymentStatus !== "confirmed" && (
-                <span style={{ marginLeft: 6, fontSize: 9.5, padding: "1px 6px", borderRadius: 99, background: "rgba(245,166,35,.15)", color: "#F5A623", fontWeight: 700 }}>{b.paymentStatus}</span>
-              )}
-            </div>
-          )}
-          {b.couponCode && (
-            <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Cupón" : "Coupon"}</span><br/>
-              <span style={{ color: "#8DC63F", fontWeight: 700, fontFamily: "monospace" }}>{b.couponCode}</span>
-              {b.couponDiscount > 0 && <span style={{ marginLeft: 6, color: "rgba(255,255,255,.6)" }}>−{fmt(b.couponDiscount)}</span>}
-            </div>
-          )}
-        </div>
-        {b.notes && <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)", padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,.02)", borderLeft: "2px solid rgba(255,255,255,.06)" }}>{b.notes}</div>}
-        {b.status === "pending" && String(b.id || "").startsWith("sb-") && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.05)", textAlign: "right" }}>
-            <button onClick={async () => {
-              if (!confirm(lang === "es" ? "¿Cancelar esta reserva? Esta acción no se puede deshacer." : "Cancel this booking? This cannot be undone.")) return;
-              const bookingUuid = b.id.replace(/^sb-/, "");
-              try {
-                const fd = new FormData();
-                fd.append("bookingId", bookingUuid);
-                const res = await sbCancelBooking(fd);
-                if (res && res.ok === false) {
-                  alert((lang === "es" ? "No se pudo cancelar: " : "Could not cancel: ") + (res.error || ""));
-                  return;
-                }
-                setBookings(bs => bs.filter(x => x.id !== b.id));
-              } catch (e) {
-                // eslint-disable-next-line no-console
-                console.warn("cancelBooking:", e);
-                alert(lang === "es" ? "Error de red. Intenta de nuevo." : "Network error. Try again.");
-              }
-            }} style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(239,108,43,.1)", border: "1px solid rgba(239,108,43,.3)", color: "#EF6C2B", fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer" }}>
-              {lang === "es" ? "Cancelar reserva" : "Cancel booking"}
-            </button>
-          </div>
-        )}
-        {b.status === "completed" && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.05)" }}>
-            {ratings[b.id] ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>Your rating:</span>
-                <div style={{ display: "flex", gap: 2 }}>
-                  {[1,2,3,4,5].map(s => (
-                    <Star key={s} style={{ width: 16, height: 16, fill: s <= ratings[b.id] ? "#F5A623" : "none", color: s <= ratings[b.id] ? "#F5A623" : "rgba(255,255,255,.15)", transition: "all .2s" }} />
-                  ))}
-                </div>
-                <span style={{ fontSize: 12, color: "var(--gold)", fontWeight: 700 }}>{ratings[b.id]}/5</span>
-                <span style={{ fontSize: 11, color: "#8DC63F", display: "flex", alignItems: "center", gap: 4 }}><Check style={{ width: 12, height: 12 }} />Submitted</span>
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>Rate this experience:</span>
-                <div style={{ display: "flex", gap: 2 }}>
-                  {[1,2,3,4,5].map(s => (
-                    <button
-                      key={s}
-                      onMouseEnter={() => setRatingHover(h => ({ ...h, [b.id]: s }))}
-                      onMouseLeave={() => setRatingHover(h => ({ ...h, [b.id]: 0 }))}
-                      onClick={() => setRatings(r => ({ ...r, [b.id]: s }))}
-                      style={{ background: "none", border: "none", cursor: "pointer", padding: 2, transition: "transform .15s", transform: (ratingHover[b.id] || 0) >= s ? "scale(1.2)" : "scale(1)" }}
-                    >
-                      <Star style={{ width: 20, height: 20, fill: (ratingHover[b.id] || 0) >= s ? "#F5A623" : "none", color: (ratingHover[b.id] || 0) >= s ? "#F5A623" : "rgba(255,255,255,.2)", transition: "all .15s" }} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Listas y validaciones para los campos del perfil. Antes todos los inputs
-  // eran <input type="text"> sin restricciones, generando datos inconsistentes
-  // (paises tipeados a mano, telefonos sin formato, fechas como string libre).
   const COUNTRY_OPTIONS = [
     "United States", "Puerto Rico", "Mexico", "Canada", "Argentina", "Brazil",
     "Chile", "Colombia", "Costa Rica", "Dominican Republic", "Ecuador",
     "Peru", "Spain", "Venezuela", "Other",
   ];
   const LANGUAGE_OPTIONS = ["Español", "English"];
-  const PAYMENT_METHOD_OPTIONS = [
-    { value: "", label: "—" },
-    { value: "ath", label: "ATH Móvil" },
-    { value: "bank", label: lang === "es" ? "Transferencia bancaria" : "Bank transfer" },
-    // Stripe/PayPal se añaden cuando admin habilite las integraciones online.
-  ];
 
   const baseFieldBox = {
     padding: "12px 14px", borderRadius: 10,
@@ -4567,8 +2512,7 @@ function AccountPage() {
 
   const tabs = [
     { id: "info", label: t("myInfo"), Icon: User },
-    { id: "activity", label: t("activity"), Icon: Activity },
-    { id: "preferences", label: t("preferences"), Icon: Heart },
+    { id: "invoices", label: lang === "es" ? "Mis Facturas" : "My Invoices", Icon: FileText },
     { id: "security", label: t("security"), Icon: Shield },
   ];
 
@@ -4582,11 +2526,6 @@ function AccountPage() {
             <p>{lang === "es" ? `¡Bienvenida de vuelta, ${user.firstName || "viajero"}!` : `Welcome back, ${user.firstName || "traveler"}!`}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, background: (LEVELS[user.level]?.color || "#C0C0C0") + "18", border: `1px solid ${(LEVELS[user.level]?.color || "#C0C0C0")}44` }}>
-              <Star style={{ width: 13, height: 13, fill: LEVELS[user.level]?.color || "#C0C0C0", color: LEVELS[user.level]?.color || "#C0C0C0" }} />
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", color: LEVELS[user.level]?.color || "#C0C0C0" }}>{user.level?.toUpperCase()}</span>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginLeft: 2 }}>{user.points} pts</span>
-            </div>
             <button onClick={logout} className="acc-logout"><LogOut />Log out</button>
           </div>
         </div>
@@ -4607,6 +2546,7 @@ function AccountPage() {
             </div>
           </div>
         )}
+
         <div className="acc-tabs">
           {tabs.map(({ id, label, Icon }) => (
             <button key={id} onClick={() => setTab(id)} className={`acc-tab ${tab === id ? "active" : ""}`}>
@@ -4630,11 +2570,6 @@ function AccountPage() {
               {renderField(lang === "es" ? "Vencimiento de pasaporte" : "Passport Expiration", null, "passportExp", { type: "date" })}
               {renderField(lang === "es" ? "ID local" : "Local ID", null, "localId")}
             </div>
-            <h3>{lang === "es" ? "Pago y facturación" : "Payment & Billing"}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 24 }}>
-              {renderField(lang === "es" ? "Método de pago preferido" : "Preferred Payment Method", null, "paymentMethod", { select: PAYMENT_METHOD_OPTIONS })}
-              {renderField(lang === "es" ? "Dirección de facturación" : "Billing Address", null, "billingAddress")}
-            </div>
             <h3>{lang === "es" ? "Notas especiales" : "Special Notes"}</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 24 }}>
               {renderField(lang === "es" ? "Alergias" : "Allergies", null, "allergies")}
@@ -4645,267 +2580,23 @@ function AccountPage() {
           </div>
         )}
 
-        {/* ── ACTIVITY TAB ── */}
-        {tab === "activity" && (
+        {/* ── INVOICES TAB (stub) ── */}
+        {tab === "invoices" && (
           <div className="acc-panel">
-            {/* ═══ CART — Items not yet paid ═══ */}
-            <div style={{ marginBottom: 36, padding: 20, borderRadius: 16, background: "linear-gradient(135deg,rgba(245,166,35,.06),rgba(239,108,43,.04))", border: "1px solid rgba(245,166,35,.25)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                <Package style={{ width: 18, height: 18, color: "var(--gold)" }} />
-                <h3 style={{ margin: 0, color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".06em" }}>{t("myCart")}</h3>
-                <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, background: "rgba(245,166,35,.2)", color: "var(--gold)", fontWeight: 800 }}>{cart.length} {t("cartItems")}</span>
-              </div>
-              <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.5)", marginBottom: 16, marginLeft: 28 }}>{t("cartSub")}</p>
-
-              {cart.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "32px 16px", color: "rgba(255,255,255,.4)" }}>
-                  <Package style={{ width: 40, height: 40, margin: "0 auto 12px", opacity: .4 }} />
-                  <h4 style={{ fontFamily: "Bebas Neue", fontSize: 18, color: "rgba(255,255,255,.55)", marginBottom: 6 }}>{t("cartEmpty")}</h4>
-                  <p style={{ fontSize: 12.5, marginBottom: 6 }}>
-                    {lang === "es"
-                      ? "Aquí gestionas tus reservas de traslados (transfers). Las estadías y tours se reservan directamente en los sitios aliados."
-                      : "Manage your transfer bookings here. Stays and tours are booked directly on partner sites."}
-                  </p>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 14 }}>
-                    <NavLink to="/transfer-search" className="cta-pri" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Buscar Traslado" : "Find a Transfer"}</NavLink>
-                    <NavLink to="/stays" className="cta-sec" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Ver Estadías ↗" : "Browse Stays ↗"}</NavLink>
-                    <NavLink to="/tours" className="cta-sec" style={{ padding: "8px 16px", fontSize: 11 }}>{lang === "es" ? "Ver Tours ↗" : "Browse Tours ↗"}</NavLink>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {cart.map((c) => {
-                    const meta = TYPE_META[c.type] || TYPE_META.hotel;
-                    const dateStr = c.checkin ? `${c.checkin} → ${c.checkout}` : `${c.date}${c.time ? ` · ${c.time}` : ""}`;
-                    return (
-                      <div key={c.id} style={{ padding: "16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", marginBottom: 10, borderLeft: `3px solid ${meta.color}`, position: "relative", transition: "all .2s" }}>
-                        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                          <div style={{ width: 42, height: 42, borderRadius: 10, background: meta.color + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <meta.Icon style={{ width: 19, height: 19, color: meta.color }} />
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                              <div>
-                                <h4 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{c.name}</h4>
-                                <div style={{ display: "flex", gap: 10, fontSize: 11.5, color: "rgba(255,255,255,.55)", flexWrap: "wrap" }}>
-                                  <span><MapPin style={{ width: 10, height: 10, display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{c.location}</span>
-                                  <span>·</span>
-                                  <span>{dateStr}</span>
-                                  <span>·</span>
-                                  <span>{c.guests} {c.guests === 1 ? (lang === "es" ? "huésped" : "guest") : (lang === "es" ? "huéspedes" : "guests")}</span>
-                                </div>
-                              </div>
-                              <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)", letterSpacing: ".02em", lineHeight: 1 }}>{fmt(c.total)}</div>
-                            </div>
-                            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.4)", marginBottom: 12, fontStyle: "italic" }}>{c.notes}</p>
-
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.4)" }}>{lang === "es" ? "Cant." : "Qty"}</span>
-                                <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,.05)", borderRadius: 8, border: "1px solid rgba(255,255,255,.08)" }}>
-                                  <button onClick={() => setCart(cart.map(x => x.id === c.id && x.quantity > 1 ? { ...x, quantity: x.quantity - 1, total: (x.total / x.quantity) * (x.quantity - 1) } : x))} style={{ background: "none", border: "none", color: "rgba(255,255,255,.7)", cursor: c.quantity > 1 ? "pointer" : "not-allowed", padding: "6px 10px", opacity: c.quantity > 1 ? 1 : .3, fontSize: 14, fontWeight: 700 }}>−</button>
-                                  <span style={{ padding: "6px 12px", fontSize: 13, fontWeight: 700, color: "#fff", minWidth: 32, textAlign: "center" }}>{c.quantity}</span>
-                                  <button onClick={() => setCart(cart.map(x => x.id === c.id ? { ...x, quantity: x.quantity + 1, total: (x.total / x.quantity) * (x.quantity + 1) } : x))} style={{ background: "none", border: "none", color: "rgba(255,255,255,.7)", cursor: "pointer", padding: "6px 10px", fontSize: 14, fontWeight: 700 }}>+</button>
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={() => setModifyingItem(c)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 12px", borderRadius: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.8)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
-                                  <Pencil style={{ width: 11, height: 11 }} />{t("modify")}
-                                </button>
-                                <button onClick={() => setRemovingItem(c.id)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 12px", borderRadius: 8, background: "rgba(239,108,43,.1)", border: "1px solid rgba(239,108,43,.25)", color: "#EF6C2B", fontSize: 11.5, fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
-                                  <Trash2 style={{ width: 11, height: 11 }} />{t("remove")}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Cart Summary */}
-                  <div style={{ padding: 16, borderRadius: 12, background: "rgba(14,24,36,.5)", border: "1px solid rgba(245,166,35,.15)", marginTop: 6 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 13, color: "rgba(255,255,255,.65)" }}>{lang === "es" ? "Subtotal del carrito" : "Cart subtotal"} ({cart.length} {cart.length === 1 ? (lang === "es" ? "artículo" : "item") : (lang === "es" ? "artículos" : "items")})</span>
-                      <span style={{ fontFamily: "Bebas Neue", fontSize: 26, color: "var(--gold)", letterSpacing: ".02em" }}>{fmt(cartTotal)}</span>
-                    </div>
-                    <button onClick={() => nav("/checkout-cart")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px 0", borderRadius: 12, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 8px 24px rgba(245,166,35,.3)" }}>
-                      <Shield style={{ width: 14, height: 14 }} />{t("proceedCheckout")}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Remove confirmation modal */}
-            {removingItem && (
-              <div onClick={() => setRemovingItem(null)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-                <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380, width: "100%", background: "linear-gradient(180deg,#1A2634,#0E1824)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 18, padding: "28px 24px", textAlign: "center" }}>
-                  <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(239,108,43,.12)", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Trash2 style={{ width: 22, height: 22, color: "#EF6C2B" }} />
-                  </div>
-                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".04em", marginBottom: 6 }}>{t("removeFromCart").toUpperCase()}</h3>
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", marginBottom: 18, lineHeight: 1.5 }}>
-                    {cart.find(c => c.id === removingItem)?.name}
-                  </p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setRemovingItem(null)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
-                    <button onClick={() => { setCart(cart.filter(x => x.id !== removingItem)); setRemovingItem(null); }} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "linear-gradient(135deg,#EF6C2B,#C62828)", border: "none", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t("remove")}</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Modify cart item modal */}
-            {modifyingItem && (
-              <CartModifyModal
-                item={modifyingItem}
-                onClose={() => setModifyingItem(null)}
-                onSave={(updated) => {
-                  setCart(cart.map(x => x.id === updated.id ? updated : x));
-                  setModifyingItem(null);
-                }}
-              />
-            )}
-
-            {/* ═══ CONFIRMED BOOKINGS — Already paid ═══ */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-              <CheckCircle style={{ width: 18, height: 18, color: "#8DC63F" }} />
-              <h3 style={{ margin: 0, color: "#fff", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".06em" }}>{t("confirmedBookings")}</h3>
-              <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, background: "rgba(141,198,63,.15)", color: "#8DC63F", fontWeight: 800 }}>{t("paid")}</span>
-            </div>
-            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.4)", marginBottom: 16, lineHeight: 1.5 }}>
-              {lang === "es"
-                ? "Solo se listan tus reservas de traslados gestionadas en prdise. Las estadías y tours se gestionan en los sitios aliados a los que fuiste redirigido."
-                : "Only your transfer bookings managed by prdise are listed here. Stays and tours are managed by the partner sites you were redirected to."}
-            </p>
-
-            {[{ title: t("pending"), icon: Clock, items: pendingBookings, color: "#F5A623" },
-              { title: t("active"), icon: Zap, items: activeBookings, color: "#8DC63F" },
-              { title: t("completed"), icon: CheckCircle, items: completedBookings, color: "rgba(255,255,255,.4)" }
-            ].map(sec => (
-              <div key={sec.title} style={{ marginBottom: 28 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <sec.icon style={{ width: 16, height: 16, color: sec.color }} />
-                  <h4 style={{ margin: 0, color: sec.color, fontFamily: "Bebas Neue", fontSize: 17, letterSpacing: ".06em" }}>{sec.title}</h4>
-                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: sec.color + "18", color: sec.color, fontWeight: 800 }}>{sec.items.length}</span>
-                </div>
-                {sec.items.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.3)", padding: "10px 0" }}>
-                    {lang === "es" ? "Sin reservas en esta categoría." : "No bookings in this category."}
-                  </p>
-                ) : sec.items.map(renderBooking)}
-              </div>
-            ))}
-
-            {/* Contact Agency */}
-            <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 20 }}>
-              <button onClick={() => setShowContact(!showContact)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 20px", borderRadius: 12, background: "linear-gradient(135deg,rgba(245,166,35,.12),rgba(239,108,43,.12))", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", color: "#F5A623", fontWeight: 700, fontSize: 13, transition: "all .2s", width: "100%" }}>
-                <Phone style={{ width: 15, height: 15 }} />Contact the Agency
-                <ChevronDown style={{ width: 14, height: 14, marginLeft: "auto", transform: showContact ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
-              </button>
-              {showContact && (
-                <div style={{ marginTop: 10, padding: 18, borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Phone style={{ width: 14, height: 14, color: "var(--gold)" }} /><div><div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", color: "rgba(255,255,255,.4)", textTransform: "uppercase" }}>Phone</div><a href="tel:+17872379519" style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>(787) 237-9519</a></div></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Mail style={{ width: 14, height: 14, color: "var(--gold)" }} /><div><div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", color: "rgba(255,255,255,.4)", textTransform: "uppercase" }}>Email</div><a href="mailto:info@livinginprdise.com" style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>info@livinginprdise.com</a></div></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><MessageCircle style={{ width: 14, height: 14, color: "var(--gold)" }} /><div><div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", color: "rgba(255,255,255,.4)", textTransform: "uppercase" }}>WhatsApp</div><a href="https://wa.me/17872379519" style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>+1 (787) 237-9519</a></div></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Clock style={{ width: 14, height: 14, color: "var(--gold)" }} /><div><div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", color: "rgba(255,255,255,.4)", textTransform: "uppercase" }}>Hours</div><span style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>Mon–Sun, 8AM–10PM</span></div></div>
-                </div>
-              )}
+            <h3>{lang === "es" ? "Mis Facturas" : "My Invoices"}</h3>
+            <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 14, background: "rgba(255,255,255,.02)" }}>
+              <FileText style={{ width: 42, height: 42, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
+              <h4 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".06em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
+                {lang === "es" ? "Próximamente" : "Coming soon"}
+              </h4>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", maxWidth: 480, margin: "0 auto", lineHeight: 1.5 }}>
+                {lang === "es"
+                  ? "Aquí verás las facturas que el equipo PRDISE te envíe tras coordinar tu servicio por WhatsApp. Cada factura incluirá un enlace de pago seguro."
+                  : "You'll see invoices issued by the PRDISE team after coordinating your service via WhatsApp. Each invoice will include a secure payment link."}
+              </p>
             </div>
           </div>
         )}
-
-        {/* ── PREFERENCES TAB ── */}
-        {tab === "preferences" && (() => {
-          // Defaults sin descuento: hasta que el admin configure beneficios reales
-          // no prometemos % off (las plantillas anteriores tenian 5/10% hardcoded
-          // que no se honraban en checkout). El admin puede sobreescribir via
-          // localStorage "loyaltyTiers" cuando exista la UI para gestionar tiers.
-          const tiers = PRDISE.load("loyaltyTiers", [
-            { name: "Bronze", min: 0, discount: 0, color: "#CD7F32" },
-            { name: "Silver", min: 500, discount: 0, color: "#C0C0C0" },
-            { name: "Gold", min: 2000, discount: 0, color: "#FFD700" },
-          ]);
-          const currentTier = [...tiers].reverse().find(t => user.points >= t.min) || tiers[0];
-          const nextTier = tiers.find(t => t.min > user.points);
-          return (
-          <div className="acc-panel">
-            <h3>{lang === "es" ? "Nivel del viajero" : "Traveler Level"}</h3>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-              {tiers.map((tier) => (
-                <div key={tier.name} style={{ flex: "1 1 140px", padding: 16, borderRadius: 14, background: currentTier.name === tier.name ? tier.color + "18" : "rgba(255,255,255,.02)", border: `1px solid ${currentTier.name === tier.name ? tier.color + "44" : "rgba(255,255,255,.06)"}`, textAlign: "center", position: "relative" }}>
-                  {currentTier.name === tier.name && (
-                    <span style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", padding: "2px 8px", borderRadius: 99, background: tier.color, color: "#0F1822", textTransform: "uppercase" }}>
-                      {lang === "es" ? "Tu nivel" : "Your tier"}
-                    </span>
-                  )}
-                  <Star style={{ width: 20, height: 20, fill: tier.color, color: tier.color, marginBottom: 6 }} />
-                  <div style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: tier.color }}>{tier.name.toUpperCase()}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{tier.min}+ {lang === "es" ? "puntos" : "points"}</div>
-                  {tier.discount > 0 && (
-                    <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: tier.color }}>{tier.discount}% {lang === "es" ? "desc." : "off"}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {nextTier && (
-              <div style={{ padding: "10px 14px", background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", borderRadius: 10, marginBottom: 16, fontSize: 12, color: "rgba(255,255,255,.7)" }}>
-                <strong style={{ color: "var(--gold)" }}>{nextTier.min - user.points}</strong> {lang === "es" ? `puntos para llegar a ${nextTier.name}` : `points to reach ${nextTier.name}`}
-                {nextTier.discount > 0 && ` (${nextTier.discount}% ${lang === "es" ? "descuento" : "off"})`}
-              </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 10, marginBottom: 24 }}>
-              <button onClick={() => setShowRewardsModal(true)} style={{ padding: 16, borderRadius: 14, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.2)", textAlign: "center", cursor: "pointer", transition: "all .2s" }}>
-                <div style={{ fontFamily: "Bebas Neue", fontSize: 28, color: "var(--gold)" }}>{user.points}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Puntos de recompensa" : "Reward Points"}</div>
-                <div style={{ marginTop: 4, fontSize: 10, color: "var(--gold)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>{lang === "es" ? "Ver y canjear" : "View & redeem"}</div>
-              </button>
-              <button onClick={() => setShowCouponsModal(true)} style={{ padding: 16, borderRadius: 14, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", textAlign: "center", cursor: "pointer", transition: "all .2s" }}>
-                <div style={{ fontFamily: "Bebas Neue", fontSize: 28, color: "#8DC63F" }}>{user.coupons}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "Cupones disponibles" : "Coupons Available"}</div>
-                <div style={{ marginTop: 4, fontSize: 10, color: "#8DC63F", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>{lang === "es" ? "Ver y aplicar" : "View & apply"}</div>
-              </button>
-            </div>
-            <h3>{lang === "es" ? "Alertas de notificación" : "Notification Alerts"}</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {[
-                {
-                  key: "alertSchedule",
-                  label: lang === "es" ? "Cambios de horario" : "Schedule changes",
-                  desc: lang === "es"
-                    ? "Recibe avisos si cambian las fechas o el horario de tus reservas"
-                    : "Get notified of any time or date changes to your bookings",
-                },
-                {
-                  key: "alertRecommendations",
-                  label: lang === "es" ? "Recomendaciones por temporada" : "Seasonal recommendations",
-                  desc: lang === "es"
-                    ? "Recibe recomendaciones personalizadas según la temporada"
-                    : "Receive personalized recommendations based on the season",
-                },
-                {
-                  key: "alertNewTours",
-                  label: lang === "es" ? "Nuevos tours según tus intereses" : "New tours based on your interests",
-                  desc: lang === "es"
-                    ? "Entérate antes que nadie de nuevos tours y actividades"
-                    : "Be the first to know about new tours and activities",
-                },
-              ].map(a => (
-                <div key={a.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: "1px solid rgba(255,255,255,.05)", gap: 16 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 2 }}>{a.label}</div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.45)" }}>{a.desc}</div>
-                  </div>
-                  <button onClick={() => updateUser(a.key, !user[a.key])} style={{ width: 42, height: 24, borderRadius: 99, background: user[a.key] ? "#8DC63F" : "rgba(255,255,255,.1)", border: "none", cursor: "pointer", position: "relative", transition: "background .25s", padding: 0, flexShrink: 0 }}>
-                    <span style={{ position: "absolute", top: 3, left: user[a.key] ? 21 : 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left .25s", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-          );
-        })()}
 
         {/* ── SECURITY TAB ── */}
         {tab === "security" && (
@@ -4946,8 +2637,8 @@ function AccountPage() {
               </p>
               <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.4)", marginBottom: 14, lineHeight: 1.5 }}>
                 {lang === "es"
-                  ? "Tus reservas, historial y datos se conservan. No podrás iniciar sesión hasta que contactes a atención al cliente para reactivar tu cuenta."
-                  : "Your bookings, history and data are kept. You won't be able to sign in until you contact customer support to reactivate your account."}
+                  ? "Tus datos se conservan. No podrás iniciar sesión hasta que contactes a atención al cliente para reactivar tu cuenta."
+                  : "Your data is kept. You won't be able to sign in until you contact customer support to reactivate your account."}
               </p>
               <button onClick={() => {
                 const session = PRDISE.load("session", null);
@@ -4958,8 +2649,8 @@ function AccountPage() {
                   return;
                 }
                 if (!window.confirm(lang === "es"
-                  ? "¿Desactivar tu cuenta? No podrás iniciar sesión hasta que contactes atención al cliente para reactivarla. Tus reservas y datos se conservan."
-                  : "Disable your account? You won't be able to sign in until you contact customer support to reactivate. Your bookings and data are preserved.")) return;
+                  ? "¿Desactivar tu cuenta? No podrás iniciar sesión hasta que contactes atención al cliente para reactivarla. Tus datos se conservan."
+                  : "Disable your account? You won't be able to sign in until you contact customer support to reactivate. Your data is preserved.")) return;
                 const disabled = PRDISE.load("disabledAccounts", []);
                 if (!disabled.includes(userEmail)) {
                   disabled.push(userEmail);
@@ -4979,136 +2670,6 @@ function AccountPage() {
             </div>
           </div>
         )}
-
-        {/* Reward Points Modal */}
-        {showRewardsModal && (() => {
-          const tiers = PRDISE.load("loyaltyTiers", [
-            { name: "Bronze", min: 0, discount: 0, color: "#CD7F32" },
-            { name: "Silver", min: 500, discount: 5, color: "#C0C0C0" },
-            { name: "Gold", min: 2000, discount: 10, color: "#FFD700" },
-          ]);
-          const currentTier = [...tiers].reverse().find(t => user.points >= t.min) || tiers[0];
-          const nextTier = tiers.find(t => t.min > user.points);
-          const canRedeem = currentTier.discount > 0;
-          return (
-            <div onClick={() => { setShowRewardsModal(false); setRedeemSuccess(null); }} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-              <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, width: "100%", background: "linear-gradient(180deg,#1A2634,#0E1824)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 20, padding: 28, position: "relative", maxHeight: "90vh", overflowY: "auto" }}>
-                <button onClick={() => { setShowRewardsModal(false); setRedeemSuccess(null); }} style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,.06)", border: "none", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X style={{ width: 13, height: 13 }} /></button>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${currentTier.color}, ${currentTier.color}88)`, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 8px 24px ${currentTier.color}55` }}>
-                    <Star style={{ width: 30, height: 30, fill: "#fff", color: "#fff" }} />
-                  </div>
-                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".04em", marginBottom: 4, color: "#fff" }}>{lang === "es" ? "TUS PUNTOS DE RECOMPENSA" : "YOUR REWARD POINTS"}</h3>
-                  <div style={{ fontSize: 12, color: currentTier.color, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 18 }}>
-                    {lang === "es" ? "Nivel" : "Tier"}: {currentTier.name}
-                  </div>
-                </div>
-                <div style={{ padding: 20, borderRadius: 14, background: `${currentTier.color}10`, border: `1px solid ${currentTier.color}33`, marginBottom: 14, textAlign: "center" }}>
-                  <div style={{ fontFamily: "Bebas Neue", fontSize: 56, color: currentTier.color, lineHeight: 1, letterSpacing: ".02em" }}>{user.points}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".12em", fontWeight: 700, marginTop: 4 }}>{lang === "es" ? "Puntos disponibles" : "Available points"}</div>
-                </div>
-                {nextTier && (
-                  <div style={{ padding: 12, borderRadius: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", marginBottom: 14, fontSize: 12.5, color: "rgba(255,255,255,.7)", textAlign: "center" }}>
-                    {lang === "es" ? "Te faltan" : "You need"} <strong style={{ color: nextTier.color }}>{nextTier.min - user.points}</strong> {lang === "es" ? `puntos para llegar a` : `points to reach`} <strong style={{ color: nextTier.color }}>{nextTier.name}</strong> ({nextTier.discount}% {lang === "es" ? "de descuento" : "off"})
-                  </div>
-                )}
-                {redeemSuccess ? (
-                  <div style={{ padding: 18, borderRadius: 12, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.3)", textAlign: "center" }}>
-                    <CheckCircle style={{ width: 32, height: 32, color: "#8DC63F", margin: "0 auto 10px" }} />
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".12em", fontWeight: 700, marginBottom: 6 }}>{lang === "es" ? "Tu código de descuento" : "Your discount code"}</div>
-                    <div style={{ fontFamily: "monospace", fontSize: 24, fontWeight: 800, color: "#8DC63F", letterSpacing: ".1em", padding: "10px 14px", background: "rgba(0,0,0,.25)", borderRadius: 8, marginBottom: 10 }}>{redeemSuccess}</div>
-                    <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", marginBottom: 12, lineHeight: 1.5 }}>
-                      {lang === "es" ? `Aplícalo en el checkout para obtener ${currentTier.discount}% de descuento. Se guardó en tus cupones disponibles.` : `Apply it at checkout to get ${currentTier.discount}% off. It's been saved to your available coupons.`}
-                    </p>
-                    <button onClick={() => { navigator.clipboard?.writeText(redeemSuccess); alert(lang === "es" ? "Código copiado" : "Code copied"); }} style={{ width: "100%", padding: "10px 0", borderRadius: 10, background: "rgba(141,198,63,.15)", border: "1px solid rgba(141,198,63,.4)", color: "#8DC63F", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar código" : "Copy code"}
-                    </button>
-                  </div>
-                ) : canRedeem ? (
-                  <button onClick={() => {
-                    const code = "REWARD-" + Math.random().toString(36).slice(2, 8).toUpperCase();
-                    const userCoupons = PRDISE.load("userCoupons", []);
-                    const newCoupon = { code, discount: currentTier.discount, source: "rewards", tier: currentTier.name, createdAt: new Date().toISOString().split("T")[0], used: false };
-                    PRDISE.save("userCoupons", [...userCoupons, newCoupon]);
-                    setRedeemSuccess(code);
-                  }} style={{ width: "100%", padding: "13px 0", borderRadius: 12, background: `linear-gradient(135deg, ${currentTier.color}, ${currentTier.color}cc)`, border: "none", color: "#0F1822", fontSize: 13, fontWeight: 800, cursor: "pointer", letterSpacing: ".1em", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                    <Sparkles style={{ width: 14, height: 14 }} />{lang === "es" ? `Canjear ${currentTier.discount}% de descuento` : `Redeem ${currentTier.discount}% discount`}
-                  </button>
-                ) : (
-                  <div style={{ padding: 14, borderRadius: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", textAlign: "center", fontSize: 12.5, color: "rgba(255,255,255,.55)", lineHeight: 1.5 }}>
-                    {lang === "es" ? "Necesitas alcanzar al menos el nivel Silver para canjear descuentos. Sigue reservando para acumular puntos." : "Reach at least Silver tier to redeem discounts. Keep booking to accumulate points."}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Coupons Available Modal */}
-        {showCouponsModal && (() => {
-          const userCoupons = PRDISE.load("userCoupons", []);
-          const adminCoupons = PRDISE.load("coupons", []);
-          // Show personal (user-redeemed) first, then global active coupons
-          const personalUnused = userCoupons.filter(c => !c.used);
-          const globalActive = adminCoupons.filter(c => {
-            if (!c.active) return false;
-            if (c.expires && new Date(c.expires) < new Date()) return false;
-            if (c.used >= c.maxUses) return false;
-            return true;
-          });
-          const all = [
-            ...personalUnused.map(c => ({ ...c, _kind: "personal" })),
-            ...globalActive.map(c => ({ ...c, _kind: "global" })),
-          ];
-          return (
-            <div onClick={() => setShowCouponsModal(false)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-              <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, width: "100%", background: "linear-gradient(180deg,#1A2634,#0E1824)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 20, padding: 28, position: "relative", maxHeight: "90vh", overflowY: "auto" }}>
-                <button onClick={() => setShowCouponsModal(false)} style={{ position: "absolute", top: 14, right: 14, width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,.06)", border: "none", color: "rgba(255,255,255,.6)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X style={{ width: 13, height: 13 }} /></button>
-                <h3 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".04em", marginBottom: 4, color: "#fff" }}>{lang === "es" ? "CUPONES DISPONIBLES" : "AVAILABLE COUPONS"}</h3>
-                <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.5)", marginBottom: 18 }}>
-                  {lang === "es" ? "Copia el código y aplícalo en el checkout para obtener descuento." : "Copy the code and apply it at checkout for a discount."}
-                </p>
-                {all.length === 0 ? (
-                  <div style={{ padding: 32, textAlign: "center", color: "rgba(255,255,255,.45)" }}>
-                    <CreditCard style={{ width: 36, height: 36, margin: "0 auto 10px", opacity: .35 }} />
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>{lang === "es" ? "No tienes cupones disponibles." : "No coupons available."}</div>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>{lang === "es" ? "Acumula puntos de recompensa para canjear descuentos." : "Earn reward points to redeem discounts."}</div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {all.map((c, i) => (
-                      <div key={c.code + i} style={{ padding: 14, borderRadius: 12, background: c._kind === "personal" ? "rgba(141,198,63,.06)" : "rgba(245,166,35,.04)", border: `1px solid ${c._kind === "personal" ? "rgba(141,198,63,.25)" : "rgba(245,166,35,.18)"}` }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: c._kind === "personal" ? "#8DC63F" : "var(--gold)", marginBottom: 4 }}>
-                              {c._kind === "personal"
-                                ? (lang === "es" ? `Tuyo · Canjeado de ${c.tier}` : `Yours · Redeemed from ${c.tier}`)
-                                : (lang === "es" ? "Promoción" : "Promotion")}
-                            </div>
-                            {c.desc && <div style={{ fontSize: 12, color: "rgba(255,255,255,.7)", marginBottom: 6 }}>{c.desc}</div>}
-                            <div style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing: ".05em" }}>{c.code}</div>
-                          </div>
-                          <div style={{ textAlign: "right", flexShrink: 0 }}>
-                            <div style={{ fontFamily: "Bebas Neue", fontSize: 28, color: c._kind === "personal" ? "#8DC63F" : "var(--gold)", lineHeight: 1 }}>{c.discount}%</div>
-                            <div style={{ fontSize: 9.5, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 700 }}>{lang === "es" ? "desc." : "off"}</div>
-                          </div>
-                        </div>
-                        {c.expires && (
-                          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginBottom: 8 }}>
-                            {lang === "es" ? "Vence" : "Expires"}: {c.expires}
-                          </div>
-                        )}
-                        <button onClick={() => { navigator.clipboard?.writeText(c.code); alert(lang === "es" ? "Código copiado: " + c.code : "Code copied: " + c.code); }} style={{ width: "100%", padding: "8px 0", borderRadius: 8, background: c._kind === "personal" ? "rgba(141,198,63,.15)" : "rgba(245,166,35,.15)", border: `1px solid ${c._kind === "personal" ? "rgba(141,198,63,.4)" : "rgba(245,166,35,.4)"}`, color: c._kind === "personal" ? "#8DC63F" : "var(--gold)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                          <Copy style={{ width: 11, height: 11 }} />{lang === "es" ? "Copiar código" : "Copy code"}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
       </div>
     </div>
   );
@@ -5515,204 +3076,6 @@ function ContactPage() {
         </div>
       </div>
     </>
-  );
-}
-
-/* ═══════════════ CART MODIFY MODAL ═══════════════ */
-function CartModifyModal({ item, onClose, onSave }) {
-  const isHotel = item.type === "hotel";
-  const isTour = item.type === "tour";
-  const isTransfer = item.type === "transfer";
-
-  // Recalculate price — preserve per-unit rate from original
-  const baseUnitPrice = item.total / (item.quantity || 1);
-
-  const [data, setData] = useState({
-    // Hotel fields
-    checkin: item.checkin || "",
-    checkout: item.checkout || "",
-    // Tour fields
-    date: item.date || "",
-    time: item.time || "",
-    // Transfer fields (location holds "A → B")
-    from: item.location?.split("→")[0]?.trim() || "",
-    to: item.location?.split("→")[1]?.trim() || "",
-    // Common
-    guests: item.guests || 1,
-    quantity: item.quantity || 1,
-    notes: item.notes || "",
-  });
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSave = () => {
-    setError("");
-    if (isHotel) {
-      if (!data.checkin || !data.checkout) { setError("Please select both check-in and check-out dates."); return; }
-      if (new Date(data.checkout) <= new Date(data.checkin)) { setError("Check-out must be after check-in."); return; }
-    }
-    if (isTour && !data.date) { setError("Please select a tour date."); return; }
-    if (isTransfer && (!data.from || !data.to || !data.date)) { setError("Please complete pickup, destination, and date."); return; }
-    if (data.guests < 1) { setError("At least 1 guest is required."); return; }
-
-    // Calculate new quantity (nights for hotel, travelers for tour, pax for transfer)
-    let newQuantity = data.quantity;
-    if (isHotel) {
-      const nights = Math.ceil((new Date(data.checkout) - new Date(data.checkin)) / (1000 * 60 * 60 * 24));
-      newQuantity = Math.max(1, nights);
-    } else if (isTour) {
-      newQuantity = data.guests;
-    } else if (isTransfer) {
-      newQuantity = 1; // transfer is per-trip
-    }
-
-    const updated = {
-      ...item,
-      checkin: data.checkin,
-      checkout: data.checkout,
-      date: data.date,
-      time: data.time,
-      location: isTransfer ? `${data.from} → ${data.to}` : item.location,
-      guests: data.guests,
-      quantity: newQuantity,
-      total: baseUnitPrice * newQuantity,
-      notes: data.notes,
-    };
-    setSaved(true);
-    setTimeout(() => onSave(updated), 600);
-  };
-
-  const TypeIcon = isHotel ? Building2 : isTour ? Mountain : Car;
-  const typeColor = isHotel ? "#29ABE2" : isTour ? "#8DC63F" : "#EF6C2B";
-  const typeLabel = isHotel ? "STAY" : isTour ? "TOUR" : "TRANSFER";
-
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflowY: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, width: "100%", background: "linear-gradient(180deg,#1A2634,#0E1824)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 22, position: "relative", maxHeight: "92vh", overflowY: "auto" }}>
-        <div style={{ position: "sticky", top: 0, background: "linear-gradient(180deg,#1A2634 85%,rgba(26,38,52,0))", padding: "24px 26px 14px", zIndex: 2 }}>
-          <button onClick={onClose} style={{ position: "absolute", top: 14, right: 14, width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.06)", border: "none", color: "rgba(255,255,255,.6)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <X style={{ width: 14, height: 14 }} />
-          </button>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 11, background: typeColor + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <TypeIcon style={{ width: 20, height: 20, color: typeColor }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".18em", color: typeColor, marginBottom: 2 }}>MODIFY {typeLabel}</div>
-              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".03em", margin: 0, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ padding: "8px 26px 26px" }}>
-          {/* HOTEL FIELDS */}
-          {isHotel && (
-            <>
-              <div className="f-row">
-                <div>
-                  <label className="f-lab">Check-in *</label>
-                  <input type="date" className="f-in" value={data.checkin} onChange={(e) => setData({ ...data, checkin: e.target.value })} />
-                </div>
-                <div>
-                  <label className="f-lab">Check-out *</label>
-                  <input type="date" className="f-in" value={data.checkout} onChange={(e) => setData({ ...data, checkout: e.target.value })} />
-                </div>
-              </div>
-              <div className="f-grp">
-                <label className="f-lab">Guests *</label>
-                <select className="f-in" value={data.guests} onChange={(e) => setData({ ...data, guests: parseInt(e.target.value) })}>
-                  {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} {n === 1 ? "guest" : "guests"}</option>)}
-                </select>
-              </div>
-            </>
-          )}
-
-          {/* TOUR FIELDS */}
-          {isTour && (
-            <>
-              <div className="f-row">
-                <div>
-                  <label className="f-lab">Tour Date *</label>
-                  <input type="date" className="f-in" value={data.date} onChange={(e) => setData({ ...data, date: e.target.value })} />
-                </div>
-                <div>
-                  <label className="f-lab">Start Time</label>
-                  <input type="time" className="f-in" value={data.time} onChange={(e) => setData({ ...data, time: e.target.value })} />
-                </div>
-              </div>
-              <div className="f-grp">
-                <label className="f-lab">Travelers *</label>
-                <select className="f-in" value={data.guests} onChange={(e) => setData({ ...data, guests: parseInt(e.target.value) })}>
-                  {[1,2,3,4,5,6,7,8,10,12,16].map(n => <option key={n} value={n}>{n} {n === 1 ? "traveler" : "travelers"}</option>)}
-                </select>
-              </div>
-            </>
-          )}
-
-          {/* TRANSFER FIELDS */}
-          {isTransfer && (
-            <>
-              <div className="f-grp">
-                <label className="f-lab">Pickup Location *</label>
-                <input type="text" className="f-in" value={data.from} onChange={(e) => setData({ ...data, from: e.target.value })} placeholder="e.g. SJU Airport" />
-              </div>
-              <div className="f-grp">
-                <label className="f-lab">Destination *</label>
-                <input type="text" className="f-in" value={data.to} onChange={(e) => setData({ ...data, to: e.target.value })} placeholder="e.g. Boquerón" />
-              </div>
-              <div className="f-row">
-                <div>
-                  <label className="f-lab">Date *</label>
-                  <input type="date" className="f-in" value={data.date} onChange={(e) => setData({ ...data, date: e.target.value })} />
-                </div>
-                <div>
-                  <label className="f-lab">Pickup Time</label>
-                  <input type="time" className="f-in" value={data.time} onChange={(e) => setData({ ...data, time: e.target.value })} />
-                </div>
-              </div>
-              <div className="f-grp">
-                <label className="f-lab">Passengers *</label>
-                <select className="f-in" value={data.guests} onChange={(e) => setData({ ...data, guests: parseInt(e.target.value) })}>
-                  {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} {n === 1 ? "passenger" : "passengers"}</option>)}
-                </select>
-              </div>
-            </>
-          )}
-
-          {/* NOTES */}
-          <div className="f-grp">
-            <label className="f-lab">Special Requests / Notes</label>
-            <textarea className="f-in" rows={2} value={data.notes} onChange={(e) => setData({ ...data, notes: e.target.value })} placeholder="Any preferences or notes..." style={{ resize: "vertical", minHeight: 56 }} />
-          </div>
-
-          {error && (
-            <div style={{ padding: 10, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 7 }}>
-              <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0 }} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Price preview */}
-          <div style={{ padding: "12px 14px", borderRadius: 11, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 3 }}>Estimated total</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{fmt(baseUnitPrice)} × {isHotel ? `${Math.max(1, Math.ceil((new Date(data.checkout) - new Date(data.checkin)) / (1000 * 60 * 60 * 24))) || 1} ${isHotel ? "night" : "unit"}${(Math.ceil((new Date(data.checkout) - new Date(data.checkin)) / (1000 * 60 * 60 * 24)) || 1) > 1 ? "s" : ""}` : isTour ? `${data.guests} ${data.guests === 1 ? "traveler" : "travelers"}` : "1 trip"}</div>
-            </div>
-            <div style={{ fontFamily: "Bebas Neue", fontSize: 26, color: "var(--gold)", letterSpacing: ".02em" }}>
-              {fmt(isHotel ? baseUnitPrice * (Math.max(1, Math.ceil((new Date(data.checkout) - new Date(data.checkin)) / (1000 * 60 * 60 * 24))) || 1) : isTour ? baseUnitPrice * data.guests : baseUnitPrice)}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-            <button onClick={handleSave} style={{ flex: 1.5, padding: "11px 0", borderRadius: 10, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-              <Check style={{ width: 14, height: 14 }} />{saved ? "Saved ✓" : "Save Changes"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -6324,16 +3687,6 @@ const A_TRANSFER_BOOKINGS = [];
 const A_DRIVERS = [];
 const A_USERS = [];
 const A_ROLES = [];
-const A_TRANSACTIONS = [];
-// Tiers default — admin puede editarlos desde Settings → Lealtad y Cupones.
-// Persisten en localStorage como 'loyaltyTiers' hasta que exista tabla en DB.
-const A_LOYALTY_TIERS = [
-  { name: "Bronze", min: 0, discount: 0, color: "#CD7F32" },
-  { name: "Silver", min: 500, discount: 0, color: "#C0C0C0" },
-  { name: "Gold", min: 2000, discount: 0, color: "#FFD700" },
-];
-const A_COUPONS = [];
-const A_COUPON_HISTORY = [];
 const A_INVOICES = [];
 const A_CONTACTS = [];
 const A_POSTS = [];
@@ -6595,7 +3948,7 @@ function AdminPanel({ onClose }) {
     return false;
   };
 
-  // For invoices/payments: can only see records for customers with paid/related bookings on services they have access to.
+  // For invoices: can only see records for customers with paid/related bookings on services they have access to.
   // Simple approximation: if employee has at least "view" on invoices module, they see all. If "none", they see nothing.
   // BUT if a stricter mode is needed, this could filter by the employee's own bookings.
   const canSeeInvoices = () => {
@@ -6609,14 +3962,6 @@ function AdminPanel({ onClose }) {
   const canDeleteInvoices = () => {
     const p = getModulePerm("invoices");
     return p === "full";
-  };
-  const canSeePayments = () => {
-    const p = getModulePerm("payments");
-    return p !== "none";
-  };
-  const canEditPayments = () => {
-    const p = getModulePerm("payments");
-    return p === "edit" || p === "full";
   };
 
   // Get current employee ID from session (null if admin or user)
@@ -6752,30 +4097,11 @@ function AdminPanel({ onClose }) {
   const [invoiceConfirm, setInvoiceConfirm] = useState(null); // { inv, mode: 'delete' | 'cancel' }
   const [invoiceHistoryOpen, setInvoiceHistoryOpen] = useState(false);
   const [invoiceHistorySort, setInvoiceHistorySort] = useState({ key: "issued", dir: "desc" });
-  const [paymentsHistoryOpen, setPaymentsHistoryOpen] = useState(false);
-  const [paymentsCalendarOpen, setPaymentsCalendarOpen] = useState(false);
-  // Calendar filters
-  const [calStatusFilter, setCalStatusFilter] = useState({ pending: true, paid: true, completed: true, refunded: false, failed: false });
-  const [calTypeFilter, setCalTypeFilter] = useState({ hotel: true, tour: true, transfer: true });
-  const [calMonth, setCalMonth] = useState(() => {
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() };
-  });
-  const [calSelectedDay, setCalSelectedDay] = useState(null); // ISO date string
-  const [paymentsHistorySort, setPaymentsHistorySort] = useState({ key: "date", dir: "desc" });
-  const [paymentsHistoryFilter, setPaymentsHistoryFilter] = useState("all");
   const [invoicesSort, setInvoicesSort] = useState({ key: "issued", dir: "desc" });
-  const [paymentsSort, setPaymentsSort] = useState({ key: "date", dir: "desc" });
   const [markPaidInvoice, setMarkPaidInvoice] = useState(null);
   const [paymentRef, setPaymentRef] = useState("");
-  const [txAction, setTxAction] = useState(null); // { tx, action: 'verify' | 'complete' | 'revert' }
-  const [txVerificationRef, setTxVerificationRef] = useState(""); // input for verification reference
   const [customerProfileEmail, setCustomerProfileEmail] = useState(null); // email to open profile for
   const [composeEmail, setComposeEmail] = useState(null); // { to, name, subject, body }
-  const [loyaltyTiers, setLoyaltyTiers] = useState(() => PRDISE.load("loyaltyTiers", A_LOYALTY_TIERS));
-  // Persistir cambios de tiers en localStorage para que la AccountPage del
-  // cliente y el cart checkout consuman los valores actualizados del admin.
-  useEffect(() => { PRDISE.save("loyaltyTiers", loyaltyTiers); }, [loyaltyTiers]);
   const [partnersList, setPartnersList] = useState(() => Array.isArray(PARTNERS) ? [...PARTNERS] : []);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
@@ -6793,81 +4119,14 @@ function AdminPanel({ onClose }) {
     })();
     return () => { cancel = true; };
   }, []);
-  const [coupons, setCoupons] = useState(() => PRDISE.load("coupons", A_COUPONS));
-  const [archivedCoupons, setArchivedCoupons] = useState(() => PRDISE.load("archivedCoupons", []));
-  const [couponHistory, setCouponHistory] = useState(() => PRDISE.load("couponHistory", A_COUPON_HISTORY));
-  const [editingCoupon, setEditingCoupon] = useState(null);
-  const [archivedCouponsOpen, setArchivedCouponsOpen] = useState(false);
-  const [archivedCouponDetail, setArchivedCouponDetail] = useState(null); // shows uses for an archived coupon
-  const [deletingCoupon, setDeletingCoupon] = useState(null); // confirm modal for delete
-  useEffect(() => { PRDISE.save("loyaltyTiers", loyaltyTiers); }, [loyaltyTiers]);
-  useEffect(() => { PRDISE.save("coupons", coupons); }, [coupons]);
-  useEffect(() => { PRDISE.save("archivedCoupons", archivedCoupons); }, [archivedCoupons]);
-  useEffect(() => { PRDISE.save("couponHistory", couponHistory); }, [couponHistory]);
   const driverRotationIdx = useRef(0);
-  const [transactions, setTransactions] = useState(() => {
-    // Local cache + migration mientras llega la carga desde Supabase.
-    let userGenerated = PRDISE.load("userGeneratedTransactions", []);
-    let migrated = false;
-    userGenerated = userGenerated.map(t => {
-      if (String(t.id || "").startsWith("tx-cart-") && !t.verifiedAt && !t.completedAt && t.status !== "pending" && t.status !== "refunded" && t.status !== "failed") {
-        migrated = true;
-        return { ...t, status: "pending", notes: t.notes || "Cart checkout · Awaiting verification" };
-      }
-      return t;
-    });
-    if (migrated) PRDISE.save("userGeneratedTransactions", userGenerated);
-    return [...userGenerated, ...A_TRANSACTIONS];
-  });
-  // Cargar pagos pendientes REALES desde Supabase (admin payments).
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const { listPendingPayments } = await import("@/lib/admin/payments");
-        const res = await listPendingPayments();
-        if (!mounted || !res?.ok) return;
-        const mapped = (res.data || []).map((row) => {
-          const c = row.customer || {};
-          const customerName = [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "—";
-          return {
-            id: "sb-" + row.id,
-            paymentId: row.id,
-            bookingId: row.booking_id,
-            ref: "PAY-" + row.id.slice(0, 8).toUpperCase(),
-            customer: customerName,
-            email: row.customer_email || "",
-            amount: (row.amount_cents || 0) / 100,
-            method: row.method,
-            status: "pending",
-            date: (row.claimed_at || row.created_at || "").slice(0, 10),
-            bookingRef: row.booking_id?.slice(0, 8).toUpperCase() || "",
-            type: row.booking?.item_type || "",
-            item: row.booking?.item_type || "",
-            notes: row.notes || "",
-            customerPaymentClaim: row.external_ref || "",
-          };
-        });
-        setTransactions((prev) => {
-          const seen = new Set(mapped.map((m) => m.paymentId));
-          const local = prev.filter((p) => !p.paymentId || !seen.has(p.paymentId));
-          return [...mapped, ...local];
-        });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("listPendingPayments admin:", e);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
   const [invoices, setInvoices] = useState(() => {
-    // Same migration for invoices: cart-checkout invoices that were marked paid without verification
+    // Local cache + migration mientras llega la carga desde Supabase.
     let userGenerated = PRDISE.load("userGeneratedInvoices", []);
     let migrated = false;
     userGenerated = userGenerated.map(i => {
       if (i.source === "cart-checkout" && i.status === "paid" && !i.paymentRef?.startsWith("VERIFIED-")) {
         migrated = true;
-        // Move customer's claim from paymentRef back to customerPaymentClaim
         return {
           ...i,
           status: "sent",
@@ -6882,32 +4141,21 @@ function AdminPanel({ onClose }) {
     return [...userGenerated, ...A_INVOICES];
   });
 
-  // Re-sync user-generated invoices/transactions when:
-  // 1. Admin switches into Payments or Invoices section (covers same-tab compras after admin opened panel)
+  // Re-sync user-generated invoices when:
+  // 1. Admin switches into Invoices section (covers same-tab compras after admin opened panel)
   // 2. localStorage changes from another tab
   useEffect(() => {
     const syncFromStorage = () => {
       const userInvs = PRDISE.load("userGeneratedInvoices", []);
       setInvoices((prev) => {
         const adminCreated = prev.filter(i => !i.source || i.source !== "cart-checkout");
-        // De-duplicate: if admin already has these (from initial load), don't add twice
         const existingIds = new Set(prev.map(i => i.id));
         const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
         if (trulyNew.length === 0 && prev.some(p => p.source === "cart-checkout")) return prev;
         return [...userInvs, ...adminCreated.filter(i => !userInvs.some(u => u.id === i.id))];
       });
-      const userTxs = PRDISE.load("userGeneratedTransactions", []);
-      setTransactions((prev) => {
-        const adminCreated = prev.filter(t => !t.id || !String(t.id).startsWith("tx-cart-"));
-        const existingIds = new Set(prev.map(t => t.id));
-        const trulyNew = userTxs.filter(t => !existingIds.has(t.id));
-        if (trulyNew.length === 0 && prev.some(p => String(p.id || "").startsWith("tx-cart-"))) return prev;
-        return [...userTxs, ...adminCreated.filter(t => !userTxs.some(u => u.id === t.id))];
-      });
     };
-    // Sync on mount and on storage events (other tabs)
     window.addEventListener("storage", syncFromStorage);
-    // Sync on focus (when admin tab gets focus after coming back from user tab)
     window.addEventListener("focus", syncFromStorage);
     return () => {
       window.removeEventListener("storage", syncFromStorage);
@@ -6915,59 +4163,13 @@ function AdminPanel({ onClose }) {
     };
   }, []);
 
-  // Polling sync: every 2 seconds when on Payments/Invoices or calendar is open, check localStorage for new user-generated tx/invoices
+  // Re-sync user-generated invoices when admin enters Invoices section
   useEffect(() => {
-    if (section !== "payments" && section !== "invoices" && !paymentsCalendarOpen) return;
-    const syncFromLocalStorage = () => {
+    if (section === "invoices") {
       const userInvs = PRDISE.load("userGeneratedInvoices", []);
-      const userTxs = PRDISE.load("userGeneratedTransactions", []);
       setInvoices((prev) => {
         const existingIds = new Set(prev.map(i => i.id));
         const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
-        return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-      });
-      setTransactions((prev) => {
-        const existingIds = new Set(prev.map(t => t.id));
-        const trulyNew = userTxs.filter(t => !existingIds.has(t.id));
-        return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-      });
-    };
-    syncFromLocalStorage(); // immediate
-    const interval = setInterval(syncFromLocalStorage, 2000);
-    return () => clearInterval(interval);
-  }, [section, paymentsCalendarOpen]);
-
-  // Re-sync user-generated invoices/transactions when calendar opens (so admin sees latest)
-  useEffect(() => {
-    if (paymentsCalendarOpen) {
-      const userInvs = PRDISE.load("userGeneratedInvoices", []);
-      const userTxs = PRDISE.load("userGeneratedTransactions", []);
-      setInvoices((prev) => {
-        const existingIds = new Set(prev.map(i => i.id));
-        const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
-        return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-      });
-      setTransactions((prev) => {
-        const existingIds = new Set(prev.map(t => t.id));
-        const trulyNew = userTxs.filter(t => !existingIds.has(t.id));
-        return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-      });
-    }
-  }, [paymentsCalendarOpen]);
-
-  // Also re-sync when admin enters Payments or Invoices section
-  useEffect(() => {
-    if (section === "payments" || section === "invoices") {
-      const userInvs = PRDISE.load("userGeneratedInvoices", []);
-      const userTxs = PRDISE.load("userGeneratedTransactions", []);
-      setInvoices((prev) => {
-        const existingIds = new Set(prev.map(i => i.id));
-        const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
-        return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-      });
-      setTransactions((prev) => {
-        const existingIds = new Set(prev.map(t => t.id));
-        const trulyNew = userTxs.filter(t => !existingIds.has(t.id));
         return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
       });
     }
@@ -6990,32 +4192,13 @@ function AdminPanel({ onClose }) {
     let cancel = false;
     (async () => {
       try {
-        const [drv, msgs, bks, usrs, invs, cps] = await Promise.all([
+        const [drv, msgs, bks, usrs, invs] = await Promise.all([
           sbListDrivers(),
           sbListContactMessages(),
           sbListAllBookings({ itemType: "transfer", pageSize: 100 }),
           sbListAllUsers({ pageSize: 200 }),
           sbListInvoices(),
-          sbListCoupons(),
         ]);
-        // Coupons reales desde Supabase (UUIDs validos para CRUD). Antes el
-        // estado se inicializaba con PRDISE.load('coupons') localStorage, lo
-        // que generaba ids tipo "cp1234..." que el Server Action rechazaba con
-        // 'Identificador invalido' al intentar update/delete.
-        if (cancel) return;
-        if (Array.isArray(cps)) {
-          setCoupons(cps.map((c) => ({
-            id: c.id,
-            code: c.code,
-            desc: lang === "es" ? (c.description_es || "") : (c.description_en || ""),
-            discount: c.discount_pct,
-            maxUses: c.max_uses ?? 0,
-            used: c.used_count || 0,
-            expires: c.expires_at || "",
-            active: !!c.active,
-            createdAt: (c.created_at || "").slice(0, 10),
-          })));
-        }
         if (cancel) return;
         if (Array.isArray(invs)) {
           // Mapeo Supabase → shape JSX legacy. Mantenemos solo invoices
@@ -7136,9 +4319,6 @@ function AdminPanel({ onClose }) {
   const [usersPage, setUsersPage] = useState(1);
   const [contactsPage, setContactsPage] = useState(1);
   const [invoicesPage, setInvoicesPage] = useState(1);
-  const [paymentsPage, setPaymentsPage] = useState(1);
-  const [paymentsFilter, setPaymentsFilter] = useState("all");
-  const [editingTx, setEditingTx] = useState(null);
   const [staysPage, setStaysPage] = useState(1);
   const [toursPage, setToursPage] = useState(1);
   const [routesPage, setRoutesPage] = useState(1);
@@ -7158,7 +4338,6 @@ function AdminPanel({ onClose }) {
   useEffect(() => { setToursPage(1); }, [toursFilter]);
   useEffect(() => { setInvoicesPage(1); }, [invoicesFilter]);
   useEffect(() => { setPostsPage(1); }, [postsFilter]);
-  useEffect(() => { setPaymentsPage(1); }, [paymentsFilter]);
   useEffect(() => { setStaysPage(1); }, [staysPerPage]);
   useEffect(() => { setToursPage(1); }, [toursPerPage]);
   useEffect(() => { setPostsPage(1); }, [postsPerPage]);
@@ -7200,7 +4379,6 @@ function AdminPanel({ onClose }) {
       { id: "partners", label: lang === "es" ? "Alianzas" : "Partners", Icon: ExternalLink, adminOnly: true },
     ]},
     { group: t("adm_operations"), items: [
-      { id: "payments", label: t("adm_payments"), Icon: CreditCard, permModule: "payments" },
       { id: "invoices", label: t("adm_invoices"), Icon: Briefcase, permModule: "invoices" },
       { id: "contacts", label: t("adm_contacts"), Icon: Mail, permModule: "contacts" },
     ]},
@@ -7221,9 +4399,9 @@ function AdminPanel({ onClose }) {
         const perm = getModulePerm(it.permModule);
         if (perm !== "none") return true;
         // Special: even with no module perm, employees with at least one accessible service
-        // (view/edit/full or owned) in stays/tours/transfers should still see Payments/Invoices/Contacts
+        // (view/edit/full or owned) in stays/tours/transfers should still see Invoices/Contacts
         // (filtered to their own scope)
-        if (it.permModule === "payments" || it.permModule === "invoices") {
+        if (it.permModule === "invoices") {
           return hasAnyServicesIn("stays") || hasAnyServicesIn("tours") || hasAnyServicesIn("transfers");
         }
         return false;
@@ -7255,7 +4433,6 @@ function AdminPanel({ onClose }) {
   const totalRevenue = dashboardSummary?.revenueCents != null
     ? dashboardSummary.revenueCents / 100
     : 0;
-  const pendingPayments = transactions.filter((t) => t.status === "pending").length;
   const totalUsers = users.length;
   const activeStays = dashboardSummary?.activeStaysCount ?? hotels.filter((h) => h.status === "published").length;
 
@@ -8043,8 +5220,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-pcard-btn" onClick={() => { if (canEdit) setEditing({ type: "hotel", item: h }); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}><Pencil />{canEdit ? "Edit" : (lang==="es"?"Ver":"View")}</button>
                     <button
                       className="adm-pcard-btn"
-                      title={lang==="es"?"Ver pagos y facturas de esta estadía":"View payments & invoices for this stay"}
-                      onClick={() => { setServiceTrackFilter({ type: "stay", id: h.id, name: h.name }); setSection("payments"); }}
+                      title={lang==="es"?"Ver facturas de esta estadía":"View invoices for this stay"}
+                      onClick={() => { setServiceTrackFilter({ type: "stay", id: h.id, name: h.name }); setSection("invoices"); }}
                       style={{ color: "#29ABE2" }}
                     ><Search />{lang==="es"?"Seguir":"Track"}</button>
                     <button className="adm-pcard-btn" onClick={() => { if (canEdit) toggleStatus("hotels", h.id); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}>{h.status === "published" ? <><EyeOff />Hide</> : <><Eye />Publish</>}</button>
@@ -8146,8 +5323,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-pcard-btn" onClick={() => { if (canEdit) setEditing({ type: "tour", item: t }); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}><Pencil />{canEdit ? "Edit" : (lang==="es"?"Ver":"View")}</button>
                     <button
                       className="adm-pcard-btn"
-                      title={lang==="es"?"Ver pagos y facturas de este tour":"View payments & invoices for this tour"}
-                      onClick={() => { setServiceTrackFilter({ type: "tour", id: t.id, name: t.name }); setSection("payments"); }}
+                      title={lang==="es"?"Ver facturas de este tour":"View invoices for this tour"}
+                      onClick={() => { setServiceTrackFilter({ type: "tour", id: t.id, name: t.name }); setSection("invoices"); }}
                       style={{ color: "#29ABE2" }}
                     ><Search />{lang==="es"?"Seguir":"Track"}</button>
                     <button className="adm-pcard-btn" onClick={() => { if (canEdit) toggleStatus("tours", t.id); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}>{t.status === "published" ? <><EyeOff />Hide</> : <><Eye />Publish</>}</button>
@@ -8855,616 +6032,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
         )}
 
-        {section === "payments" && (() => {
-          // Pre-filter transactions according to employee scope (and track filter)
-          const visibleTransactions = transactions.filter(t => itemBelongsToEmployee(t) && itemMatchesTrackFilter(t, serviceTrackFilter));
-          return (
-          <>
-            <div className="adm-ph">
-              <div>
-                <h1>{lang==="es"?"PAGOS Y":"PAYMENTS &"} <em>{lang==="es"?"FINANZAS":"FINANCE"}</em></h1>
-                <p className="sub">{lang==="es"?"Historial de transacciones":"Transaction history"} · {visibleTransactions.length} {lang==="es"?"registros totales":"total records"} · {lang==="es"?"conectado a actividad del usuario":"connected to user activity"}</p>
-              </div>
-              <div className="adm-ph-actions">
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar transacciones...":"Search transactions..."} /></div>
-                <button className="adm-btn adm-btn-ghost" onClick={() => {
-                  const userInvs = PRDISE.load("userGeneratedInvoices", []);
-                  const userTxs = PRDISE.load("userGeneratedTransactions", []);
-                  setInvoices((prev) => {
-                    const existingIds = new Set(prev.map(i => i.id));
-                    const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
-                    return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-                  });
-                  setTransactions((prev) => {
-                    const existingIds = new Set(prev.map(t => t.id));
-                    const trulyNew = userTxs.filter(t => !existingIds.has(t.id));
-                    return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-                  });
-                }} title={lang==="es"?"Sincronizar con compras del cliente":"Sync with client purchases"}>
-                  <Activity />{lang==="es"?"Refrescar":"Refresh"}
-                </button>
-                <button className="adm-btn adm-btn-ghost" onClick={() => setPaymentsCalendarOpen(true)}><Calendar />{lang==="es"?"Calendario":"Calendar"}</button>
-                <button className="adm-btn adm-btn-ghost" onClick={() => setPaymentsHistoryOpen(true)}><FileText />{lang==="es"?"Historial completo":"Full history"}</button>
-              </div>
-            </div>
-
-            {!serviceTrackFilter && currentEmployeeId && (() => {
-              const myNames = getMyServiceNames();
-              if (myNames === null || myNames.length === 0) return null;
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", marginBottom: 14, borderRadius: 12, background: "rgba(245,166,35,.05)", border: "1px solid rgba(245,166,35,.2)" }}>
-                  <Lock style={{ width: 14, height: 14, color: "var(--gold)", flexShrink: 0 }} />
-                  <div style={{ flex: 1, fontSize: 11.5, color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>
-                    {lang === "es"
-                      ? <>Solo ves transacciones relacionadas con <strong style={{ color: "var(--gold)" }}>tus {myNames.length} servicio{myNames.length === 1 ? "" : "s"}</strong> asignado{myNames.length === 1 ? "" : "s"}.</>
-                      : <>Showing only transactions related to <strong style={{ color: "var(--gold)" }}>your {myNames.length} assigned service{myNames.length === 1 ? "" : "s"}</strong>.</>}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {serviceTrackFilter && (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", marginBottom: 14, borderRadius: 12, background: "linear-gradient(135deg,rgba(41,171,226,.1),rgba(141,198,63,.06))", border: "1px solid rgba(41,171,226,.3)" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(41,171,226,.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Search style={{ width: 16, height: 16, color: "#29ABE2" }} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".14em", color: "#29ABE2", textTransform: "uppercase", marginBottom: 2 }}>
-                    {lang==="es"?"Seguimiento activo":"Tracking active"}
-                  </div>
-                  <div style={{ fontSize: 13, color: "#fff", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {lang==="es"?"Mostrando solo transacciones de:":"Showing only transactions for:"} <span style={{ color: "var(--gold)" }}>{serviceTrackFilter.name}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 2 }}>
-                    {(() => {
-                      const matches = visibleTransactions.filter(tx => itemMatchesTrackFilter(tx, serviceTrackFilter));
-                      const totalAmount = matches.reduce((s, t) => s + (t.amount || 0), 0);
-                      return lang === "es"
-                        ? `${matches.length} transacciones · ${fmt(totalAmount)} en total`
-                        : `${matches.length} transactions · ${fmt(totalAmount)} total`;
-                    })()}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSection("invoices")}
-                  className="adm-btn adm-btn-ghost"
-                  style={{ padding: "6px 12px", fontSize: 11 }}
-                ><Briefcase style={{ width: 11, height: 11 }} />{lang==="es"?"Ver facturas":"View invoices"}</button>
-                <button
-                  onClick={() => setServiceTrackFilter(null)}
-                  className="adm-btn adm-btn-ghost"
-                  style={{ padding: "6px 12px", fontSize: 11 }}
-                ><X style={{ width: 11, height: 11 }} />{lang==="es"?"Quitar filtro":"Clear filter"}</button>
-              </div>
-            )}
-            <div className="adm-stats">
-              <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pendientes":"Pending"}</span><div className="adm-stat-ico"><Clock /></div></div>
-                <div className="adm-stat-val">{visibleTransactions.filter((t) => t.status === "pending").length}</div>
-              </div>
-              <div className="adm-stat green">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pagadas":"Paid"}</span><div className="adm-stat-ico"><CheckCircle /></div></div>
-                <div className="adm-stat-val">{visibleTransactions.filter((t) => t.status === "paid").length}</div>
-              </div>
-              <div className="adm-stat sky">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Completadas":"Completed"}</span><div className="adm-stat-ico"><Check /></div></div>
-                <div className="adm-stat-val">{visibleTransactions.filter((t) => t.status === "completed").length}</div>
-              </div>
-              <div className="adm-stat orange">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Reembolsado / Fallido":"Refunded / Failed"}</span><div className="adm-stat-ico"><AlertTriangle /></div></div>
-                <div className="adm-stat-val">{visibleTransactions.filter((t) => t.status === "refunded" || t.status === "failed").length}</div>
-              </div>
-              <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Ingreso Neto":"Net Revenue"}</span><div className="adm-stat-ico"><CreditCard /></div></div>
-                <div className="adm-stat-val">{fmt(visibleTransactions.filter(t => t.status === "completed" || t.status === "paid").reduce((s, t) => s + t.amount, 0))}</div>
-              </div>
-            </div>
-
-            {/* Recent Transactions — last 5 */}
-            <div className="adm-card">
-              <div className="adm-card-head">
-                <div className="adm-card-title"><CreditCard />{lang==="es"?"Transacciones Recientes":"Recent Transactions"}</div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.4)", letterSpacing: ".1em", textTransform: "uppercase" }}>{lang==="es"?"Últimas 5":"Last 5"}</span>
-              </div>
-              <div className="adm-tbl-wrap">
-                <table className="adm-tbl">
-                  <thead><tr><th>Reference</th><th>Customer</th><th>Booking</th><th>Method</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
-                  <tbody>
-                    {[...visibleTransactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5).map((t) => (
-                      <tr key={t.id}>
-                        <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12 }}>{t.ref}</td>
-                        <td>
-                          <button onClick={() => setCustomerProfileEmail(t.email)} title={lang==="es"?"Ver perfil del cliente":"View customer profile"} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", textAlign: "left" }}>
-                            <Search style={{ width: 11, height: 11, color: "rgba(255,255,255,.35)", flexShrink: 0 }} />
-                            <div>
-                              <div style={{ fontWeight: 600, color: "#fff" }}>{t.customer}</div>
-                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.email}</div>
-                            </div>
-                          </button>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,.8)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.item}</div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)", fontFamily: "monospace" }}>{t.bookingRef}</div>
-                        </td>
-                        <td style={{ fontSize: 12 }}>{t.method}</td>
-                        <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t.amount)}</td>
-                        <td><span className={`adm-pill ${t.status}`}>{t.status}</span></td>
-                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{t.date}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* All Transactions — full list with filters, pagination, edit */}
-            <div className="adm-filter-row" style={{ marginTop: 18 }}>
-              <button className={`adm-fchip ${paymentsFilter === "all" ? "active" : ""}`} onClick={() => setPaymentsFilter("all")}>All <span className="adm-fchip-num">{visibleTransactions.length}</span></button>
-              <button className={`adm-fchip ${paymentsFilter === "pending" ? "active" : ""}`} onClick={() => setPaymentsFilter("pending")}>{lang==="es"?"Pendientes":"Pending"} <span className="adm-fchip-num">{visibleTransactions.filter(t => t.status === "pending").length}</span></button>
-              <button className={`adm-fchip ${paymentsFilter === "paid" ? "active" : ""}`} onClick={() => setPaymentsFilter("paid")}>{lang==="es"?"Pagadas":"Paid"} <span className="adm-fchip-num">{visibleTransactions.filter(t => t.status === "paid").length}</span></button>
-              <button className={`adm-fchip ${paymentsFilter === "completed" ? "active" : ""}`} onClick={() => setPaymentsFilter("completed")}>{lang==="es"?"Completadas":"Completed"} <span className="adm-fchip-num">{visibleTransactions.filter(t => t.status === "completed").length}</span></button>
-              <button className={`adm-fchip ${paymentsFilter === "refunded" ? "active" : ""}`} onClick={() => setPaymentsFilter("refunded")}>{lang==="es"?"Reembolsadas":"Refunded"} <span className="adm-fchip-num">{visibleTransactions.filter(t => t.status === "refunded").length}</span></button>
-              <button className={`adm-fchip ${paymentsFilter === "failed" ? "active" : ""}`} onClick={() => setPaymentsFilter("failed")}>{lang==="es"?"Fallidas":"Failed"} <span className="adm-fchip-num">{visibleTransactions.filter(t => t.status === "failed").length}</span></button>
-            </div>
-
-            <div className="adm-card">
-              <div className="adm-card-head">
-                <div className="adm-card-title"><Database />{lang==="es"?"Todas las Transacciones":"All Transactions"}</div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.4)" }}>{visibleTransactions.filter(t => (paymentsFilter === "all" || t.status === paymentsFilter) && itemMatchesTrackFilter(t, serviceTrackFilter) && itemBelongsToEmployee(t)).length} records</span>
-              </div>
-              <div className="adm-tbl-wrap">
-                <table className="adm-tbl">
-                  {(() => {
-                    const txSortHelpers = {
-                      ref: (a, b) => (a.ref || "").localeCompare(b.ref || ""),
-                      customer: (a, b) => (a.customer || "").localeCompare(b.customer || ""),
-                      item: (a, b) => (a.item || "").localeCompare(b.item || ""),
-                      type: (a, b) => (a.type || "").localeCompare(b.type || ""),
-                      method: (a, b) => (a.method || "").localeCompare(b.method || ""),
-                      amount: (a, b) => (a.amount || 0) - (b.amount || 0),
-                      status: (a, b) => (a.status || "").localeCompare(b.status || ""),
-                      date: (a, b) => (a.date || "").localeCompare(b.date || ""),
-                    };
-                    const txToggleSort = (key) => setPaymentsSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
-                    const txSortArrow = (key) => paymentsSort.key !== key ? "↕" : paymentsSort.dir === "asc" ? "↑" : "↓";
-                    const txSortClass = (key) => `sortable${paymentsSort.key === key ? " active" : ""}`;
-                    return (
-                      <thead><tr>
-                        <th className={txSortClass("ref")} onClick={() => txToggleSort("ref")}>{lang==="es"?"Referencia":"Reference"} <span className="adm-tbl-sort-arrow">{txSortArrow("ref")}</span></th>
-                        <th className={txSortClass("customer")} onClick={() => txToggleSort("customer")}>{lang==="es"?"Cliente":"Customer"} <span className="adm-tbl-sort-arrow">{txSortArrow("customer")}</span></th>
-                        <th className={txSortClass("item")} onClick={() => txToggleSort("item")}>{lang==="es"?"Reserva / Actividad":"Booking / Activity"} <span className="adm-tbl-sort-arrow">{txSortArrow("item")}</span></th>
-                        <th className={txSortClass("type")} onClick={() => txToggleSort("type")}>{lang==="es"?"Tipo":"Type"} <span className="adm-tbl-sort-arrow">{txSortArrow("type")}</span></th>
-                        <th className={txSortClass("method")} onClick={() => txToggleSort("method")}>{lang==="es"?"Método":"Method"} <span className="adm-tbl-sort-arrow">{txSortArrow("method")}</span></th>
-                        <th className={txSortClass("amount")} onClick={() => txToggleSort("amount")}>{lang==="es"?"Monto":"Amount"} <span className="adm-tbl-sort-arrow">{txSortArrow("amount")}</span></th>
-                        <th className={txSortClass("status")} onClick={() => txToggleSort("status")}>Status <span className="adm-tbl-sort-arrow">{txSortArrow("status")}</span></th>
-                        <th className={txSortClass("date")} onClick={() => txToggleSort("date")}>{lang==="es"?"Fecha":"Date"} <span className="adm-tbl-sort-arrow">{txSortArrow("date")}</span></th>
-                        <th style={{ textAlign: "right" }}>Actions</th>
-                      </tr></thead>
-                    );
-                  })()}
-                  <tbody>
-                    {(() => {
-                      const txSortHelpers = {
-                        ref: (a, b) => (a.ref || "").localeCompare(b.ref || ""),
-                        customer: (a, b) => (a.customer || "").localeCompare(b.customer || ""),
-                        item: (a, b) => (a.item || "").localeCompare(b.item || ""),
-                        type: (a, b) => (a.type || "").localeCompare(b.type || ""),
-                        method: (a, b) => (a.method || "").localeCompare(b.method || ""),
-                        amount: (a, b) => (a.amount || 0) - (b.amount || 0),
-                        status: (a, b) => (a.status || "").localeCompare(b.status || ""),
-                        date: (a, b) => (a.date || "").localeCompare(b.date || ""),
-                      };
-                      const cmp = txSortHelpers[paymentsSort.key] || txSortHelpers.date;
-                      const filtered = visibleTransactions.filter(t => (paymentsFilter === "all" || t.status === paymentsFilter) && itemMatchesTrackFilter(t, serviceTrackFilter) && itemBelongsToEmployee(t));
-                      const sorted = [...filtered].sort((a, b) => paymentsSort.dir === "asc" ? cmp(a, b) : cmp(b, a));
-                      return paginate(sorted, paymentsPage, ROWS_PER_PAGE).map((t) => (
-                      <tr key={t.id}>
-                        <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12 }}>{t.ref}</td>
-                        <td>
-                          <button onClick={() => setCustomerProfileEmail(t.email)} title={lang==="es"?"Ver perfil del cliente":"View customer profile"} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", textAlign: "left" }}>
-                            <Search style={{ width: 11, height: 11, color: "rgba(255,255,255,.35)", flexShrink: 0 }} />
-                            <div>
-                              <div style={{ fontWeight: 600, color: "#fff" }}>{t.customer}</div>
-                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.email}</div>
-                            </div>
-                          </button>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: 12, color: "rgba(255,255,255,.8)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.item}</div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)", fontFamily: "monospace" }}>{t.bookingRef}</div>
-                        </td>
-                        <td>
-                          <span className={`adm-pill ${t.type === "hotel" ? "published" : t.type === "tour" ? "available" : "info"}`} style={{ textTransform: "capitalize" }}>{t.type}</span>
-                        </td>
-                        <td style={{ fontSize: 12 }}>{t.method}</td>
-                        <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t.amount)}</td>
-                        <td><span className={`adm-pill ${t.status}`}>{t.status}</span></td>
-                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{t.date}</td>
-                        <td>
-                          <div className="adm-row-actions">
-                            {t.status === "pending" && (
-                              <button
-                                className="adm-icon-btn"
-                                title={canEditPayments() ? (lang==="es"?"Verificar pago (marcar como Pagada)":"Verify payment (mark as Paid)") : (lang==="es"?"Sin permiso":"No permission")}
-                                onClick={() => { if (canEditPayments()) { setTxVerificationRef(""); setTxAction({ tx: t, action: "verify" }); } }}
-                                disabled={!canEditPayments()}
-                                style={{ color: "#8DC63F", borderColor: "rgba(141,198,63,.3)", opacity: canEditPayments() ? 1 : 0.3, cursor: canEditPayments() ? "pointer" : "not-allowed" }}
-                              ><CheckCircle /></button>
-                            )}
-                            {t.status === "paid" && (
-                              <button
-                                className="adm-icon-btn"
-                                title={canEditPayments() ? (lang==="es"?"Marcar como completada (servicio entregado)":"Mark as completed (service delivered)") : (lang==="es"?"Sin permiso":"No permission")}
-                                onClick={() => { if (canEditPayments()) setTxAction({ tx: t, action: "complete" }); }}
-                                disabled={!canEditPayments()}
-                                style={{ opacity: canEditPayments() ? 1 : 0.3, cursor: canEditPayments() ? "pointer" : "not-allowed" }}
-                              ><Check /></button>
-                            )}
-                            {t.status === "completed" && (
-                              <button
-                                className="adm-icon-btn"
-                                title={canEditPayments() ? (lang==="es"?"Revertir a Pagada (deshacer completado)":"Revert to Paid (undo completion)") : (lang==="es"?"Sin permiso":"No permission")}
-                                onClick={() => { if (canEditPayments()) setTxAction({ tx: t, action: "revert" }); }}
-                                disabled={!canEditPayments()}
-                                style={{ color: "#F5A623", borderColor: "rgba(245,166,35,.3)", opacity: canEditPayments() ? 1 : 0.3, cursor: canEditPayments() ? "pointer" : "not-allowed" }}
-                              ><ArrowLeft /></button>
-                            )}
-                            <button
-                              className="adm-icon-btn"
-                              title={canEditPayments() ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Ver":"View")}
-                              onClick={() => setEditingTx(t)}
-                            ><Pencil /></button>
-                            <button className="adm-icon-btn" title={lang==="es"?"Ver detalles":"View details"} onClick={() => setEditingTx(t)}><Eye /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ));
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-              <PaginationBar current={paymentsPage} total={Math.ceil(visibleTransactions.filter(t => (paymentsFilter === "all" || t.status === paymentsFilter) && itemMatchesTrackFilter(t, serviceTrackFilter) && itemBelongsToEmployee(t)).length / ROWS_PER_PAGE)} onPage={setPaymentsPage} />
-            </div>
-
-            {/* Transaction Edit Modal */}
-            {editingTx && (
-              <TransactionEditModal
-                transaction={editingTx}
-                onClose={() => setEditingTx(null)}
-                onSave={(updated) => {
-                  setTransactions(transactions.map(x => x.id === updated.id ? updated : x));
-                  setEditingTx(null);
-                }}
-              />
-            )}
-
-            {/* PAYMENTS CALENDAR MODAL */}
-            {paymentsCalendarOpen && (() => {
-              // Build calendar grid for current month
-              const { year, month } = calMonth;
-              const firstDay = new Date(year, month, 1);
-              const lastDay = new Date(year, month + 1, 0);
-              const daysInMonth = lastDay.getDate();
-              const startDayOfWeek = firstDay.getDay(); // 0=Sun, 1=Mon, ...
-              const monthLabels = lang === "es"
-                ? ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-                : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-              const dayLabels = lang === "es" ? ["D", "L", "M", "M", "J", "V", "S"] : ["S", "M", "T", "W", "T", "F", "S"];
-
-              // Status colors and labels
-              const statusInfo = {
-                pending: { color: "#F5A623", label: lang === "es" ? "Pendientes" : "Pending" },
-                paid: { color: "#8DC63F", label: lang === "es" ? "Pagadas" : "Paid" },
-                completed: { color: "#29ABE2", label: lang === "es" ? "Completadas" : "Completed" },
-                refunded: { color: "#EF6C2B", label: lang === "es" ? "Reembolsadas" : "Refunded" },
-                failed: { color: "#EF4444", label: lang === "es" ? "Fallidas" : "Failed" },
-              };
-              const typeInfo = {
-                hotel: { label: lang === "es" ? "Estadías" : "Stays", icon: Home },
-                tour: { label: "Tours", icon: Compass },
-                transfer: { label: lang === "es" ? "Traslados" : "Transfers", icon: Car },
-                cart: { label: lang === "es" ? "Carrito mixto" : "Mixed cart", icon: ShoppingCart },
-              };
-
-              // Filter transactions according to active filters and employee scope
-              const filteredForCalendar = visibleTransactions.filter(t => {
-                if (!calStatusFilter[t.status]) return false;
-                // For "cart" type (mixed cart checkouts), show if any of the 3 type filters is active
-                if (t.type === "cart") {
-                  return calTypeFilter.hotel || calTypeFilter.tour || calTypeFilter.transfer;
-                }
-                if (!calTypeFilter[t.type]) return false;
-                return true;
-              });
-
-              // Group by ISO date string
-              const byDate = {};
-              filteredForCalendar.forEach(t => {
-                if (!t.date) return;
-                if (!byDate[t.date]) byDate[t.date] = [];
-                byDate[t.date].push(t);
-              });
-
-              const goPrevMonth = () => {
-                setCalMonth(({ year, month }) => {
-                  const m = month - 1;
-                  return m < 0 ? { year: year - 1, month: 11 } : { year, month: m };
-                });
-                setCalSelectedDay(null);
-              };
-              const goNextMonth = () => {
-                setCalMonth(({ year, month }) => {
-                  const m = month + 1;
-                  return m > 11 ? { year: year + 1, month: 0 } : { year, month: m };
-                });
-                setCalSelectedDay(null);
-              };
-              const goToday = () => {
-                const now = new Date();
-                setCalMonth({ year: now.getFullYear(), month: now.getMonth() });
-                setCalSelectedDay(null);
-              };
-
-              const todayISO = new Date().toISOString().split("T")[0];
-              const cells = [];
-              for (let i = 0; i < startDayOfWeek; i++) cells.push(null);
-              for (let d = 1; d <= daysInMonth; d++) {
-                const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-                cells.push({ day: d, iso });
-              }
-
-              const selectedTxs = calSelectedDay ? (byDate[calSelectedDay] || []) : [];
-              const selectedDayLabel = calSelectedDay ? new Date(calSelectedDay + "T12:00:00").toLocaleDateString(lang === "es" ? "es-ES" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "";
-
-              return (
-                <div className="adm-modal-bg" onClick={() => setPaymentsCalendarOpen(false)}>
-                  <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920, padding: 0 }}>
-                    <button className="adm-modal-close" onClick={() => setPaymentsCalendarOpen(false)} style={{ top: 14, right: 14, zIndex: 5 }}><X /></button>
-                    <div style={{ padding: "22px 56px 14px 28px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(245,166,35,.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <Calendar style={{ width: 20, height: 20, color: "var(--gold)" }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <h3 style={{ margin: 0, marginBottom: 2 }}>{lang === "es" ? "CALENDARIO DE PAGOS" : "PAYMENTS CALENDAR"}</h3>
-                          <p className="adm-modal-sub" style={{ marginBottom: 0 }}>
-                            {filteredForCalendar.length} {lang === "es" ? "de" : "of"} {visibleTransactions.length} {lang === "es" ? "transacciones visibles según los filtros" : "transactions visible per filters"}
-                          </p>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <button onClick={goPrevMonth} className="adm-icon-btn" title={lang === "es" ? "Mes anterior" : "Previous month"}><ArrowLeft /></button>
-                          <div style={{ minWidth: 160, textAlign: "center", fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".05em", color: "#fff" }}>
-                            {monthLabels[month]} {year}
-                          </div>
-                          <button onClick={goNextMonth} className="adm-icon-btn" title={lang === "es" ? "Mes siguiente" : "Next month"} style={{ transform: "rotate(180deg)" }}><ArrowLeft /></button>
-                          <button onClick={goToday} className="adm-btn adm-btn-ghost" style={{ padding: "5px 12px", fontSize: 11, marginLeft: 6 }}>{lang === "es" ? "Hoy" : "Today"}</button>
-                        </div>
-                      </div>
-
-                      {/* Filters */}
-                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.4)", marginRight: 4 }}>
-                            {lang === "es" ? "Tipo:" : "Type:"}
-                          </span>
-                          {Object.entries(typeInfo).map(([key, info]) => {
-                            const ActiveIcon = info.icon;
-                            const active = calTypeFilter[key];
-                            return (
-                              <button key={key} onClick={() => setCalTypeFilter({ ...calTypeFilter, [key]: !active })}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all .2s",
-                                  background: active ? "rgba(245,166,35,.15)" : "rgba(255,255,255,.03)",
-                                  border: `1px solid ${active ? "rgba(245,166,35,.4)" : "rgba(255,255,255,.08)"}`,
-                                  color: active ? "var(--gold)" : "rgba(255,255,255,.45)",
-                                }}>
-                                <ActiveIcon style={{ width: 11, height: 11 }} />{info.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.4)", marginRight: 4 }}>
-                            {lang === "es" ? "Estado:" : "Status:"}
-                          </span>
-                          {Object.entries(statusInfo).map(([key, info]) => {
-                            const active = calStatusFilter[key];
-                            return (
-                              <button key={key} onClick={() => setCalStatusFilter({ ...calStatusFilter, [key]: !active })}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all .2s",
-                                  background: active ? info.color + "22" : "rgba(255,255,255,.03)",
-                                  border: `1px solid ${active ? info.color + "66" : "rgba(255,255,255,.08)"}`,
-                                  color: active ? info.color : "rgba(255,255,255,.4)",
-                                }}>
-                                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: info.color }} />
-                                {info.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Calendar grid */}
-                    <div style={{ padding: "16px 28px 8px" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
-                        {dayLabels.map((d, i) => (
-                          <div key={i} style={{ textAlign: "center", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.4)", padding: "6px 0" }}>{d}</div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
-                        {cells.map((cell, idx) => {
-                          if (!cell) return <div key={idx} style={{ minHeight: 64 }} />;
-                          const txs = byDate[cell.iso] || [];
-                          const isToday = cell.iso === todayISO;
-                          const isSelected = cell.iso === calSelectedDay;
-                          // Get unique combinations of type+status (one marker per combo)
-                          const combos = [];
-                          const seen = new Set();
-                          txs.forEach(t => {
-                            const key = `${t.type}|${t.status}`;
-                            if (!seen.has(key)) {
-                              seen.add(key);
-                              combos.push({ type: t.type, status: t.status });
-                            }
-                          });
-                          // Helper to render shape per type with color per status
-                          const renderMarker = (combo, idx) => {
-                            const color = statusInfo[combo.status]?.color || "rgba(255,255,255,.3)";
-                            const tooltip = `${typeInfo[combo.type]?.label || combo.type} · ${statusInfo[combo.status]?.label || combo.status}`;
-                            const baseStyle = { width: 8, height: 8, flexShrink: 0 };
-                            if (combo.type === "hotel") {
-                              return <span key={idx} title={tooltip} style={{ ...baseStyle, borderRadius: "50%", background: color }} />;
-                            }
-                            if (combo.type === "tour") {
-                              return <span key={idx} title={tooltip} style={{
-                                width: 0, height: 0,
-                                borderLeft: "5px solid transparent",
-                                borderRight: "5px solid transparent",
-                                borderBottom: `8px solid ${color}`,
-                                flexShrink: 0,
-                                marginTop: 1,
-                              }} />;
-                            }
-                            if (combo.type === "transfer") {
-                              return <span key={idx} title={tooltip} style={{ ...baseStyle, borderRadius: 1, background: color }} />;
-                            }
-                            if (combo.type === "cart") {
-                              // Diamond (rotated square) for mixed cart
-                              return <span key={idx} title={tooltip} style={{ ...baseStyle, transform: "rotate(45deg)", background: color, marginTop: 1 }} />;
-                            }
-                            return <span key={idx} title={tooltip} style={{ ...baseStyle, borderRadius: "50%", background: color }} />;
-                          };
-                          return (
-                            <button
-                              key={idx}
-                              onClick={() => setCalSelectedDay(isSelected ? null : cell.iso)}
-                              style={{
-                                minHeight: 64, padding: "6px 6px 4px", borderRadius: 8, cursor: "pointer", textAlign: "left",
-                                background: isSelected ? "rgba(245,166,35,.15)" : isToday ? "rgba(41,171,226,.06)" : (txs.length > 0 ? "rgba(255,255,255,.03)" : "transparent"),
-                                border: `1px solid ${isSelected ? "rgba(245,166,35,.5)" : isToday ? "rgba(41,171,226,.3)" : "rgba(255,255,255,.05)"}`,
-                                transition: "all .15s",
-                                display: "flex", flexDirection: "column", justifyContent: "space-between",
-                                position: "relative",
-                              }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? "#29ABE2" : "#fff" }}>{cell.day}</div>
-                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                                {combos.map((c, i) => renderMarker(c, i))}
-                              </div>
-                              {txs.length > 0 && (
-                                <span style={{ position: "absolute", top: 4, right: 6, fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,.5)" }}>
-                                  {txs.length}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Selected day transactions */}
-                    {calSelectedDay && (
-                      <div style={{ padding: "8px 28px 18px", borderTop: "1px solid rgba(255,255,255,.06)", maxHeight: 240, overflowY: "auto" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, marginTop: 10 }}>
-                          <Calendar style={{ width: 13, height: 13, color: "var(--gold)" }} />
-                          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--gold)" }}>
-                            {selectedDayLabel}
-                          </span>
-                          <span style={{ fontSize: 11, color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>
-                            {selectedTxs.length} {selectedTxs.length === 1 ? (lang === "es" ? "transacción" : "transaction") : (lang === "es" ? "transacciones" : "transactions")}
-                          </span>
-                        </div>
-                        {selectedTxs.length === 0 ? (
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,.4)", textAlign: "center", padding: "20px 0" }}>
-                            {lang === "es" ? "No hay transacciones en este día" : "No transactions on this day"}
-                          </p>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            {selectedTxs.map(tx => {
-                              const sInfo = statusInfo[tx.status] || { color: "rgba(255,255,255,.3)", label: tx.status };
-                              const tInfo = typeInfo[tx.type] || { label: tx.type };
-                              const TypeIcon = tInfo.icon;
-                              const renderShape = () => {
-                                if (tx.type === "hotel") return <span style={{ width: 9, height: 9, borderRadius: "50%", background: sInfo.color, flexShrink: 0 }} />;
-                                if (tx.type === "tour") return <span style={{ width: 0, height: 0, borderLeft: "5.5px solid transparent", borderRight: "5.5px solid transparent", borderBottom: `9px solid ${sInfo.color}`, flexShrink: 0 }} />;
-                                if (tx.type === "transfer") return <span style={{ width: 9, height: 9, borderRadius: 1.5, background: sInfo.color, flexShrink: 0 }} />;
-                                if (tx.type === "cart") return <span style={{ width: 9, height: 9, transform: "rotate(45deg)", background: sInfo.color, flexShrink: 0 }} />;
-                                return <span style={{ width: 9, height: 9, borderRadius: "50%", background: sInfo.color, flexShrink: 0 }} />;
-                              };
-                              return (
-                                <div key={tx.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.05)" }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }} title={`${tInfo.label} · ${sInfo.label}`}>
-                                    {renderShape()}
-                                    {TypeIcon && <TypeIcon style={{ width: 12, height: 12, color: "rgba(255,255,255,.45)" }} />}
-                                  </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                      <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--gold)" }}>{tx.ref}</span>
-                                      <span style={{ fontSize: 12, color: "#fff", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.customer}</span>
-                                    </div>
-                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                      {tx.item}
-                                    </div>
-                                  </div>
-                                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                    <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--gold)" }}>{fmt(tx.amount)}</div>
-                                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", color: sInfo.color, textTransform: "uppercase" }}>{sInfo.label}</div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div style={{ padding: "10px 28px", borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.4)" }}>
-                        {lang === "es" ? "Forma indica tipo:" : "Shape = type:"}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(255,255,255,.65)" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,255,255,.6)" }} />
-                        {lang === "es" ? "Estadía" : "Stay"}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(255,255,255,.65)" }}>
-                        <span style={{
-                          width: 0, height: 0,
-                          borderLeft: "5px solid transparent",
-                          borderRight: "5px solid transparent",
-                          borderBottom: "8px solid rgba(255,255,255,.6)",
-                        }} />
-                        Tour
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(255,255,255,.65)" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: 1, background: "rgba(255,255,255,.6)" }} />
-                        {lang === "es" ? "Traslado" : "Transfer"}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "rgba(255,255,255,.65)" }}>
-                        <span style={{ width: 8, height: 8, transform: "rotate(45deg)", background: "rgba(255,255,255,.6)" }} />
-                        {lang === "es" ? "Carrito" : "Cart"}
-                      </div>
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginLeft: 4 }}>·</span>
-                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.4)" }}>
-                        {lang === "es" ? "Color = estado" : "Color = status"}
-                      </span>
-                    </div>
-
-                    <div style={{ padding: "12px 28px", borderTop: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                        {lang === "es" ? "Click en un día para ver las transacciones" : "Click a day to view transactions"}
-                      </span>
-                      <button className="adm-btn adm-btn-ghost" onClick={() => setPaymentsCalendarOpen(false)}>
-                        {lang === "es" ? "Cerrar" : "Close"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </>
-          );
-        })()}
 
         {section === "invoices" && (() => {
           // Pre-filter invoices according to employee scope (and track filter)
@@ -9525,11 +6092,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     })()}
                   </div>
                 </div>
-                <button
-                  onClick={() => setSection("payments")}
-                  className="adm-btn adm-btn-ghost"
-                  style={{ padding: "6px 12px", fontSize: 11 }}
-                ><CreditCard style={{ width: 11, height: 11 }} />{lang==="es"?"Ver pagos":"View payments"}</button>
                 <button
                   onClick={() => setServiceTrackFilter(null)}
                   className="adm-btn adm-btn-ghost"
@@ -10219,22 +6781,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           const emailLower = customerProfileEmail.toLowerCase();
           // Try to find the customer in contacts first (richer profile)
           const contact = contacts.find(c => (c.email || "").toLowerCase() === emailLower);
-          // Aggregate all transactions and invoices for this customer
-          const customerTxs = transactions.filter(t => (t.email || "").toLowerCase() === emailLower);
+          // Pivote 2026-06-04: ya no hay transacciones (no checkout in-app).
+          // El resumen del cliente se basa solo en facturas emitidas por admin.
           const customerInvs = invoices.filter(i => (i.email || "").toLowerCase() === emailLower);
-          // Compute stats from real data
-          const totalSpent = customerTxs.filter(t => t.status === "paid" || t.status === "completed").reduce((s, t) => s + (t.amount || 0), 0);
-          const totalPending = customerTxs.filter(t => t.status === "pending").reduce((s, t) => s + (t.amount || 0), 0);
-          const totalRefunded = customerTxs.filter(t => t.status === "refunded").reduce((s, t) => s + (t.amount || 0), 0);
-          const completedCount = customerTxs.filter(t => t.status === "completed").length;
+          const totalSpent = customerInvs.filter(i => i.status === "paid").reduce((s, i) => s + (i.total || 0), 0);
+          const totalPending = customerInvs.filter(i => i.status !== "paid" && i.status !== "cancelled").reduce((s, i) => s + (i.total || 0), 0);
+          const paidCount = customerInvs.filter(i => i.status === "paid").length;
           // Pull display name from any source
-          const fallbackTx = customerTxs[0];
-          const displayName = contact?.name || fallbackTx?.customer || customerProfileEmail;
+          const fallbackInv = customerInvs[0];
+          const displayName = contact?.name || fallbackInv?.customer || customerProfileEmail;
           const phone = contact?.phone || "—";
           const country = contact?.country || "—";
           const source = contact?.source || (lang === "es" ? "Cliente registrado" : "Registered customer");
-          const firstContact = contact?.date || (customerTxs.length ? [...customerTxs].sort((a,b) => (a.date||"").localeCompare(b.date||""))[0]?.date : "—");
-          const lastSeen = contact?.lastSeen || (customerTxs.length ? [...customerTxs].sort((a,b) => (b.date||"").localeCompare(a.date||""))[0]?.date : "—");
+          const firstContact = contact?.date || (customerInvs.length ? [...customerInvs].sort((a,b) => (a.issued||"").localeCompare(b.issued||""))[0]?.issued : "—");
+          const lastSeen = contact?.lastSeen || (customerInvs.length ? [...customerInvs].sort((a,b) => (b.issued||"").localeCompare(a.issued||""))[0]?.issued : "—");
           const isActive = contact?.accountActive !== false;
           return (
             <div className="adm-modal-bg" onClick={() => setCustomerProfileEmail(null)}>
@@ -10278,41 +6838,37 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                 </div>
 
-                {/* Section: Financial summary */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
+                {/* Section: Financial summary (based on invoices) */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
                   <div style={{ padding: 14, borderRadius: 12, background: "linear-gradient(135deg,rgba(245,166,35,.08),rgba(239,108,43,.05))", border: "1px solid rgba(245,166,35,.2)", textAlign: "center" }}>
                     <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#F5A623", lineHeight: 1 }}>{fmt(totalSpent)}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Total gastado" : "Total spent"}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Total facturado pagado" : "Total invoiced & paid"}</div>
                   </div>
                   <div style={{ padding: 14, borderRadius: 12, background: "rgba(245,166,35,.04)", border: "1px solid rgba(245,166,35,.15)", textAlign: "center" }}>
                     <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#F5A623", lineHeight: 1 }}>{fmt(totalPending)}</div>
                     <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Pendiente" : "Pending"}</div>
                   </div>
                   <div style={{ padding: 14, borderRadius: 12, background: "rgba(141,198,63,.04)", border: "1px solid rgba(141,198,63,.15)", textAlign: "center" }}>
-                    <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#8DC63F", lineHeight: 1 }}>{completedCount}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Reservas completadas" : "Completed bookings"}</div>
-                  </div>
-                  <div style={{ padding: 14, borderRadius: 12, background: "rgba(239,108,43,.04)", border: "1px solid rgba(239,108,43,.15)", textAlign: "center" }}>
-                    <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: totalRefunded > 0 ? "#EF6C2B" : "rgba(255,255,255,.4)", lineHeight: 1 }}>{fmt(totalRefunded)}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Reembolsado" : "Refunded"}</div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#8DC63F", lineHeight: 1 }}>{paidCount}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Facturas pagadas" : "Paid invoices"}</div>
                   </div>
                 </div>
 
-                {/* Recent transactions for this customer */}
-                {customerTxs.length > 0 && (
+                {/* Recent invoices for this customer */}
+                {customerInvs.length > 0 && (
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                      <CreditCard style={{ width: 11, height: 11 }} />
-                      {lang === "es" ? "Transacciones recientes" : "Recent transactions"} <span style={{ marginLeft: "auto", color: "rgba(255,255,255,.35)", fontWeight: 600, letterSpacing: 0, textTransform: "none" }}>{customerTxs.length} {lang === "es" ? "totales" : "total"}</span>
+                      <Briefcase style={{ width: 11, height: 11 }} />
+                      {lang === "es" ? "Facturas recientes" : "Recent invoices"} <span style={{ marginLeft: "auto", color: "rgba(255,255,255,.35)", fontWeight: 600, letterSpacing: 0, textTransform: "none" }}>{customerInvs.length} {lang === "es" ? "totales" : "total"}</span>
                     </div>
                     <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10 }}>
-                      {[...customerTxs].sort((a,b) => (b.date||"").localeCompare(a.date||"")).slice(0, 8).map(t => (
-                        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,.04)", fontSize: 12 }}>
-                          <span style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: 11, fontWeight: 700, minWidth: 90 }}>{t.ref}</span>
-                          <span style={{ flex: 1, color: "rgba(255,255,255,.75)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.item}</span>
-                          <span style={{ color: "rgba(255,255,255,.5)", fontSize: 11, minWidth: 80 }}>{t.date}</span>
-                          <span style={{ color: "var(--gold)", fontWeight: 700, fontFamily: "monospace", minWidth: 70, textAlign: "right" }}>{fmt(t.amount)}</span>
-                          <span className={`adm-pill ${t.status}`} style={{ fontSize: 9 }}>{t.status}</span>
+                      {[...customerInvs].sort((a,b) => (b.issued||"").localeCompare(a.issued||"")).slice(0, 8).map(inv => (
+                        <div key={inv.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,.04)", fontSize: 12 }}>
+                          <span style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: 11, fontWeight: 700, minWidth: 90 }}>{inv.num}</span>
+                          <span style={{ color: "rgba(255,255,255,.5)", fontSize: 11, minWidth: 80 }}>{inv.issued}</span>
+                          <span style={{ flex: 1 }} />
+                          <span style={{ color: "var(--gold)", fontWeight: 700, fontFamily: "monospace", minWidth: 70, textAlign: "right" }}>{fmt(inv.total)}</span>
+                          <span className={`adm-pill ${inv.status}`} style={{ fontSize: 9 }}>{inv.status}</span>
                         </div>
                       ))}
                     </div>
@@ -10353,311 +6909,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           );
         })()}
 
-        {/* Transaction Action Confirmation Modal */}
-        {txAction && (() => {
-          const { tx, action } = txAction;
-          const isVerify = action === "verify";
-          const isComplete = action === "complete";
-          const isRevert = action === "revert";
-          const accent = isVerify ? "#8DC63F" : isRevert ? "#F5A623" : "#29ABE2";
-          const accentBg = isVerify ? "rgba(141,198,63,.15)" : isRevert ? "rgba(245,166,35,.15)" : "rgba(41,171,226,.15)";
-          return (
-            <div className="adm-modal-bg" onClick={() => setTxAction(null)}>
-              <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-                <button className="adm-modal-close" onClick={() => setTxAction(null)}><X /></button>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: "50%", background: accentBg, margin: "0 auto 16px" }}>
-                  {isVerify
-                    ? <CheckCircle style={{ width: 28, height: 28, color: accent }} />
-                    : isRevert
-                      ? <ArrowLeft style={{ width: 28, height: 28, color: accent }} />
-                      : <Check style={{ width: 28, height: 28, color: accent }} />}
-                </div>
-                <h3 style={{ textAlign: "center", color: "#fff", marginBottom: 8 }}>
-                  {isVerify
-                    ? (lang === "es" ? "VERIFICAR PAGO" : "VERIFY PAYMENT")
-                    : isRevert
-                      ? (lang === "es" ? "REVERTIR A PAGADA" : "REVERT TO PAID")
-                      : (lang === "es" ? "MARCAR COMO COMPLETADA" : "MARK AS COMPLETED")}
-                </h3>
-                <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,.65)", marginBottom: 4, lineHeight: 1.5 }}>
-                  {isVerify
-                    ? (lang === "es" ? "Confirma que el dinero entró correctamente" : "Confirm the money was received correctly")
-                    : isRevert
-                      ? (lang === "es" ? "Devuelve esta transacción al estado Pagada" : "Return this transaction to Paid status")
-                      : (lang === "es" ? "Confirma que el servicio fue entregado al cliente" : "Confirm the service was delivered to the customer")}
-                </p>
-                <div style={{ background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", borderRadius: 10, padding: "12px 14px", margin: "14px 0 6px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,.45)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>{lang === "es" ? "Referencia" : "Reference"}</span>
-                    <span style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: 12, fontWeight: 700 }}>{tx.ref}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,.7)" }}>{tx.customer}</span>
-                    <span style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)" }}>{fmt(tx.amount)}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{tx.method} · {tx.item}</div>
-                  {isVerify && tx.customerPaymentClaim && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 11, color: "rgba(255,255,255,.55)" }}>
-                      {lang === "es" ? "Referencia del cliente:" : "Customer reference:"} <strong style={{ fontFamily: "monospace", color: "rgba(255,255,255,.85)" }}>{tx.customerPaymentClaim}</strong>
-                    </div>
-                  )}
-                  {isRevert && tx.completedAt && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 11, color: "rgba(255,255,255,.55)" }}>
-                      {lang === "es" ? "Marcada completada:" : "Marked completed:"} <strong style={{ color: "rgba(255,255,255,.85)" }}>{tx.completedAt}</strong>
-                    </div>
-                  )}
-                </div>
-
-                {isVerify && (
-                  <div style={{ marginTop: 14 }}>
-                    <label className="adm-fl">
-                      {lang === "es" ? "Número de comprobante de operación" : "Transaction confirmation number"}
-                      <span style={{ marginLeft: 6, fontSize: 10, color: "rgba(255,255,255,.4)", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>
-                        ({lang === "es" ? "opcional" : "optional"})
-                      </span>
-                    </label>
-                    <input
-                      className="adm-fi"
-                      value={txVerificationRef}
-                      onChange={(e) => setTxVerificationRef(e.target.value)}
-                      placeholder={lang === "es" ? "Ej. ch_3O4ABC, ATH-58291, BNK-12345" : "e.g. ch_3O4ABC, ATH-58291, BNK-12345"}
-                      autoFocus
-                    />
-                    <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginTop: 6, lineHeight: 1.4 }}>
-                      {lang === "es"
-                        ? "Stripe charge ID, número de transferencia bancaria, ATH Móvil, etc."
-                        : "Stripe charge ID, bank transfer number, ATH Móvil reference, etc."}
-                    </div>
-                  </div>
-                )}
-
-                <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 14, marginBottom: 0, lineHeight: 1.5, padding: "0 8px" }}>
-                  {isVerify
-                    ? (lang === "es" ? "Verifica en tu cuenta de Stripe / PayPal / banco antes de confirmar." : "Check your Stripe / PayPal / bank account before confirming.")
-                    : isRevert
-                      ? (lang === "es" ? "Útil si marcaste por error o el servicio aún no terminó." : "Useful if marked by mistake or the service hasn't ended yet.")
-                      : (lang === "es" ? "Solo marca como completada cuando el servicio se haya entregado." : "Only mark as completed when the service has been delivered.")}
-                </p>
-                <div className="adm-modal-actions" style={{ justifyContent: "center" }}>
-                  <button className="adm-btn adm-btn-ghost" onClick={() => setTxAction(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
-                  <button className="adm-btn adm-btn-primary" style={{ background: accent, borderColor: accent, color: "#0F1822" }} onClick={async () => {
-                    const today = new Date().toISOString().split("T")[0];
-                    let updated;
-                    if (isVerify) {
-                      const verifRef = txVerificationRef.trim();
-                      // Persistir PRIMERO; si el server action falla, no mutamos UI ni revert localStorage.
-                      if (tx.paymentId) {
-                        try {
-                          const fd = new FormData();
-                          fd.append("paymentId", tx.paymentId);
-                          if (verifRef) fd.append("notes", verifRef);
-                          const res = await sbConfirmPayment(fd);
-                          if (res && res.ok === false) {
-                            alert((lang === "es" ? "No se pudo verificar el pago: " : "Could not verify payment: ") + (res.error || ""));
-                            return;
-                          }
-                        } catch (e) {
-                          // eslint-disable-next-line no-console
-                          console.warn("confirmPayment:", e);
-                          alert(lang === "es" ? "Error de red verificando el pago" : "Network error verifying payment");
-                          return;
-                        }
-                      }
-                      updated = { ...tx, status: "paid", verifiedAt: today, verificationRef: verifRef || undefined };
-                    } else if (isRevert) {
-                      // Strip completedAt to truly revert
-                      const { completedAt, ...rest } = tx;
-                      updated = { ...rest, status: "paid", revertedAt: today };
-                    } else {
-                      // Complete: persistir primero, después mutar UI.
-                      if (tx.bookingId) {
-                        try {
-                          const fd = new FormData();
-                          fd.append("bookingId", tx.bookingId);
-                          const res = await sbCompleteBooking(fd);
-                          if (res && res.ok === false) {
-                            alert((lang === "es" ? "No se pudo completar: " : "Could not complete: ") + (res.error || ""));
-                            return;
-                          }
-                        } catch (e) {
-                          // eslint-disable-next-line no-console
-                          console.warn("completeBooking:", e);
-                          alert(lang === "es" ? "Error de red completando la reserva" : "Network error completing booking");
-                          return;
-                        }
-                      }
-                      updated = { ...tx, status: "completed", completedAt: today };
-                    }
-                    setTransactions(transactions.map(x => x.id === tx.id ? updated : x));
-                    // Sync to localStorage if user-generated
-                    if (String(tx.id || "").startsWith("tx-cart-")) {
-                      const stored = PRDISE.load("userGeneratedTransactions", []);
-                      PRDISE.save("userGeneratedTransactions", stored.map(x => x.id === tx.id ? updated : x));
-                    }
-                    // If verifying, also update related invoice
-                    if (isVerify && tx.invoiceNum) {
-                      const verifRef = txVerificationRef.trim();
-                      const finalRef = verifRef ? `OP-${verifRef}` : `VERIFIED-${tx.ref}`;
-                      setInvoices(invs => invs.map(i => i.num === tx.invoiceNum && i.status !== "paid" ? { ...i, status: "paid", paidDate: today, paymentRef: finalRef } : i));
-                      const storedInvs = PRDISE.load("userGeneratedInvoices", []);
-                      PRDISE.save("userGeneratedInvoices", storedInvs.map(i => i.num === tx.invoiceNum && i.status !== "paid" ? { ...i, status: "paid", paidDate: today, paymentRef: finalRef } : i));
-                    }
-                    setTxAction(null);
-                    setTxVerificationRef("");
-                  }}>
-                    {isVerify
-                      ? (<><CheckCircle style={{ width: 13, height: 13 }} />{lang === "es" ? "Sí, marcar como Pagada" : "Yes, mark as Paid"}</>)
-                      : isRevert
-                        ? (<><ArrowLeft style={{ width: 13, height: 13 }} />{lang === "es" ? "Sí, revertir a Pagada" : "Yes, revert to Paid"}</>)
-                        : (<><Check style={{ width: 13, height: 13 }} />{lang === "es" ? "Sí, marcar como Completada" : "Yes, mark as Completed"}</>)}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Payments Full History Modal */}
-        {paymentsHistoryOpen && (() => {
-          const filterFn = (t) => paymentsHistoryFilter === "all" || t.status === paymentsHistoryFilter;
-          const sortHelpers = {
-            ref: (a, b) => (a.ref || "").localeCompare(b.ref || ""),
-            customer: (a, b) => (a.customer || "").localeCompare(b.customer || ""),
-            item: (a, b) => (a.item || "").localeCompare(b.item || ""),
-            type: (a, b) => (a.type || "").localeCompare(b.type || ""),
-            method: (a, b) => (a.method || "").localeCompare(b.method || ""),
-            amount: (a, b) => (a.amount || 0) - (b.amount || 0),
-            date: (a, b) => (a.date || "").localeCompare(b.date || ""),
-            status: (a, b) => (a.status || "").localeCompare(b.status || ""),
-          };
-          const cmp = sortHelpers[paymentsHistorySort.key] || sortHelpers.date;
-          const filtered = transactions.filter(filterFn);
-          const sorted = [...filtered].sort((a, b) => paymentsHistorySort.dir === "asc" ? cmp(a, b) : cmp(b, a));
-          const totalAll = transactions.reduce((s, t) => s + (t.amount || 0), 0);
-          const totalCollected = transactions.filter(t => t.status === "paid" || t.status === "completed").reduce((s, t) => s + (t.amount || 0), 0);
-          const toggleSort = (key) => setPaymentsHistorySort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
-          const sortArrow = (key) => paymentsHistorySort.key !== key ? "↕" : paymentsHistorySort.dir === "asc" ? "↑" : "↓";
-          const sortClass = (key) => `sortable${paymentsHistorySort.key === key ? " active" : ""}`;
-          const downloadCSV = () => {
-            const headers = lang === "es"
-              ? ["Referencia", "Cliente", "Email", "Reserva / Actividad", "Reserva Ref", "Tipo", "Método", "Monto (USD)", "Estado", "Fecha", "Verificación", "Notas"]
-              : ["Reference", "Customer", "Email", "Booking / Activity", "Booking Ref", "Type", "Method", "Amount (USD)", "Status", "Date", "Verification", "Notes"];
-            const statusLabel = (s) => lang === "es"
-              ? ({ paid: "Pagada", pending: "Pendiente", completed: "Completada", refunded: "Reembolsada", failed: "Fallida" }[s] || s)
-              : ({ paid: "Paid", pending: "Pending", completed: "Completed", refunded: "Refunded", failed: "Failed" }[s] || s);
-            const escape = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
-            const rows = sorted.map(t => [
-              t.ref,
-              t.customer,
-              t.email,
-              t.item,
-              t.bookingRef || "",
-              t.type,
-              t.method,
-              Number(t.amount || 0).toFixed(2),
-              statusLabel(t.status),
-              t.date,
-              t.verificationRef || t.customerPaymentClaim || "",
-              t.notes || "",
-            ]);
-            const csv = "\uFEFF" + [headers, ...rows].map(r => r.map(escape).join(",")).join("\n");
-            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            const today = new Date().toISOString().split("T")[0];
-            a.href = url;
-            a.download = `prdise-transacciones-${today}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 100);
-          };
-          return (
-            <div className="adm-modal-bg" onClick={() => setPaymentsHistoryOpen(false)}>
-              <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1200, padding: 0 }}>
-                <button className="adm-modal-close" onClick={() => setPaymentsHistoryOpen(false)} style={{ top: 20, right: 20 }}><X /></button>
-                <div style={{ padding: "24px 28px 18px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-                  <h3 style={{ marginBottom: 4 }}>{lang === "es" ? "HISTORIAL COMPLETO DE PAGOS" : "PAYMENTS FULL HISTORY"}</h3>
-                  <p className="adm-modal-sub" style={{ marginBottom: 14 }}>
-                    {lang === "es"
-                      ? `${transactions.length} transacciones · ${fmt(totalAll)} en transacciones · ${fmt(totalCollected)} cobrado`
-                      : `${transactions.length} transactions · ${fmt(totalAll)} in transactions · ${fmt(totalCollected)} collected`}
-                  </p>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                    <button className="adm-btn adm-btn-primary" onClick={downloadCSV}>
-                      <FileText style={{ width: 12, height: 12 }} />
-                      {lang === "es" ? "Descargar CSV" : "Download CSV"}
-                    </button>
-                    <span style={{ display: "inline-flex", alignItems: "center", padding: "0 12px", fontSize: 11, color: "rgba(255,255,255,.45)" }}>
-                      {lang === "es"
-                        ? `Exporta las ${filtered.length} transacciones del filtro actual con todos los campos.`
-                        : `Exports the ${filtered.length} transactions from current filter with all fields.`}
-                    </span>
-                  </div>
-                  <div className="adm-filter-row" style={{ marginTop: 0 }}>
-                    <button className={`adm-fchip ${paymentsHistoryFilter === "all" ? "active" : ""}`} onClick={() => setPaymentsHistoryFilter("all")}>All <span className="adm-fchip-num">{transactions.length}</span></button>
-                    <button className={`adm-fchip ${paymentsHistoryFilter === "pending" ? "active" : ""}`} onClick={() => setPaymentsHistoryFilter("pending")}>{lang==="es"?"Pendientes":"Pending"} <span className="adm-fchip-num">{transactions.filter(t => t.status === "pending").length}</span></button>
-                    <button className={`adm-fchip ${paymentsHistoryFilter === "paid" ? "active" : ""}`} onClick={() => setPaymentsHistoryFilter("paid")}>{lang==="es"?"Pagadas":"Paid"} <span className="adm-fchip-num">{transactions.filter(t => t.status === "paid").length}</span></button>
-                    <button className={`adm-fchip ${paymentsHistoryFilter === "completed" ? "active" : ""}`} onClick={() => setPaymentsHistoryFilter("completed")}>{lang==="es"?"Completadas":"Completed"} <span className="adm-fchip-num">{transactions.filter(t => t.status === "completed").length}</span></button>
-                    <button className={`adm-fchip ${paymentsHistoryFilter === "refunded" ? "active" : ""}`} onClick={() => setPaymentsHistoryFilter("refunded")}>{lang==="es"?"Reembolsadas":"Refunded"} <span className="adm-fchip-num">{transactions.filter(t => t.status === "refunded").length}</span></button>
-                    <button className={`adm-fchip ${paymentsHistoryFilter === "failed" ? "active" : ""}`} onClick={() => setPaymentsHistoryFilter("failed")}>{lang==="es"?"Fallidas":"Failed"} <span className="adm-fchip-num">{transactions.filter(t => t.status === "failed").length}</span></button>
-                  </div>
-                </div>
-                <div style={{ maxHeight: "55vh", overflowY: "auto", padding: "0 28px" }}>
-                  <table className="adm-tbl" style={{ width: "100%" }}>
-                    <thead style={{ position: "sticky", top: 0, background: "#1A2634", zIndex: 2 }}>
-                      <tr>
-                        <th className={sortClass("ref")} onClick={() => toggleSort("ref")}>{lang === "es" ? "Referencia" : "Reference"} <span className="adm-tbl-sort-arrow">{sortArrow("ref")}</span></th>
-                        <th className={sortClass("customer")} onClick={() => toggleSort("customer")}>{lang === "es" ? "Cliente" : "Customer"} <span className="adm-tbl-sort-arrow">{sortArrow("customer")}</span></th>
-                        <th className={sortClass("item")} onClick={() => toggleSort("item")}>{lang === "es" ? "Reserva" : "Booking"} <span className="adm-tbl-sort-arrow">{sortArrow("item")}</span></th>
-                        <th className={sortClass("type")} onClick={() => toggleSort("type")}>{lang === "es" ? "Tipo" : "Type"} <span className="adm-tbl-sort-arrow">{sortArrow("type")}</span></th>
-                        <th className={sortClass("method")} onClick={() => toggleSort("method")}>{lang === "es" ? "Método" : "Method"} <span className="adm-tbl-sort-arrow">{sortArrow("method")}</span></th>
-                        <th className={sortClass("amount")} onClick={() => toggleSort("amount")} style={{ textAlign: "right" }}>{lang === "es" ? "Monto" : "Amount"} <span className="adm-tbl-sort-arrow">{sortArrow("amount")}</span></th>
-                        <th className={sortClass("status")} onClick={() => toggleSort("status")}>Status <span className="adm-tbl-sort-arrow">{sortArrow("status")}</span></th>
-                        <th className={sortClass("date")} onClick={() => toggleSort("date")}>{lang === "es" ? "Fecha" : "Date"} <span className="adm-tbl-sort-arrow">{sortArrow("date")}</span></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.length === 0 ? (
-                        <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.4)" }}>{lang === "es" ? "Sin transacciones" : "No transactions"}</td></tr>
-                      ) : sorted.map(t => (
-                        <tr key={t.id}>
-                          <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12, fontWeight: 700 }}>{t.ref}</td>
-                          <td onClick={() => setCustomerProfileEmail(t.email)} style={{ cursor: "pointer" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }} title={lang==="es"?"Ver perfil":"View profile"}>
-                              <Search style={{ width: 11, height: 11, color: "rgba(255,255,255,.35)", flexShrink: 0 }} />
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{t.customer}</div>
-                                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{t.email}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ fontSize: 12, color: "rgba(255,255,255,.8)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.item}</div>
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)", fontFamily: "monospace" }}>{t.bookingRef}</div>
-                          </td>
-                          <td><span className={`adm-pill ${t.type === "hotel" ? "published" : t.type === "tour" ? "available" : "info"}`} style={{ textTransform: "capitalize" }}>{t.type}</span></td>
-                          <td style={{ fontSize: 12 }}>{t.method}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700, textAlign: "right", fontFamily: "monospace" }}>{fmt(t.amount)}</td>
-                          <td><span className={`adm-pill ${t.status}`}>{t.status}</span></td>
-                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{t.date}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ padding: "14px 28px", borderTop: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                    {lang === "es" ? `Mostrando ${sorted.length} de ${transactions.length} · Click en headers para ordenar` : `Showing ${sorted.length} of ${transactions.length} · Click headers to sort`}
-                  </span>
-                  <button className="adm-btn adm-btn-ghost" onClick={() => setPaymentsHistoryOpen(false)}>
-                    {lang === "es" ? "Cerrar" : "Close"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Invoice Full History Modal */}
         {invoiceHistoryOpen && (() => {
@@ -11021,7 +7272,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             <div className="adm-tabs">
               <button className={`adm-tab ${settingsTab === "general" ? "active" : ""}`} onClick={() => setSettingsTab("general")}><Settings />{t("adm_general")}</button>
               <button className={`adm-tab ${settingsTab === "team" ? "active" : ""}`} onClick={() => setSettingsTab("team")}><Users />{lang === "es" ? "Usuarios y Roles" : "Users & Roles"}</button>
-              <button className={`adm-tab ${settingsTab === "loyalty" ? "active" : ""}`} onClick={() => setSettingsTab("loyalty")}><Star />{lang === "es" ? "Lealtad y Cupones" : "Loyalty & Coupons"}</button>
               <button className={`adm-tab ${settingsTab === "notifications" ? "active" : ""}`} onClick={() => setSettingsTab("notifications")}><Bell />{t("adm_notifications")}</button>
               <button className={`adm-tab ${settingsTab === "security" ? "active" : ""}`} onClick={() => setSettingsTab("security")}><Shield />{t("adm_security")}</button>
               <button className={`adm-tab ${settingsTab === "integrations" ? "active" : ""}`} onClick={() => setSettingsTab("integrations")}><Globe />{t("adm_integrations")}</button>
@@ -11527,7 +7777,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 { key: "tours", label: "Tours" },
                 { key: "transfers", label: lang === "es" ? "Traslados" : "Transfers" },
                 { key: "posts", label: lang === "es" ? "Publicaciones" : "Posts" },
-                { key: "payments", label: lang === "es" ? "Pagos" : "Payments" },
                 { key: "invoices", label: lang === "es" ? "Facturas" : "Invoices" },
                 { key: "users", label: lang === "es" ? "Usuarios" : "Users" },
                 { key: "contacts", label: lang === "es" ? "Contactos" : "Contacts" },
@@ -11807,128 +8056,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
             )}
 
-            {settingsTab === "loyalty" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                {/* Loyalty Tiers */}
-                <div className="adm-card">
-                  <div className="adm-card-head"><div className="adm-card-title"><Star style={{ width: 13, height: 13, display: "inline", marginRight: 6, verticalAlign: "-2px" }} />{lang === "es" ? "NIVELES DE LEALTAD" : "LOYALTY TIERS"}</div></div>
-                  <div style={{ padding: 16 }}>
-                    <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", marginBottom: 14, lineHeight: 1.5 }}>
-                      {lang === "es" ? "Define los puntos mínimos y el % de descuento automático para cada nivel. Los clientes suben de nivel automáticamente al acumular puntos en sus reservas." : "Define the minimum points and automatic discount % for each tier. Customers level up automatically as they accumulate booking points."}
-                    </p>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
-                      {loyaltyTiers.map((tier, idx) => (
-                        <div key={tier.name} style={{ padding: 16, borderRadius: 14, background: tier.color + "14", border: `1px solid ${tier.color}44` }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                            <Star style={{ width: 16, height: 16, fill: tier.color, color: tier.color }} />
-                            <span style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: tier.color }}>{tier.name.toUpperCase()}</span>
-                          </div>
-                          <div className="adm-fg" style={{ marginBottom: 8 }}>
-                            <label className="adm-fl">{lang === "es" ? "Puntos mínimos" : "Minimum points"}</label>
-                            <input type="number" min={0} className="adm-fi" value={tier.min} disabled={idx === 0} onChange={(e) => {
-                              const next = [...loyaltyTiers];
-                              next[idx] = { ...tier, min: parseInt(e.target.value) || 0 };
-                              setLoyaltyTiers(next);
-                            }} />
-                          </div>
-                          <div className="adm-fg">
-                            <label className="adm-fl">{lang === "es" ? "Descuento %" : "Discount %"}</label>
-                            <input type="number" min={0} max={50} className="adm-fi" value={tier.discount} onChange={(e) => {
-                              const next = [...loyaltyTiers];
-                              next[idx] = { ...tier, discount: Math.max(0, Math.min(50, parseInt(e.target.value) || 0)) };
-                              setLoyaltyTiers(next);
-                            }} />
-                          </div>
-                          <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,.04)", fontSize: 11, color: "rgba(255,255,255,.55)", textAlign: "center" }}>
-                            {tier.discount > 0
-                              ? (lang === "es" ? `${tier.discount}% de descuento automático` : `${tier.discount}% automatic discount`)
-                              : (lang === "es" ? "Sin descuento" : "No discount")}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Coupons */}
-                <div className="adm-card">
-                  <div className="adm-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div className="adm-card-title"><CreditCard style={{ width: 13, height: 13, display: "inline", marginRight: 6, verticalAlign: "-2px" }} />{lang === "es" ? "CUPONES" : "COUPONS"} <span style={{ marginLeft: 8, opacity: .5, fontWeight: 600 }}>({coupons.length})</span></div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button className="adm-btn adm-btn-ghost" style={{ padding: "6px 12px", fontSize: 11 }} onClick={() => setArchivedCouponsOpen(true)}>
-                        <Clock style={{ width: 11, height: 11 }} />
-                        {lang === "es" ? "Cupones anteriores" : "Previous coupons"}
-                        {archivedCoupons.length > 0 && <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 99, background: "rgba(245,166,35,.18)", color: "var(--gold)", fontSize: 10, fontWeight: 800 }}>{archivedCoupons.length}</span>}
-                      </button>
-                      <button className="adm-btn adm-btn-primary" style={{ padding: "6px 12px", fontSize: 11 }} onClick={() => setEditingCoupon({ id: "new", code: "", desc: "", discount: 10, maxUses: 100, used: 0, expires: "", active: true, createdAt: new Date().toISOString().split("T")[0] })}>
-                        <Plus style={{ width: 11, height: 11 }} />{lang === "es" ? "Nuevo cupón" : "New coupon"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="adm-tbl-wrap">
-                    <table className="adm-tbl">
-                      <thead><tr><th>{lang === "es" ? "Código" : "Code"}</th><th>{lang === "es" ? "Descripción" : "Description"}</th><th style={{ textAlign: "right" }}>%</th><th>{lang === "es" ? "Usos" : "Uses"}</th><th>{lang === "es" ? "Vence" : "Expires"}</th><th>Status</th><th style={{ textAlign: "right" }}>{lang === "es" ? "Acciones" : "Actions"}</th></tr></thead>
-                      <tbody>
-                        {coupons.length === 0 ? (
-                          <tr><td colSpan={7} style={{ textAlign: "center", padding: 24, color: "rgba(255,255,255,.4)" }}>{lang === "es" ? "Sin cupones todavía" : "No coupons yet"}</td></tr>
-                        ) : coupons.map(cp => {
-                          const expired = cp.expires && new Date(cp.expires) < new Date();
-                          const exhausted = cp.used >= cp.maxUses;
-                          return (
-                            <tr key={cp.id}>
-                              <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12, fontWeight: 700 }}>{cp.code}</td>
-                              <td style={{ fontSize: 12, color: "rgba(255,255,255,.7)" }}>{cp.desc}</td>
-                              <td style={{ textAlign: "right", color: "#8DC63F", fontWeight: 700 }}>{cp.discount}%</td>
-                              <td style={{ fontSize: 12 }}>{cp.used} / {cp.maxUses}</td>
-                              <td style={{ fontSize: 12, color: expired ? "#EF6C2B" : "rgba(255,255,255,.6)" }}>{cp.expires || "—"}</td>
-                              <td>
-                                {!cp.active ? <span className="adm-pill cancelled">{lang === "es" ? "Inactivo" : "Inactive"}</span>
-                                  : expired ? <span className="adm-pill overdue">{lang === "es" ? "Vencido" : "Expired"}</span>
-                                  : exhausted ? <span className="adm-pill overdue">{lang === "es" ? "Agotado" : "Exhausted"}</span>
-                                  : <span className="adm-pill paid">{lang === "es" ? "Activo" : "Active"}</span>}
-                              </td>
-                              <td>
-                                <div className="adm-row-actions">
-                                  <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingCoupon(cp)}><Pencil /></button>
-                                  <button className="adm-icon-btn danger" title={lang === "es" ? "Eliminar" : "Delete"} onClick={() => setDeletingCoupon(cp)}><Trash2 /></button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Coupon History */}
-                <div className="adm-card">
-                  <div className="adm-card-head"><div className="adm-card-title"><Activity style={{ width: 13, height: 13, display: "inline", marginRight: 6, verticalAlign: "-2px" }} />{lang === "es" ? "HISTORIAL DE USO" : "USAGE HISTORY"} <span style={{ marginLeft: 8, opacity: .5, fontWeight: 600 }}>({couponHistory.length})</span></div></div>
-                  <div className="adm-tbl-wrap">
-                    <table className="adm-tbl">
-                      <thead><tr><th>{lang === "es" ? "Cupón" : "Coupon"}</th><th>{lang === "es" ? "Cliente" : "Customer"}</th><th>{lang === "es" ? "Fecha" : "Date"}</th><th>{lang === "es" ? "Reserva" : "Booking"}</th><th style={{ textAlign: "right" }}>{lang === "es" ? "Monto" : "Amount"}</th><th style={{ textAlign: "right" }}>{lang === "es" ? "Descuento" : "Discount"}</th></tr></thead>
-                      <tbody>
-                        {couponHistory.length === 0 ? (
-                          <tr><td colSpan={6} style={{ textAlign: "center", padding: 24, color: "rgba(255,255,255,.4)" }}>{lang === "es" ? "Sin usos registrados" : "No usage recorded yet"}</td></tr>
-                        ) : [...couponHistory].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map(h => (
-                          <tr key={h.id}>
-                            <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12, fontWeight: 700 }}>{h.code}</td>
-                            <td>
-                              <div style={{ fontWeight: 600, fontSize: 13 }}>{h.user}</div>
-                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{h.email}</div>
-                            </td>
-                            <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{h.date}</td>
-                            <td style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(255,255,255,.65)" }}>{h.bookingRef || "—"}</td>
-                            <td style={{ textAlign: "right", fontFamily: "monospace", color: "rgba(255,255,255,.7)" }}>{fmt(h.amount)}</td>
-                            <td style={{ textAlign: "right", color: "#8DC63F", fontWeight: 700, fontFamily: "monospace" }}>−{fmt(h.discount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {settingsTab === "integrations" && (
               <IntegrationsPanel />
@@ -12124,333 +8251,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
         );
       })()}
 
-      {/* Coupon Edit Modal */}
-      {editingCoupon && (
-        <div className="adm-modal-bg" onClick={() => setEditingCoupon(null)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <button className="adm-modal-close" onClick={() => setEditingCoupon(null)}><X /></button>
-            <h3>{editingCoupon.id === "new" ? (lang === "es" ? "NUEVO CUPÓN" : "NEW COUPON") : (lang === "es" ? "EDITAR CUPÓN" : "EDIT COUPON")}</h3>
-            <p className="adm-modal-sub">{lang === "es" ? "Define un código que los clientes podrán aplicar al checkout." : "Define a code customers can apply at checkout."}</p>
-
-            <div className="adm-fg">
-              <label className="adm-fl">{lang === "es" ? "Código" : "Code"} *</label>
-              <input className="adm-fi" style={{ fontFamily: "monospace", textTransform: "uppercase", letterSpacing: ".05em" }} value={editingCoupon.code} onChange={(e) => setEditingCoupon({ ...editingCoupon, code: e.target.value.toUpperCase().replace(/\s+/g, "") })} placeholder="WELCOME10" />
-            </div>
-            <div className="adm-fg">
-              <label className="adm-fl">{lang === "es" ? "Descripción" : "Description"}</label>
-              <input className="adm-fi" value={editingCoupon.desc} onChange={(e) => setEditingCoupon({ ...editingCoupon, desc: e.target.value })} placeholder={lang === "es" ? "Promoción de bienvenida" : "Welcome promotion"} />
-            </div>
-            <div className="adm-fg-row">
-              <div className="adm-fg" style={{ flex: 1 }}>
-                <label className="adm-fl">{lang === "es" ? "Descuento %" : "Discount %"} *</label>
-                <input type="number" min={1} max={100} className="adm-fi" value={editingCoupon.discount} onChange={(e) => setEditingCoupon({ ...editingCoupon, discount: Math.max(1, Math.min(100, parseInt(e.target.value) || 0)) })} />
-              </div>
-              <div className="adm-fg" style={{ flex: 1 }}>
-                <label className="adm-fl">{lang === "es" ? "Usos máximos (total)" : "Max uses (total)"}</label>
-                <input
-                  type="number"
-                  min={Math.max(1, editingCoupon.used || 0)}
-                  className="adm-fi"
-                  value={editingCoupon.maxUses}
-                  onChange={(e) => {
-                    const minVal = Math.max(1, editingCoupon.used || 0);
-                    const newVal = parseInt(e.target.value) || minVal;
-                    setEditingCoupon({ ...editingCoupon, maxUses: Math.max(minVal, newVal) });
-                  }}
-                />
-                <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 5, lineHeight: 1.5 }}>
-                  {lang === "es"
-                    ? "Total acumulado entre TODOS los usuarios (no por usuario individual)."
-                    : "Total across ALL users combined (not per individual user)."}
-                </p>
-                {editingCoupon.id !== "new" && (editingCoupon.used || 0) > 0 && (
-                  <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 5, lineHeight: 1.5 }}>
-                    {lang === "es"
-                      ? `Mínimo ${editingCoupon.used} (ya usados). Solo puedes reducir los usos restantes.`
-                      : `Minimum ${editingCoupon.used} (already used). You can only reduce remaining uses.`}
-                  </p>
-                )}
-              </div>
-              <div className="adm-fg" style={{ flex: 1 }}>
-                <label className="adm-fl">{lang === "es" ? "Vence" : "Expires"}</label>
-                <input type="date" className="adm-fi" value={editingCoupon.expires || ""} onChange={(e) => setEditingCoupon({ ...editingCoupon, expires: e.target.value })} />
-              </div>
-            </div>
-            <div className="adm-fg">
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
-                <input type="checkbox" checked={editingCoupon.active} onChange={(e) => setEditingCoupon({ ...editingCoupon, active: e.target.checked })} style={{ width: 16, height: 16, accentColor: "#8DC63F" }} />
-                {lang === "es" ? "Cupón activo (los clientes pueden aplicarlo)" : "Coupon active (customers can apply it)"}
-              </label>
-            </div>
-
-            <div className="adm-modal-actions">
-              <button className="adm-btn adm-btn-ghost" onClick={() => setEditingCoupon(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
-              <button className="adm-btn adm-btn-primary" onClick={async () => {
-                if (!editingCoupon.code || !editingCoupon.code.trim()) { alert(lang === "es" ? "El código es requerido" : "Code is required"); return; }
-                const isNew = editingCoupon.id === "new";
-                if (isNew && coupons.some(c => c.code === editingCoupon.code)) { alert(lang === "es" ? "Ya existe un cupón con ese código" : "A coupon with that code already exists"); return; }
-                if (!isNew) {
-                  const used = editingCoupon.used || 0;
-                  if (editingCoupon.maxUses < used) {
-                    alert(lang === "es" ? `No puedes reducir los usos máximos por debajo de ${used}.` : `You cannot reduce max uses below ${used}.`);
-                    return;
-                  }
-                }
-                let res = { ok: false, error: "" };
-                try {
-                  const fd = new FormData();
-                  if (!isNew) fd.append("id", editingCoupon.id);
-                  fd.append("code", editingCoupon.code.trim());
-                  fd.append("description_es", editingCoupon.desc || "");
-                  fd.append("description_en", editingCoupon.desc || "");
-                  fd.append("discount_pct", String(editingCoupon.discount || 0));
-                  fd.append("max_uses", String(editingCoupon.maxUses || 0));
-                  if (editingCoupon.expires) fd.append("expires_at", editingCoupon.expires);
-                  fd.append("active", editingCoupon.active === false ? "false" : "true");
-                  const action = isNew ? sbCreateCoupon : sbUpdateCoupon;
-                  res = await action(fd);
-                } catch (e) { res = { ok: false, error: e?.message || String(e) }; }
-                if (!res?.ok) {
-                  alert("No se pudo guardar el cupón: " + (res?.error || "error desconocido"));
-                  return;
-                }
-                if (isNew) {
-                  // Usar el UUID devuelto por createCoupon (no un id local
-                  // "cp" + timestamp) para que el update/delete posterior
-                  // resuelva contra Supabase y no falle con 'Identificador
-                  // invalido'.
-                  const newId = res?.data?.id || ("cp" + Date.now());
-                  setCoupons([...coupons, { ...editingCoupon, id: newId }]);
-                } else {
-                  setCoupons(coupons.map(c => c.id === editingCoupon.id ? editingCoupon : c));
-                }
-                setEditingCoupon(null);
-              }}><Check />{lang === "es" ? "Guardar" : "Save"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Coupon Confirmation Modal */}
-      {deletingCoupon && (
-        <div className="adm-modal-bg" onClick={() => setDeletingCoupon(null)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <button className="adm-modal-close" onClick={() => setDeletingCoupon(null)}><X /></button>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: "50%", background: "rgba(239,108,43,.15)", margin: "0 auto 16px" }}>
-              <Trash2 style={{ width: 26, height: 26, color: "#EF6C2B" }} />
-            </div>
-            <h3 style={{ textAlign: "center", color: "#fff", marginBottom: 8 }}>
-              {lang === "es" ? "ELIMINAR CUPÓN" : "DELETE COUPON"}
-            </h3>
-            <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,.65)", marginBottom: 4, lineHeight: 1.5 }}>
-              {lang === "es" ? "El cupón ya no estará disponible, pero el historial de uso se conservará." : "The coupon won't be available anymore, but usage history will be kept."}
-            </p>
-            <div style={{ background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", borderRadius: 10, padding: "12px 14px", margin: "14px 0 6px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: 14, fontWeight: 700 }}>{deletingCoupon.code}</span>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,.55)" }}>{deletingCoupon.discount}% off</span>
-              </div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,.7)", marginBottom: 6 }}>{deletingCoupon.desc}</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
-                {lang === "es" ? `Usado ${deletingCoupon.used || 0} de ${deletingCoupon.maxUses} veces` : `Used ${deletingCoupon.used || 0} of ${deletingCoupon.maxUses} times`}
-              </div>
-            </div>
-            <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 14, marginBottom: 0, lineHeight: 1.5, padding: "0 8px" }}>
-              {lang === "es" ? `Podrás verlo después en "Cupones anteriores".` : `You'll find it later under "Previous coupons".`}
-            </p>
-            <div className="adm-modal-actions" style={{ justifyContent: "center" }}>
-              <button className="adm-btn adm-btn-ghost" onClick={() => setDeletingCoupon(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
-              <button className="adm-btn adm-btn-primary" style={{ background: "#EF6C2B", borderColor: "#EF6C2B", color: "#fff" }} onClick={async () => {
-                let res = { ok: false, error: "" };
-                try { const fd = new FormData(); fd.append("id", deletingCoupon.id); res = await sbDeleteCoupon(fd); }
-                catch (e) { res = { ok: false, error: e?.message || String(e) }; }
-                if (!res?.ok) {
-                  alert("No se pudo eliminar el cupón: " + (res?.error || "error desconocido"));
-                  return;
-                }
-                const archived = { ...deletingCoupon, deletedAt: new Date().toISOString().split("T")[0] };
-                setArchivedCoupons([archived, ...archivedCoupons]);
-                setCoupons(coupons.filter(x => x.id !== deletingCoupon.id));
-                setDeletingCoupon(null);
-              }}>
-                <Trash2 style={{ width: 13, height: 13 }} />
-                {lang === "es" ? "Sí, eliminar" : "Yes, delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Archived Coupons (Previous Coupons) Modal */}
-      {archivedCouponsOpen && (
-        <div className="adm-modal-bg" onClick={() => setArchivedCouponsOpen(false)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 900, padding: 0 }}>
-            <button className="adm-modal-close" onClick={() => setArchivedCouponsOpen(false)} style={{ top: 20, right: 20 }}><X /></button>
-            <div style={{ padding: "24px 28px 18px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(245,166,35,.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Clock style={{ width: 20, height: 20, color: "var(--gold)" }} />
-                </div>
-                <div>
-                  <h3 style={{ marginBottom: 2 }}>{lang === "es" ? "CUPONES ANTERIORES" : "PREVIOUS COUPONS"}</h3>
-                  <p className="adm-modal-sub" style={{ marginBottom: 0 }}>
-                    {archivedCoupons.length} {archivedCoupons.length === 1 ? (lang === "es" ? "cupón eliminado" : "deleted coupon") : (lang === "es" ? "cupones eliminados" : "deleted coupons")} ·{" "}
-                    {lang === "es" ? "El historial de uso se conserva" : "Usage history is preserved"}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
-              {archivedCoupons.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,.4)" }}>
-                  <Clock style={{ width: 36, height: 36, margin: "0 auto 12px", opacity: .4 }} />
-                  <p style={{ fontSize: 13, marginBottom: 4 }}>{lang === "es" ? "No hay cupones eliminados todavía" : "No deleted coupons yet"}</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,.3)" }}>{lang === "es" ? "Los cupones que elimines aparecerán aquí" : "Coupons you delete will appear here"}</p>
-                </div>
-              ) : (
-                <table className="adm-tbl" style={{ width: "100%" }}>
-                  <thead style={{ position: "sticky", top: 0, background: "#1A2634", zIndex: 2 }}>
-                    <tr>
-                      <th>{lang === "es" ? "Código" : "Code"}</th>
-                      <th>{lang === "es" ? "Descripción" : "Description"}</th>
-                      <th style={{ textAlign: "right" }}>%</th>
-                      <th>{lang === "es" ? "Usos" : "Uses"}</th>
-                      <th>{lang === "es" ? "Eliminado" : "Deleted"}</th>
-                      <th style={{ textAlign: "right" }}>{lang === "es" ? "Historial" : "History"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {archivedCoupons.map(cp => {
-                      const usesForCoupon = couponHistory.filter(h => h.code === cp.code).length;
-                      return (
-                        <tr key={cp.id}>
-                          <td style={{ fontFamily: "monospace", color: "rgba(255,255,255,.65)", fontSize: 12, fontWeight: 700, textDecoration: "line-through" }}>{cp.code}</td>
-                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{cp.desc || "—"}</td>
-                          <td style={{ textAlign: "right", color: "var(--gold)", fontWeight: 700, fontSize: 12 }}>{cp.discount}%</td>
-                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.65)" }}>{cp.used || 0} / {cp.maxUses}</td>
-                          <td style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{cp.deletedAt || "—"}</td>
-                          <td>
-                            <div className="adm-row-actions">
-                              <button
-                                className="adm-icon-btn"
-                                title={usesForCoupon > 0
-                                  ? (lang === "es" ? `Ver ${usesForCoupon} uso(s)` : `View ${usesForCoupon} use(s)`)
-                                  : (lang === "es" ? "Sin usos registrados" : "No uses recorded")}
-                                onClick={() => setArchivedCouponDetail(cp)}
-                                disabled={usesForCoupon === 0}
-                                style={{ opacity: usesForCoupon === 0 ? 0.3 : 1, cursor: usesForCoupon === 0 ? "not-allowed" : "pointer", color: "var(--gold)" }}
-                              >
-                                <Search />
-                              </button>
-                              <button
-                                className="adm-icon-btn danger"
-                                title={lang === "es" ? "Eliminar permanentemente" : "Delete permanently"}
-                                onClick={() => {
-                                  if (window.confirm(lang === "es"
-                                    ? `¿Eliminar permanentemente ${cp.code}? El historial de uso se mantendrá.`
-                                    : `Permanently delete ${cp.code}? Usage history will be kept.`)) {
-                                    setArchivedCoupons(archivedCoupons.filter(x => x.id !== cp.id));
-                                  }
-                                }}
-                              ><Trash2 /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div style={{ padding: "14px 28px", borderTop: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                {lang === "es" ? "Click en la lupa para ver quiénes los usaron" : "Click the magnifier to see who used them"}
-              </span>
-              <button className="adm-btn adm-btn-ghost" onClick={() => setArchivedCouponsOpen(false)}>
-                {lang === "es" ? "Cerrar" : "Close"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Archived Coupon Usage Detail Modal */}
-      {archivedCouponDetail && (() => {
-        const usages = couponHistory.filter(h => h.code === archivedCouponDetail.code);
-        const totalDiscounted = usages.reduce((s, u) => s + (u.discount || 0), 0);
-        return (
-          <div className="adm-modal-bg" onClick={() => setArchivedCouponDetail(null)}>
-            <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760, padding: 0 }}>
-              <button className="adm-modal-close" onClick={() => setArchivedCouponDetail(null)} style={{ top: 20, right: 20 }}><X /></button>
-              <div style={{ padding: "24px 28px 18px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(245,166,35,.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Search style={{ width: 20, height: 20, color: "var(--gold)" }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ marginBottom: 2 }}>
-                      <span style={{ fontFamily: "monospace", color: "var(--gold)" }}>{archivedCouponDetail.code}</span>
-                    </h3>
-                    <p className="adm-modal-sub" style={{ marginBottom: 0 }}>{archivedCouponDetail.desc || (lang === "es" ? "Sin descripción" : "No description")}</p>
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-                  <div style={{ padding: 12, borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", textAlign: "center" }}>
-                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)", lineHeight: 1 }}>{usages.length}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Veces usado" : "Times used"}</div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 10, background: "rgba(141,198,63,.06)", border: "1px solid rgba(141,198,63,.2)", textAlign: "center" }}>
-                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#8DC63F", lineHeight: 1 }}>{archivedCouponDetail.discount}%</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Descuento" : "Discount"}</div>
-                  </div>
-                  <div style={{ padding: 12, borderRadius: 10, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)", textAlign: "center" }}>
-                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#29ABE2", lineHeight: 1 }}>{fmt(totalDiscounted)}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>{lang === "es" ? "Total descontado" : "Total discounted"}</div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ maxHeight: "55vh", overflowY: "auto" }}>
-                {usages.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(255,255,255,.4)" }}>
-                    <p style={{ fontSize: 13 }}>{lang === "es" ? "Este cupón nunca se usó" : "This coupon was never used"}</p>
-                  </div>
-                ) : (
-                  <table className="adm-tbl" style={{ width: "100%" }}>
-                    <thead style={{ position: "sticky", top: 0, background: "#1A2634", zIndex: 2 }}>
-                      <tr>
-                        <th>{lang === "es" ? "Fecha" : "Date"}</th>
-                        <th>{lang === "es" ? "Cliente" : "Customer"}</th>
-                        <th style={{ textAlign: "right" }}>{lang === "es" ? "Subtotal" : "Subtotal"}</th>
-                        <th style={{ textAlign: "right" }}>{lang === "es" ? "Descuento" : "Discount"}</th>
-                        <th>{lang === "es" ? "Reserva" : "Booking"}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...usages].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map(u => (
-                        <tr key={u.id}>
-                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.65)" }}>{u.date}</td>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{u.user || "—"}</div>
-                            <div style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>{u.email || "—"}</div>
-                          </td>
-                          <td style={{ textAlign: "right", color: "rgba(255,255,255,.7)", fontFamily: "monospace", fontSize: 12 }}>{fmt(u.amount || 0)}</td>
-                          <td style={{ textAlign: "right", color: "#8DC63F", fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>−{fmt(u.discount || 0)}</td>
-                          <td style={{ fontFamily: "monospace", color: "var(--gold)", fontSize: 11 }}>{u.bookingRef || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-              <div style={{ padding: "14px 28px", borderTop: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "flex-end" }}>
-                <button className="adm-btn adm-btn-ghost" onClick={() => setArchivedCouponDetail(null)}>
-                  {lang === "es" ? "Cerrar" : "Close"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {editing && (
         <EditModal editing={editing} onClose={() => setEditing(null)} onSave={async (updated) => {
@@ -13566,286 +9366,6 @@ function QuietHoursCard() {
   );
 }
 
-function TransactionEditModal({ transaction, onClose, onSave }) {
-  const { lang } = useLang();
-  const [data, setData] = useState({ ...transaction });
-  const [saved, setSaved] = useState(false);
-
-  const statusOptions = [
-    { value: "pending", label: lang==="es"?"Pendiente":"Pending", color: "#F5A623" },
-    { value: "paid", label: lang==="es"?"Pagada":"Paid", color: "#8DC63F" },
-    { value: "completed", label: lang==="es"?"Completada":"Completed", color: "rgba(255,255,255,.65)" },
-    { value: "refunded", label: lang==="es"?"Reembolsada":"Refunded", color: "#EF6C2B" },
-    { value: "failed", label: lang==="es"?"Fallida":"Failed", color: "#EF4444" },
-  ];
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => onSave(data), 700);
-  };
-
-  // Try to find associated pending booking for richer info
-  const booking = data.bookingDetails || (() => {
-    try {
-      const pending = JSON.parse(localStorage.getItem("prdise_userPendingBookings") || "[]");
-      return pending.find(b => b.ref === data.bookingRef) || null;
-    } catch { return null; }
-  })();
-  const cartItems = data.cartItems || null;
-  const paymentClaim = data.paymentClaim || null;
-
-  // Helper to render a field row
-  const Field = ({ label, value }) => {
-    if (value === null || value === undefined || value === "") return null;
-    return (
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,.04)", fontSize: 12 }}>
-        <span style={{ color: "rgba(255,255,255,.5)" }}>{label}</span>
-        <span style={{ color: "#fff", textAlign: "right", maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
-      </div>
-    );
-  };
-
-  return (
-    <div className="adm-modal-bg" onClick={onClose}>
-      <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-        <button className="adm-modal-close" onClick={onClose}><X /></button>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 11, background: "linear-gradient(135deg,rgba(245,166,35,.2),rgba(239,108,43,.2))", border: "1px solid rgba(245,166,35,.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <CreditCard style={{ width: 20, height: 20, color: "var(--gold)" }} />
-          </div>
-          <div>
-            <h3 style={{ marginBottom: 2 }}>{lang==="es"?"DETALLE DE TRANSACCIÓN":"TRANSACTION DETAILS"}</h3>
-            <p className="adm-modal-sub" style={{ marginBottom: 0, fontFamily: "monospace", color: "var(--gold)" }}>{transaction.ref}</p>
-          </div>
-        </div>
-
-        <div style={{ padding: 14, borderRadius: 11, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.18)", margin: "18px 0 16px", display: "flex", gap: 10, alignItems: "flex-start" }}>
-          <Info style={{ width: 14, height: 14, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.7)", lineHeight: 1.55 }}>
-            {lang==="es"
-              ? <>Los cambios se sincronizan con la sección <strong style={{ color: "#fff" }}>"Mi Actividad"</strong> del cliente. El cliente no puede modificar estos datos.</>
-              : <>Changes sync to the customer's <strong style={{ color: "#fff" }}>"My Activity"</strong> section. Customers cannot modify this data themselves.</>}
-          </div>
-        </div>
-
-        {/* === EDITABLE FIELDS === */}
-        <div className="adm-fg-row">
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Cliente":"Customer"}</label>
-            <input className="adm-fi" value={data.customer || ""} onChange={(e) => setData({ ...data, customer: e.target.value })} />
-          </div>
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Correo":"Customer Email"}</label>
-            <input className="adm-fi" type="email" value={data.email || ""} onChange={(e) => setData({ ...data, email: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="adm-fg">
-          <label className="adm-fl">{lang==="es"?"Reserva / Actividad":"Booking / Activity"}</label>
-          <input className="adm-fi" value={data.item || ""} onChange={(e) => setData({ ...data, item: e.target.value })} />
-        </div>
-
-        <div className="adm-fg-row">
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Ref. Reserva":"Booking Ref"}</label>
-            <input className="adm-fi" style={{ fontFamily: "monospace" }} value={data.bookingRef || ""} onChange={(e) => setData({ ...data, bookingRef: e.target.value })} />
-          </div>
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Tipo":"Type"}</label>
-            <select className="adm-fi" value={data.type || "hotel"} onChange={(e) => setData({ ...data, type: e.target.value })}>
-              <option value="hotel">{lang==="es"?"Estadía":"Hotel / Stay"}</option>
-              <option value="tour">Tour</option>
-              <option value="transfer">{lang==="es"?"Traslado":"Transfer"}</option>
-              <option value="cart">{lang==="es"?"Carrito mixto":"Mixed cart"}</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="adm-fg-row">
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Monto ($)":"Amount ($)"}</label>
-            <input className="adm-fi" type="number" step="0.01" value={data.amount || 0} onChange={(e) => setData({ ...data, amount: parseFloat(e.target.value) || 0 })} />
-          </div>
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Método de Pago":"Payment Method"}</label>
-            <select className="adm-fi" value={data.method || "Card"} onChange={(e) => setData({ ...data, method: e.target.value })}>
-              <option>Card</option>
-              <option>PayPal</option>
-              <option>ATH Móvil</option>
-              <option>Bank Transfer</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="adm-fg-row">
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Fecha":"Date"}</label>
-            <input className="adm-fi" type="date" value={data.date || ""} onChange={(e) => setData({ ...data, date: e.target.value })} />
-          </div>
-          <div className="adm-fg">
-            <label className="adm-fl">{lang==="es"?"Estado":"Status"}</label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
-              {statusOptions.map(s => (
-                <button key={s.value} type="button" onClick={() => setData({ ...data, status: s.value })} style={{
-                  padding: "8px 0", borderRadius: 7, fontSize: 11, fontWeight: 700, textTransform: "capitalize", cursor: "pointer", transition: "all .2s",
-                  background: data.status === s.value ? s.color + "20" : "transparent",
-                  border: `1px solid ${data.status === s.value ? s.color + "66" : "rgba(255,255,255,.08)"}`,
-                  color: data.status === s.value ? s.color : "rgba(255,255,255,.4)",
-                }}>
-                  <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: s.color, marginRight: 5 }} />
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* === CUSTOMER CONTACT INFO (if available) === */}
-        {(data.phone || data.country) && (
-          <div style={{ marginTop: 18, padding: 14, borderRadius: 11, background: "rgba(141,198,63,.04)", border: "1px solid rgba(141,198,63,.2)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Users style={{ width: 14, height: 14, color: "#8DC63F" }} />
-              <h4 style={{ margin: 0, fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "#8DC63F" }}>
-                {lang==="es"?"Contacto del Cliente":"Customer Contact"}
-              </h4>
-            </div>
-            <Field label={lang==="es"?"Teléfono":"Phone"} value={data.phone} />
-            <Field label={lang==="es"?"País":"Country"} value={data.country} />
-          </div>
-        )}
-
-        {/* === BOOKING DETAILS (from form) === */}
-        {booking && (
-          <div style={{ marginTop: 14, padding: 14, borderRadius: 11, background: "rgba(41,171,226,.04)", border: "1px solid rgba(41,171,226,.2)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Calendar style={{ width: 14, height: 14, color: "#29ABE2" }} />
-              <h4 style={{ margin: 0, fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "#29ABE2" }}>
-                {lang==="es"?"Detalles de la Reserva":"Booking Details"}
-              </h4>
-            </div>
-            <Field label={lang==="es"?"Servicio":"Service"} value={booking.name || booking.vehicleName} />
-            <Field label={lang==="es"?"Ubicación":"Location"} value={booking.location || booking.zone} />
-            {booking.type === "hotel" && (
-              <>
-                <Field label={lang==="es"?"Entrada":"Check-in"} value={booking.checkin} />
-                <Field label={lang==="es"?"Salida":"Check-out"} value={booking.checkout} />
-                <Field label={lang==="es"?"Noches":"Nights"} value={booking.nights} />
-                <Field label={lang==="es"?"Huéspedes":"Guests"} value={booking.guests} />
-                <Field label={lang==="es"?"Precio/noche":"Price/night"} value={booking.pricePerNight ? fmt(booking.pricePerNight) : null} />
-              </>
-            )}
-            {booking.type === "tour" && (
-              <>
-                <Field label={lang==="es"?"Fecha":"Date"} value={booking.date} />
-                <Field label={lang==="es"?"Hora":"Time"} value={booking.time} />
-                <Field label={lang==="es"?"Viajeros":"Travelers"} value={booking.travelers || booking.guests} />
-                <Field label={lang==="es"?"Precio/persona":"Price/person"} value={booking.pricePerPerson ? fmt(booking.pricePerPerson) : null} />
-              </>
-            )}
-            {booking.type === "transfer" && (
-              <>
-                <Field label={lang==="es"?"Origen":"From"} value={booking.from} />
-                <Field label={lang==="es"?"Destino":"To"} value={booking.to} />
-                <Field label={lang==="es"?"Fecha":"Date"} value={booking.date} />
-                <Field label={lang==="es"?"Hora":"Time"} value={booking.time} />
-                <Field label={lang==="es"?"Pasajeros":"Passengers"} value={booking.pax || booking.guests} />
-                <Field label={lang==="es"?"Maletas":"Bags"} value={booking.bags} />
-                <Field label={lang==="es"?"Distancia":"Distance"} value={booking.km ? `${booking.km} km` : null} />
-              </>
-            )}
-            <Field label="Subtotal" value={booking.subtotal ? fmt(booking.subtotal) : null} />
-            <Field label={lang==="es"?"Limpieza":"Cleaning"} value={booking.cleaning ? fmt(booking.cleaning) : null} />
-            <Field label={lang==="es"?"Servicio":"Service fee"} value={booking.service ? fmt(booking.service) : null} />
-            <Field label="Total" value={booking.total ? fmt(booking.total) : null} />
-          </div>
-        )}
-
-        {/* === CART ITEMS (if applicable) === */}
-        {cartItems && cartItems.length > 0 && (
-          <div style={{ marginTop: 14, padding: 14, borderRadius: 11, background: "rgba(41,171,226,.04)", border: "1px solid rgba(41,171,226,.2)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <ShoppingCart style={{ width: 14, height: 14, color: "#29ABE2" }} />
-              <h4 style={{ margin: 0, fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "#29ABE2" }}>
-                {lang==="es"?`Items del Carrito (${cartItems.length})`:`Cart Items (${cartItems.length})`}
-              </h4>
-            </div>
-            {cartItems.map((it, i) => (
-              <div key={i} style={{ padding: "8px 0", borderBottom: i === cartItems.length - 1 ? "none" : "1px solid rgba(255,255,255,.04)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 11.5, color: "var(--gold)", flexShrink: 0 }}>{fmt(it.total || 0)}</span>
-                </div>
-                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)" }}>
-                  {it.type === "hotel" && `${it.checkin} → ${it.checkout} · ${it.guests || 1} ${lang==="es"?"huéspedes":"guests"}`}
-                  {it.type === "tour" && `${it.date} · ${it.time || ""} · ${it.travelers || it.guests || 1} ${lang==="es"?"viajeros":"travelers"}`}
-                  {it.type === "transfer" && `${it.from} → ${it.to} · ${it.date} ${it.time || ""}`}
-                </div>
-              </div>
-            ))}
-            {data.subtotal && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                <Field label="Subtotal" value={fmt(data.subtotal)} />
-                {data.tierDiscount > 0 && <Field label={lang==="es"?"Dto. de nivel":"Tier discount"} value={`−${fmt(data.tierDiscount)}`} />}
-                {data.couponDiscount > 0 && <Field label={lang==="es"?"Cupón":"Coupon"} value={`${data.coupon?.code} (−${fmt(data.couponDiscount)})`} />}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* === PAYMENT CLAIM (what customer claimed) === */}
-        {paymentClaim && (
-          <div style={{ marginTop: 14, padding: 14, borderRadius: 11, background: "rgba(245,166,35,.04)", border: "1px solid rgba(245,166,35,.2)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <CreditCard style={{ width: 14, height: 14, color: "var(--gold)" }} />
-              <h4 style={{ margin: 0, fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--gold)" }}>
-                {lang==="es"?"Datos de Pago Reportados por Cliente":"Payment Details Reported by Customer"}
-              </h4>
-            </div>
-            {/* ATH Móvil */}
-            {paymentClaim.phone && <Field label={lang==="es"?"ATH Teléfono":"ATH Phone"} value={paymentClaim.phone} />}
-            {paymentClaim.holder && <Field label={lang==="es"?"Titular":"Holder"} value={paymentClaim.holder} />}
-            {paymentClaim.amount && <Field label={lang==="es"?"Monto Reportado":"Amount Reported"} value={paymentClaim.amount} />}
-            {paymentClaim.time && <Field label={lang==="es"?"Hora":"Time"} value={paymentClaim.time} />}
-            {paymentClaim.receipt && <Field label={lang==="es"?"Recibo":"Receipt"} value={paymentClaim.receipt} />}
-            {/* Bank Transfer */}
-            {paymentClaim.last4 && <Field label={lang==="es"?"Últimos 4 cuenta":"Last 4 of account"} value={paymentClaim.last4} />}
-            {paymentClaim.date && <Field label={lang==="es"?"Fecha pago":"Payment date"} value={paymentClaim.date} />}
-            {paymentClaim.reference && <Field label={lang==="es"?"Referencia":"Reference"} value={paymentClaim.reference} />}
-            {/* Card */}
-            {paymentClaim.cardLast4 && <Field label={lang==="es"?"Tarjeta termina en":"Card ends in"} value={`****${paymentClaim.cardLast4}`} />}
-            {paymentClaim.cardName && <Field label={lang==="es"?"Nombre en tarjeta":"Cardholder name"} value={paymentClaim.cardName} />}
-            {data.customerPaymentClaim && (
-              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(255,255,255,.03)", fontFamily: "monospace", fontSize: 11, color: "rgba(255,255,255,.65)" }}>
-                {data.customerPaymentClaim}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* === NOTES === */}
-        {data.notes && (
-          <div className="adm-fg" style={{ marginTop: 14 }}>
-            <label className="adm-fl">{lang==="es"?"Notas del Cliente":"Customer Notes"}</label>
-            <div style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", fontSize: 12, color: "rgba(255,255,255,.7)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{data.notes}</div>
-          </div>
-        )}
-
-        <div className="adm-fg">
-          <label className="adm-fl">{lang==="es"?"Notas Internas (admin)":"Internal Notes (admin only)"}</label>
-          <textarea className="adm-fi" rows={2} value={data.adminNotes || ""} onChange={(e) => setData({ ...data, adminNotes: e.target.value })} placeholder={lang==="es"?"Notas privadas sobre esta transacción...":"Admin-only notes about this transaction..."} style={{ resize: "vertical", minHeight: 56 }} />
-        </div>
-
-        <div className="adm-modal-actions">
-          <button className="adm-btn adm-btn-ghost" onClick={onClose}>{lang==="es"?"Cancelar":"Cancel"}</button>
-          <button className="adm-btn adm-btn-primary" onClick={handleSave}>
-            <Check />{saved ? (lang==="es"?"Guardado ✓":"Saved ✓") : (lang==="es"?"Guardar Cambios":"Save Changes")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function NotifSetting({ label, desc, defaultOn }) {
   const [on, setOn] = useState(defaultOn || false);
   return (
@@ -14366,24 +9886,17 @@ export default function PrdiseApp() {
     case "/accommodations": page = <HotelsList />; break;
     case "/stay":
     case "/hotel-detail": page = <HotelDetail params={params} />; break;
-    case "/checkout-hotel": page = <CheckoutForm type="hotel" />; break;
-    case "/confirmation-hotel": page = <ConfirmationPage type="hotel" />; break;
     case "/tours":
     case "/packages": page = <ToursList />; break;
     case "/tour":
     case "/tour-detail": page = <TourDetail params={params} />; break;
-    case "/checkout-tour": page = <CheckoutForm type="tour" />; break;
-    case "/confirmation-tour": page = <ConfirmationPage type="tour" />; break;
     case "/transfer-search":
     case "/transfers": page = <TransferSearchPage />; break;
     case "/transfer-results": page = <TransferResultsPage />; break;
-    case "/checkout-transfer": page = <CheckoutForm type="transfer" />; break;
-    case "/checkout-cart": page = <CartCheckoutPage />; break;
     case "/post": page = <PostDetail params={params} />; break;
     case "/blog":
     case "/archive":
     case "/news": page = <BlogArchive />; break;
-    case "/confirmation-transfer": page = <ConfirmationPage type="transfer" />; break;
     case "/account": page = <AccountPage />; break;
     case "/services": page = <ServicesPage />; break;
     case "/about": page = <AboutPage />; break;
