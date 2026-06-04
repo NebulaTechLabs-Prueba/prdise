@@ -4298,7 +4298,7 @@ function AccountPage() {
         const { data: bookingsData } = await sb
           .from("bookings")
           .select(
-            "id, item_type, stay_id, tour_id, transfer_route_id, start_date, end_date, start_time, pax, total_cents, status, created_at, payments(id, method, status, amount_cents), transfer_route:transfer_routes(from_location, to_location), stay:stays(title_es, title_en), tour:tours(title_es, title_en)"
+            "id, item_type, stay_id, tour_id, transfer_route_id, start_date, end_date, start_time, pax, total_cents, status, created_at, payments(id, method, status, amount_cents), transfer_route:transfer_routes(from_location, to_location), stay:stays(title_es, title_en), tour:tours(title_es, title_en), coupon_redemptions(id, discount_cents, coupons(code))"
           )
           .eq("user_id", authUser.id)
           .order("created_at", { ascending: false });
@@ -4314,6 +4314,19 @@ function AccountPage() {
             } else if (type === "tour" && b.tour) {
               name = (lang === "es" ? b.tour.title_es : b.tour.title_en) || b.tour.title_es || name;
             }
+            // Pago: tomar el ultimo (mas reciente) payment del booking. Hay
+            // bookings con multiples intentos (claimed→rejected→nuevo claimed),
+            // pero el que define el metodo final es el ultimo.
+            const lastPayment = Array.isArray(b.payments) && b.payments.length > 0
+              ? b.payments[b.payments.length - 1]
+              : null;
+            const paymentMethodLabel = lastPayment?.method
+              ? ({ stripe: "Card", paypal: "PayPal", ath: "ATH Móvil", bank: "Bank transfer" }[lastPayment.method] || lastPayment.method)
+              : null;
+            // Coupon redemption linked al booking (si hubo).
+            const redemption = Array.isArray(b.coupon_redemptions) && b.coupon_redemptions.length > 0
+              ? b.coupon_redemptions[0]
+              : null;
             const baseFields = {
               id: "sb-" + b.id,
               ref: "PRD-" + b.id.slice(0, 8).toUpperCase(),
@@ -4324,6 +4337,10 @@ function AccountPage() {
               guests: b.pax || 1,
               total: (b.total_cents || 0) / 100,
               notes: "",
+              paymentMethod: paymentMethodLabel,
+              paymentStatus: lastPayment?.status || null,
+              couponCode: redemption?.coupons?.code || redemption?.code || null,
+              couponDiscount: redemption?.discount_cents ? redemption.discount_cents / 100 : 0,
             };
             // Transfers usan date + time; stays/tours usan checkin/checkout.
             if (type === "transfer") {
@@ -4410,10 +4427,24 @@ function AccountPage() {
           <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 99, background: sm.bg, color: sm.color }}>{sm.label}</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, fontSize: 12, color: "rgba(255,255,255,.6)", marginBottom: 10 }}>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>Date</span><br/>{dateStr}</div>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>Location</span><br/>{b.location}</div>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>Guests</span><br/>{b.guests}</div>
-          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>Total</span><br/><span style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(b.total)}</span></div>
+          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Fecha" : "Date"}</span><br/>{dateStr}</div>
+          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Ubicación" : "Location"}</span><br/>{b.location || "—"}</div>
+          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Huéspedes" : "Guests"}</span><br/>{b.guests}</div>
+          <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Total" : "Total"}</span><br/><span style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(b.total)}</span></div>
+          {b.paymentMethod && (
+            <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Método pago" : "Payment method"}</span><br/>
+              <span style={{ color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{b.paymentMethod}</span>
+              {b.paymentStatus && b.paymentStatus !== "confirmed" && (
+                <span style={{ marginLeft: 6, fontSize: 9.5, padding: "1px 6px", borderRadius: 99, background: "rgba(245,166,35,.15)", color: "#F5A623", fontWeight: 700 }}>{b.paymentStatus}</span>
+              )}
+            </div>
+          )}
+          {b.couponCode && (
+            <div><span style={{ color: "rgba(255,255,255,.35)", fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Cupón" : "Coupon"}</span><br/>
+              <span style={{ color: "#8DC63F", fontWeight: 700, fontFamily: "monospace" }}>{b.couponCode}</span>
+              {b.couponDiscount > 0 && <span style={{ marginLeft: 6, color: "rgba(255,255,255,.6)" }}>−{fmt(b.couponDiscount)}</span>}
+            </div>
+          )}
         </div>
         {b.notes && <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)", padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,.02)", borderLeft: "2px solid rgba(255,255,255,.06)" }}>{b.notes}</div>}
         {b.status === "pending" && String(b.id || "").startsWith("sb-") && (
@@ -4477,16 +4508,62 @@ function AccountPage() {
     );
   };
 
-  const renderField = (label, value, key) => (
-    <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
-      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.35)", display: "block", marginBottom: 5 }}>{label}</span>
-      {key ? (
-        <input className="f-in" value={user[key] || ""} onChange={(e) => updateUser(key, e.target.value)} style={{ padding: "6px 0", background: "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,.08)", borderRadius: 0, fontSize: 14, width: "100%" }} />
-      ) : (
-        <span style={{ fontSize: 14, color: value ? "#fff" : "rgba(255,255,255,.3)", fontWeight: value ? 600 : 400 }}>{value || "Not provided"}</span>
-      )}
-    </div>
-  );
+  // Listas y validaciones para los campos del perfil. Antes todos los inputs
+  // eran <input type="text"> sin restricciones, generando datos inconsistentes
+  // (paises tipeados a mano, telefonos sin formato, fechas como string libre).
+  const COUNTRY_OPTIONS = [
+    "United States", "Puerto Rico", "Mexico", "Canada", "Argentina", "Brazil",
+    "Chile", "Colombia", "Costa Rica", "Dominican Republic", "Ecuador",
+    "Peru", "Spain", "Venezuela", "Other",
+  ];
+  const LANGUAGE_OPTIONS = ["Español", "English"];
+  const PAYMENT_METHOD_OPTIONS = [
+    { value: "", label: "—" },
+    { value: "ath", label: "ATH Móvil" },
+    { value: "bank", label: lang === "es" ? "Transferencia bancaria" : "Bank transfer" },
+    // Stripe/PayPal se añaden cuando admin habilite las integraciones online.
+  ];
+
+  const baseFieldBox = {
+    padding: "12px 14px", borderRadius: 10,
+    background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)",
+  };
+  const baseInputStyle = {
+    padding: "6px 0", background: "transparent", border: "none",
+    borderBottom: "1px solid rgba(255,255,255,.08)", borderRadius: 0,
+    fontSize: 14, width: "100%", color: "#fff",
+  };
+
+  const renderField = (label, value, key, opts = {}) => {
+    const { type = "text", select, readonly = false, placeholder = "" } = opts;
+    return (
+      <div style={baseFieldBox}>
+        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.35)", display: "block", marginBottom: 5 }}>{label}</span>
+        {key && !readonly ? (
+          select ? (
+            <select className="f-in" value={user[key] || ""} onChange={(e) => updateUser(key, e.target.value)} style={baseInputStyle}>
+              {select.map((opt) => {
+                const v = typeof opt === "string" ? opt : opt.value;
+                const l = typeof opt === "string" ? opt : opt.label;
+                return <option key={v} value={v} style={{ background: "#1A2634" }}>{l}</option>;
+              })}
+            </select>
+          ) : (
+            <input
+              className="f-in"
+              type={type}
+              value={user[key] || ""}
+              placeholder={placeholder}
+              onChange={(e) => updateUser(key, e.target.value)}
+              style={baseInputStyle}
+            />
+          )
+        ) : (
+          <span style={{ fontSize: 14, color: value ? "#fff" : "rgba(255,255,255,.3)", fontWeight: value ? 600 : 400 }}>{value || (lang === "es" ? "No proporcionado" : "Not provided")}</span>
+        )}
+      </div>
+    );
+  };
 
   const tabs = [
     { id: "info", label: t("myInfo"), Icon: User },
@@ -4545,17 +4622,17 @@ function AccountPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 24 }}>
               {renderField(lang === "es" ? "Nombre" : "First Name", null, "firstName")}
               {renderField(lang === "es" ? "Apellido" : "Last Name", null, "lastName")}
-              {renderField(lang === "es" ? "Correo" : "Email", null, "email")}
-              {renderField(lang === "es" ? "Teléfono" : "Phone", null, "phone")}
-              {renderField(lang === "es" ? "País" : "Country", null, "country")}
-              {renderField(lang === "es" ? "Idioma preferido" : "Preferred Language", null, "language")}
-              {renderField(lang === "es" ? "Número de pasaporte" : "Passport Number", null, "passport")}
-              {renderField(lang === "es" ? "Vencimiento de pasaporte" : "Passport Expiration", null, "passportExp")}
+              {renderField(lang === "es" ? "Correo" : "Email", user.email || "", null, { readonly: true })}
+              {renderField(lang === "es" ? "Teléfono" : "Phone", null, "phone", { type: "tel", placeholder: "+1 787 555 1234" })}
+              {renderField(lang === "es" ? "País" : "Country", null, "country", { select: COUNTRY_OPTIONS })}
+              {renderField(lang === "es" ? "Idioma preferido" : "Preferred Language", null, "language", { select: LANGUAGE_OPTIONS })}
+              {renderField(lang === "es" ? "Número de pasaporte" : "Passport Number", null, "passport", { placeholder: "AB1234567" })}
+              {renderField(lang === "es" ? "Vencimiento de pasaporte" : "Passport Expiration", null, "passportExp", { type: "date" })}
               {renderField(lang === "es" ? "ID local" : "Local ID", null, "localId")}
             </div>
             <h3>{lang === "es" ? "Pago y facturación" : "Payment & Billing"}</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 24 }}>
-              {renderField(lang === "es" ? "Método de pago guardado" : "Saved Payment Method", null, "paymentMethod")}
+              {renderField(lang === "es" ? "Método de pago preferido" : "Preferred Payment Method", null, "paymentMethod", { select: PAYMENT_METHOD_OPTIONS })}
               {renderField(lang === "es" ? "Dirección de facturación" : "Billing Address", null, "billingAddress")}
             </div>
             <h3>{lang === "es" ? "Notas especiales" : "Special Notes"}</h3>
@@ -4846,10 +4923,11 @@ function AccountPage() {
                 <Key style={{ width: 16, height: 16, color: "var(--gold)" }} />{lang === "es" ? "Cambiar contraseña" : "Change Password"}
                 <ChevronRight style={{ width: 14, height: 14, marginLeft: "auto", color: "rgba(255,255,255,.3)" }} />
               </button>
-              <button onClick={() => alert(lang === "es" ? "Configuración de 2FA estará disponible próximamente." : "2FA setup coming soon.")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
-                <Shield style={{ width: 16, height: 16, color: "#8DC63F" }} />{lang === "es" ? "Activar autenticación de dos factores" : "Enable Two-Factor Authentication"}
-                <ChevronRight style={{ width: 14, height: 14, marginLeft: "auto", color: "rgba(255,255,255,.3)" }} />
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px dashed rgba(255,255,255,.08)", color: "rgba(255,255,255,.45)", fontSize: 14, fontWeight: 600, textAlign: "left" }}>
+                <Shield style={{ width: 16, height: 16, color: "rgba(141,198,63,.5)" }} />
+                <span style={{ flex: 1 }}>{lang === "es" ? "Autenticación de dos factores" : "Two-Factor Authentication"}</span>
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 99, background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.55)" }}>{lang === "es" ? "Próximamente" : "Coming soon"}</span>
+              </div>
               <button onClick={async () => {
                 try { await sbSignOut(); } catch {}
                 try { PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession"); } catch {}
