@@ -1921,17 +1921,31 @@ function HotelDetail({ params }) {
                       ? (lang==="es"?`Reservar en ${partner.name}`:`Book on ${partner.name}`)
                       : (lang==="es"?"Sin partner asignado":"No partner assigned")}
                 </button>
+                <a
+                  href={buildWhatsAppHref({
+                    user,
+                    lang,
+                    service: {
+                      kind: "stay",
+                      name: hotel.name,
+                      priceUsd: pricing?.total ?? hotel.price,
+                      details: checkin
+                        ? `${checkin}${checkout ? ` → ${checkout}` : ""} · ${guests} ${lang === "es" ? "huésped(es)" : "guest(s)"}`
+                        : undefined,
+                    },
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10, padding: "12px 16px", borderRadius: 12, background: "rgba(37,211,102,.12)", border: "1px solid rgba(37,211,102,.35)", color: "#25D366", fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: ".02em" }}
+                >
+                  <MessageCircle style={{ width: 16, height: 16 }} />
+                  {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
+                </a>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
                   {partner
                     ? (lang==="es"?`Te redirigimos a nuestro aliado ${partner.name} para completar la reserva.`:`We'll redirect you to our partner ${partner.name} to complete the booking.`)
                     : (lang==="es"?"Este alojamiento aún no está disponible para reservar.":"This stay isn't available for booking yet.")}
                 </p>
-                {user && (
-                  <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,.7)" }}>
-                    <CheckCircle style={{ width: 12, height: 12, color: "var(--green)", flexShrink: 0 }} />
-                    <span>Your info will be prefilled at checkout</span>
-                  </div>
-                )}
               </div>
             </aside>
           </div>
@@ -2153,6 +2167,26 @@ function TourDetail({ params }) {
                       ? (lang==="es"?`Reservar en ${tourPartner.name}`:`Book on ${tourPartner.name}`)
                       : (lang==="es"?"Sin partner asignado":"No partner assigned")}
                 </button>
+                <a
+                  href={buildWhatsAppHref({
+                    user,
+                    lang,
+                    service: {
+                      kind: "tour",
+                      name: tour.name,
+                      priceUsd: pricing.total || tour.price,
+                      details: date
+                        ? `${date} · ${travelers} ${lang === "es" ? "viajero(s)" : "traveler(s)"}`
+                        : undefined,
+                    },
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10, padding: "12px 16px", borderRadius: 12, background: "rgba(37,211,102,.12)", border: "1px solid rgba(37,211,102,.35)", color: "#25D366", fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: ".02em" }}
+                >
+                  <MessageCircle style={{ width: 16, height: 16 }} />
+                  {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
+                </a>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
                   {tourPartner
                     ? (lang==="es"?`Te redirigimos a nuestro aliado ${tourPartner.name} para completar la reserva.`:`We'll redirect you to our partner ${tourPartner.name} to complete the booking.`)
