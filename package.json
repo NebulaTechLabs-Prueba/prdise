@@ -16,12 +16,14 @@
     "db:diff": "supabase db diff --linked"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "lucide-react": "^0.460.0",
     "next": "^15.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stripe": "^22.2.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

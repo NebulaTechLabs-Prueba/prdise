@@ -12,6 +12,7 @@ import {
   TrendingUp, TrendingDown, Eye, EyeOff, Lock, AlertTriangle, Database,
   Bell, Key, Power, Monitor,
   Printer, FileText, Copy, Hash, DollarSign, ExternalLink,
+  Download, Loader2, RefreshCw,
 } from "lucide-react";
 import {
   signIn as sbSignIn,
@@ -74,6 +75,10 @@ import {
 import {
   listInvoices as sbListInvoices,
   markInvoicePaid as sbMarkInvoicePaid,
+  createInvoiceManual as sbCreateInvoiceManual,
+  regenerateStripePaymentLink as sbRegenerateStripeLink,
+  generateInvoicePdf as sbGenerateInvoicePdf,
+  getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
 } from "@/lib/admin/invoices";
 
 /* ═══════════════ DATA ═══════════════ */
@@ -4154,60 +4159,13 @@ function AdminPanel({ onClose }) {
     return () => { cancel = true; };
   }, []);
   const driverRotationIdx = useRef(0);
-  const [invoices, setInvoices] = useState(() => {
-    // Local cache + migration mientras llega la carga desde Supabase.
-    let userGenerated = PRDISE.load("userGeneratedInvoices", []);
-    let migrated = false;
-    userGenerated = userGenerated.map(i => {
-      if (i.source === "cart-checkout" && i.status === "paid" && !i.paymentRef?.startsWith("VERIFIED-")) {
-        migrated = true;
-        return {
-          ...i,
-          status: "sent",
-          customerPaymentClaim: i.paymentRef || i.customerPaymentClaim,
-          paymentRef: undefined,
-          paidDate: undefined,
-        };
-      }
-      return i;
-    });
-    if (migrated) PRDISE.save("userGeneratedInvoices", userGenerated);
-    return [...userGenerated, ...A_INVOICES];
-  });
-
-  // Re-sync user-generated invoices when:
-  // 1. Admin switches into Invoices section (covers same-tab compras after admin opened panel)
-  // 2. localStorage changes from another tab
-  useEffect(() => {
-    const syncFromStorage = () => {
-      const userInvs = PRDISE.load("userGeneratedInvoices", []);
-      setInvoices((prev) => {
-        const adminCreated = prev.filter(i => !i.source || i.source !== "cart-checkout");
-        const existingIds = new Set(prev.map(i => i.id));
-        const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
-        if (trulyNew.length === 0 && prev.some(p => p.source === "cart-checkout")) return prev;
-        return [...userInvs, ...adminCreated.filter(i => !userInvs.some(u => u.id === i.id))];
-      });
-    };
-    window.addEventListener("storage", syncFromStorage);
-    window.addEventListener("focus", syncFromStorage);
-    return () => {
-      window.removeEventListener("storage", syncFromStorage);
-      window.removeEventListener("focus", syncFromStorage);
-    };
-  }, []);
-
-  // Re-sync user-generated invoices when admin enters Invoices section
-  useEffect(() => {
-    if (section === "invoices") {
-      const userInvs = PRDISE.load("userGeneratedInvoices", []);
-      setInvoices((prev) => {
-        const existingIds = new Set(prev.map(i => i.id));
-        const trulyNew = userInvs.filter(i => !existingIds.has(i.id));
-        return trulyNew.length > 0 ? [...trulyNew, ...prev] : prev;
-      });
-    }
-  }, [section]);
+  // Pivote 2026-06-04: invoices vienen exclusivamente de Supabase. Eliminado
+  // el cache+merge con `userGeneratedInvoices` en localStorage (residuo del
+  // cart-checkout legacy). El loader real se ejecuta en el useEffect de
+  // bootstrap del admin (sbListInvoices).
+  const [invoices, setInvoices] = useState([]);
+  const [invoiceCreateOpen, setInvoiceCreateOpen] = useState(false);
+  const [invoiceRowBusy, setInvoiceRowBusy] = useState({}); // { [sbId]: 'pdf' | 'wa' | 'stripe' }
   const [contacts, setContacts] = useState(A_CONTACTS);
   const [posts, setPosts] = useState(A_POSTS);
   const [postsFilter, setPostsFilter] = useState("all");
@@ -4241,9 +4199,12 @@ function AdminPanel({ onClose }) {
           // prefix al mergear.
           const mappedInvoices = invs.map((i) => ({
             id: "sb-" + i.id,
+            sbId: i.id, // raw Supabase UUID para llamadas a server actions
             num: i.number,
             customer: i.customer_name,
             email: i.customer_email,
+            customerPhone: i.customer_phone || "",
+            customerWhatsapp: i.customer_whatsapp || "",
             issued: i.issued_at,
             due: i.due_at || "",
             paidDate: i.paid_at ? i.paid_at.slice(0, 10) : "",
@@ -4251,7 +4212,9 @@ function AdminPanel({ onClose }) {
             total: (i.total_cents || 0) / 100,
             subtotal: (i.subtotal_cents || 0) / 100,
             status: i.status,
-            link: true,
+            stripePaymentLinkUrl: i.stripe_payment_link_url || "",
+            pdfUrl: i.pdf_url || "",
+            link: !!i.stripe_payment_link_url,
             source: "supabase",
             paymentRef: i.payment_ref || "",
             lineItems: (i.items || []).map((it) => ({
@@ -4261,10 +4224,9 @@ function AdminPanel({ onClose }) {
               total: (it.line_total_cents || 0) / 100,
             })),
           }));
-          setInvoices((prev) => {
-            const localOnly = prev.filter((i) => i.source !== "supabase" && !String(i.id || "").startsWith("sb-"));
-            return [...mappedInvoices, ...localOnly];
-          });
+          // Pivote 2026-06-04: invoices vienen 100% de Supabase. Reemplazamos
+          // estado completo (no merge con localStorage residual).
+          setInvoices(mappedInvoices);
         }
         if (usrs?.ok && Array.isArray(usrs.data?.items)) {
           setUsers(usrs.data.items.map((u) => ({
@@ -4341,6 +4303,46 @@ function AdminPanel({ onClose }) {
     })();
     return () => { cancel = true; };
   }, []);
+
+  // Refetch helper para invoices (usado tras crear/regenerar/marcar pagada).
+  // Mantiene la misma shape que el loader inicial.
+  const reloadInvoices = async () => {
+    try {
+      const invs = await sbListInvoices();
+      if (!Array.isArray(invs)) return;
+      const mapped = invs.map((i) => ({
+        id: "sb-" + i.id,
+        sbId: i.id,
+        num: i.number,
+        customer: i.customer_name,
+        email: i.customer_email,
+        customerPhone: i.customer_phone || "",
+        customerWhatsapp: i.customer_whatsapp || "",
+        issued: i.issued_at,
+        due: i.due_at || "",
+        paidDate: i.paid_at ? i.paid_at.slice(0, 10) : "",
+        items: Array.isArray(i.items) ? i.items.length : 1,
+        total: (i.total_cents || 0) / 100,
+        subtotal: (i.subtotal_cents || 0) / 100,
+        status: i.status,
+        stripePaymentLinkUrl: i.stripe_payment_link_url || "",
+        pdfUrl: i.pdf_url || "",
+        link: !!i.stripe_payment_link_url,
+        source: "supabase",
+        paymentRef: i.payment_ref || "",
+        lineItems: (i.items || []).map((it) => ({
+          description: it.description,
+          quantity: it.quantity,
+          unit: (it.unit_cents || 0) / 100,
+          total: (it.line_total_cents || 0) / 100,
+        })),
+      }));
+      setInvoices(mapped);
+    } catch (e) {
+      console.warn("[admin] reloadInvoices:", e);
+    }
+  };
+
   const [hotelsFilter, setHotelsFilter] = useState("all");
   const [toursFilter, setToursFilter] = useState("all");
   const [invoicesFilter, setInvoicesFilter] = useState("all");
@@ -6081,7 +6083,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <button className="adm-btn adm-btn-ghost" onClick={() => setInvoiceHistoryOpen(true)}><FileText />{lang === "es" ? "Historial completo" : "Full history"}</button>
                 <button
                   className="adm-btn adm-btn-primary"
-                  onClick={() => { if (canEditInvoices()) setEditingInvoice({ id: "new", num: `INV-2026-${String(visibleInvoices.length + 1).padStart(3, "0")}`, customer: "", email: "", issued: new Date().toISOString().split("T")[0], due: "", items: 0, total: 0, status: "draft", link: false, lineItems: [] }); }}
+                  onClick={() => { if (canEditInvoices()) setInvoiceCreateOpen(true); }}
                   disabled={!canEditInvoices()}
                   title={canEditInvoices() ? "" : (lang==="es"?"Sin permiso para crear":"No permission to create")}
                   style={{ opacity: canEditInvoices() ? 1 : 0.4, cursor: canEditInvoices() ? "pointer" : "not-allowed" }}
@@ -6145,9 +6147,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-stat-trend up"><TrendingUp />{visibleInvoices.filter(i => i.status === "paid").length} {lang==="es"?"facturas":"invoices"}</div>
               </div>
               <div className="adm-stat sky">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pendiente":"Pending"}<InfoTip text="Invoices sent to clients awaiting payment. Source: Invoices → status = 'sent'." /></span><div className="adm-stat-ico"><Clock /></div></div>
-                <div className="adm-stat-val">{fmt(visibleInvoices.filter(i => i.status === "sent").reduce((s, i) => s + i.total, 0))}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{visibleInvoices.filter(i => i.status === "sent").length} {lang==="es"?"facturas":"invoices"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pendiente":"Pending"}<InfoTip text="Invoices awaiting customer payment (status pending o sent)." /></span><div className="adm-stat-ico"><Clock /></div></div>
+                <div className="adm-stat-val">{fmt(visibleInvoices.filter(i => i.status === "sent" || i.status === "pending").reduce((s, i) => s + i.total, 0))}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{visibleInvoices.filter(i => i.status === "sent" || i.status === "pending").length} {lang==="es"?"facturas":"invoices"}</div>
               </div>
               <div className="adm-stat orange">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Vencido":"Overdue"}<InfoTip text="Invoices past their due date without payment. Requires follow-up. Source: Invoices → status = 'overdue'." /></span><div className="adm-stat-ico"><AlertTriangle /></div></div>
@@ -6159,6 +6161,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             <div className="adm-filter-row">
               <button className={`adm-fchip ${invoicesFilter === "all" ? "active" : ""}`} onClick={() => setInvoicesFilter("all")}>All <span className="adm-fchip-num">{visibleInvoices.length}</span></button>
               <button className={`adm-fchip ${invoicesFilter === "draft" ? "active" : ""}`} onClick={() => setInvoicesFilter("draft")}>{lang==="es"?"Borradores":"Drafts"} <span className="adm-fchip-num">{visibleInvoices.filter(i => i.status === "draft").length}</span></button>
+              <button className={`adm-fchip ${invoicesFilter === "pending" ? "active" : ""}`} onClick={() => setInvoicesFilter("pending")}>{lang==="es"?"Pendientes":"Pending"} <span className="adm-fchip-num">{visibleInvoices.filter(i => i.status === "pending").length}</span></button>
               <button className={`adm-fchip ${invoicesFilter === "sent" ? "active" : ""}`} onClick={() => setInvoicesFilter("sent")}>{lang==="es"?"Enviadas":"Sent"} <span className="adm-fchip-num">{visibleInvoices.filter(i => i.status === "sent").length}</span></button>
               <button className={`adm-fchip ${invoicesFilter === "paid" ? "active" : ""}`} onClick={() => setInvoicesFilter("paid")}>{lang==="es"?"Pagadas":"Paid"} <span className="adm-fchip-num">{visibleInvoices.filter(i => i.status === "paid").length}</span></button>
               <button className={`adm-fchip ${invoicesFilter === "overdue" ? "active" : ""}`} onClick={() => setInvoicesFilter("overdue")}>{lang==="es"?"Vencidas":"Overdue"} <span className="adm-fchip-num">{visibleInvoices.filter(i => i.status === "overdue").length}</span></button>
@@ -6230,11 +6233,101 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td style={{ fontSize: 12, color: inv.status === "overdue" ? "#EF6C2B" : "rgba(255,255,255,.6)", fontWeight: inv.status === "overdue" ? 700 : 400 }}>{inv.due || "—"}</td>
                         <td>{inv.items}</td>
                         <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(inv.total)}</td>
-                        <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status):inv.status.toUpperCase()}</span></td>
+                        <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status):inv.status.toUpperCase()}</span></td>
                         <td>{inv.link ? <a href="#" onClick={(e) => { e.preventDefault(); alert(lang==="es"?"Enlace de pago copiado":"Payment link copied"); }} style={{ color: "#F5A623", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><Globe style={{ width: 11, height: 11 }} />{lang==="es"?"Ver enlace":"View link"}</a> : <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>}</td>
                         <td>
                           <div className="adm-row-actions">
                             <button className="adm-icon-btn" title={lang==="es"?"Ver":"View"} onClick={() => setViewingInvoice(inv)}><Eye /></button>
+                            {/* Pivote 2026-06-04: Copy Stripe Link / Generate / Download PDF / WhatsApp */}
+                            {inv.source === "supabase" && (() => {
+                              const busy = invoiceRowBusy[inv.sbId];
+                              const hasLink = !!inv.stripePaymentLinkUrl;
+                              return (
+                                <>
+                                  {hasLink ? (
+                                    <button
+                                      className="adm-icon-btn"
+                                      title={lang==="es"?"Copiar link de pago Stripe":"Copy Stripe payment link"}
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(inv.stripePaymentLinkUrl);
+                                          alert(lang==="es"?"Link copiado al portapapeles":"Link copied to clipboard");
+                                        } catch {
+                                          alert(lang==="es"?"No se pudo copiar":"Could not copy");
+                                        }
+                                      }}
+                                    ><Copy /></button>
+                                  ) : (
+                                    <button
+                                      className="adm-icon-btn"
+                                      title={lang==="es"?"Generar link de pago Stripe":"Generate Stripe payment link"}
+                                      disabled={!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled"}
+                                      style={{ opacity: (!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled") ? 0.4 : 1, cursor: (!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled") ? "not-allowed" : "pointer" }}
+                                      onClick={async () => {
+                                        if (!canEditInvoices()) return;
+                                        setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "stripe" }));
+                                        try {
+                                          const fd = new FormData();
+                                          fd.append("id", inv.sbId);
+                                          const res = await sbRegenerateStripeLink(fd);
+                                          if (res?.ok) {
+                                            await reloadInvoices();
+                                            alert(lang==="es"?"Link generado":"Link generated");
+                                          } else {
+                                            alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                                          }
+                                        } finally {
+                                          setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
+                                        }
+                                      }}
+                                    >{busy === "stripe" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw />}</button>
+                                  )}
+                                  <button
+                                    className="adm-icon-btn"
+                                    title={lang==="es"?"Descargar PDF":"Download PDF"}
+                                    disabled={busy === "pdf"}
+                                    style={{ opacity: busy === "pdf" ? 0.4 : 1, cursor: busy === "pdf" ? "wait" : "pointer" }}
+                                    onClick={async () => {
+                                      setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "pdf" }));
+                                      try {
+                                        const fd = new FormData();
+                                        fd.append("id", inv.sbId);
+                                        const res = await sbGenerateInvoicePdf(fd);
+                                        if (res?.ok && res.data?.pdfUrl) {
+                                          window.open(res.data.pdfUrl, "_blank");
+                                          await reloadInvoices();
+                                        } else {
+                                          alert((lang==="es"?"Error generando PDF: ":"PDF error: ") + (res?.error || "unknown"));
+                                        }
+                                      } finally {
+                                        setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
+                                      }
+                                    }}
+                                  >{busy === "pdf" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <Download />}</button>
+                                  <button
+                                    className="adm-icon-btn"
+                                    title={lang==="es"?"Te abre WhatsApp con mensaje pre-llenado. Adjuntá el PDF manualmente.":"Opens WhatsApp with pre-filled message. Attach the PDF manually."}
+                                    disabled={busy === "wa"}
+                                    style={{ opacity: busy === "wa" ? 0.4 : 1, cursor: busy === "wa" ? "wait" : "pointer", color: "#25D366" }}
+                                    onClick={async () => {
+                                      setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "wa" }));
+                                      try {
+                                        const fd = new FormData();
+                                        fd.append("id", inv.sbId);
+                                        const res = await sbGetInvoiceWhatsAppLink(fd);
+                                        if (res?.ok && res.data?.url) {
+                                          window.open(res.data.url, "_blank");
+                                        } else {
+                                          alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                                        }
+                                      } finally {
+                                        setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
+                                      }
+                                    }}
+                                  >{busy === "wa" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <MessageCircle />}</button>
+                                </>
+                              );
+                            })()}
                             <button
                               className="adm-icon-btn"
                               title={!canEditInvoices() ? (lang==="es"?"Sin permiso":"No permission") : inv.status === "draft" ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Solo se pueden editar borradores":"Only drafts can be edited")}
@@ -6244,7 +6337,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             ><Pencil /></button>
                             {(() => {
                               const canDelete = canDeleteInvoices() && inv.status === "draft";
-                              const canCancel = canEditInvoices() && (inv.status === "sent" || inv.status === "overdue");
+                              const canCancel = canEditInvoices() && (inv.status === "pending" || inv.status === "sent" || inv.status === "overdue");
                               const enabled = canDelete || canCancel;
                               const tooltip = !canEditInvoices()
                                 ? (lang === "es" ? "Sin permiso" : "No permission")
@@ -6289,7 +6382,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               }
                             }}><Send /></button>
                             {(() => {
-                              const canMarkPaid = canEditInvoices() && (inv.status === "sent" || inv.status === "overdue");
+                              const canMarkPaid = canEditInvoices() && (inv.status === "pending" || inv.status === "sent" || inv.status === "overdue");
                               const tooltip = !canEditInvoices()
                                 ? (lang === "es" ? "Sin permiso" : "No permission")
                                 : canMarkPaid
@@ -6322,6 +6415,28 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
           );
         })()}
+
+        {/* Invoice Create Modal (Fase 2 pivote 2026-06-04) */}
+        {invoiceCreateOpen && (
+          <InvoiceCreateModal
+            lang={lang}
+            onClose={() => setInvoiceCreateOpen(false)}
+            onCreated={async ({ number, stripePaymentLinkUrl, stripeError }) => {
+              await reloadInvoices();
+              setInvoiceCreateOpen(false);
+              const baseMsg = lang === "es"
+                ? `Factura ${number} creada.`
+                : `Invoice ${number} created.`;
+              if (stripePaymentLinkUrl) {
+                alert(baseMsg + (lang === "es" ? `\n\nLink de pago Stripe:\n${stripePaymentLinkUrl}` : `\n\nStripe payment link:\n${stripePaymentLinkUrl}`));
+              } else if (stripeError) {
+                alert(baseMsg + (lang === "es" ? `\n\nADVERTENCIA: ${stripeError}\nPodés reintentar el link desde la fila.` : `\n\nWARNING: ${stripeError}\nYou can retry the link from the row.`));
+              } else {
+                alert(baseMsg);
+              }
+            }}
+          />
+        )}
 
         {/* Invoice Edit Modal */}
         {editingInvoice && (
@@ -6719,15 +6834,28 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <button className="adm-btn adm-btn-ghost" onClick={() => { setMarkPaidInvoice(null); setPaymentRef(""); }}>
                   {lang === "es" ? "Cancelar" : "Cancel"}
                 </button>
-                <button className="adm-btn adm-btn-primary" style={{ background: "#8DC63F", borderColor: "#8DC63F", color: "#0F1822" }} onClick={() => {
+                <button className="adm-btn adm-btn-primary" style={{ background: "#8DC63F", borderColor: "#8DC63F", color: "#0F1822" }} onClick={async () => {
                   const today = new Date().toISOString().split("T")[0];
-                  const updated = {
-                    ...markPaidInvoice,
-                    status: "paid",
-                    paymentRef: paymentRef.trim() || undefined,
-                    paidDate: today,
-                  };
-                  setInvoices(invoices.map(i => i.id === markPaidInvoice.id ? updated : i));
+                  // Si es una factura de Supabase, persistir via server action.
+                  if (markPaidInvoice.source === "supabase" && markPaidInvoice.sbId) {
+                    const fd = new FormData();
+                    fd.append("id", markPaidInvoice.sbId);
+                    if (paymentRef.trim()) fd.append("paymentRef", paymentRef.trim());
+                    const res = await sbMarkInvoicePaid(fd);
+                    if (!res?.ok) {
+                      alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                      return;
+                    }
+                    await reloadInvoices();
+                  } else {
+                    const updated = {
+                      ...markPaidInvoice,
+                      status: "paid",
+                      paymentRef: paymentRef.trim() || undefined,
+                      paidDate: today,
+                    };
+                    setInvoices(invoices.map(i => i.id === markPaidInvoice.id ? updated : i));
+                  }
                   setMarkPaidInvoice(null);
                   setPaymentRef("");
                 }}>
@@ -9640,6 +9768,172 @@ function IntegRow({ name, desc, connected }) {
       <button className={`adm-btn ${c ? "adm-btn-ghost" : "adm-btn-primary"}`} onClick={() => setC(!c)}>
         {c ? "Disconnect" : "Connect"}
       </button>
+    </div>
+  );
+}
+
+/* ═══════════════ INVOICE CREATE MODAL (Fase 2 pivote 2026-06-04) ═══════════════ */
+function InvoiceCreateModal({ lang, onClose, onCreated }) {
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerWhatsapp, setCustomerWhatsapp] = useState("");
+  const [notes, setNotes] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: "" }]);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const T = (es, en) => (lang === "es" ? es : en);
+
+  const updateItem = (idx, patch) => {
+    setItems((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  };
+  const addItem = () => setItems((arr) => [...arr, { description: "", quantity: 1, unitPrice: "" }]);
+  const removeItem = (idx) => setItems((arr) => (arr.length <= 1 ? arr : arr.filter((_, i) => i !== idx)));
+
+  const subtotal = items.reduce((s, it) => {
+    const q = Number(it.quantity) || 0;
+    const u = Number(it.unitPrice) || 0;
+    return s + q * u;
+  }, 0);
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!customerName.trim()) { setError(T("Nombre del cliente requerido", "Customer name required")); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) { setError(T("Email del cliente inválido", "Invalid customer email")); return; }
+    if (items.length === 0) { setError(T("Agregá al menos un ítem", "Add at least one item")); return; }
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it.description.trim()) { setError(T(`Descripción requerida en línea ${i + 1}`, `Description required on line ${i + 1}`)); return; }
+      const q = Number(it.quantity);
+      if (!Number.isInteger(q) || q < 1) { setError(T(`Cantidad inválida en línea ${i + 1}`, `Invalid quantity on line ${i + 1}`)); return; }
+      const u = Number(it.unitPrice);
+      if (!Number.isFinite(u) || u < 0) { setError(T(`Precio inválido en línea ${i + 1}`, `Invalid price on line ${i + 1}`)); return; }
+    }
+
+    const itemsPayload = items.map((it) => ({
+      description: it.description.trim(),
+      quantity: Number(it.quantity),
+      // USD → centavos. Math.round para evitar errores de coma flotante.
+      unitCents: Math.round(Number(it.unitPrice) * 100),
+    }));
+
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append("customerName", customerName.trim());
+      fd.append("customerEmail", customerEmail.trim());
+      if (customerPhone.trim()) fd.append("customerPhone", customerPhone.trim());
+      if (customerWhatsapp.trim()) fd.append("customerWhatsapp", customerWhatsapp.trim());
+      if (notes.trim()) fd.append("notes", notes.trim());
+      if (dueAt) fd.append("dueAt", dueAt);
+      fd.append("items", JSON.stringify(itemsPayload));
+
+      const res = await sbCreateInvoiceManual(fd);
+      if (!res?.ok) {
+        setError(res?.error || T("Error desconocido", "Unknown error"));
+        setSubmitting(false);
+        return;
+      }
+      onCreated(res.data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="adm-modal-bg" onClick={onClose}>
+      <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+        <button className="adm-modal-close" onClick={onClose}><X /></button>
+        <h3>{T("NUEVA FACTURA", "NEW INVOICE")}</h3>
+        <p className="adm-modal-sub">{T("Generamos el link de pago Stripe automáticamente y luego podés enviarlo por WhatsApp.", "We generate the Stripe payment link automatically; then you can send it via WhatsApp.")}</p>
+
+        <div className="adm-modal-section">
+          <div className="adm-modal-section-h"><User />{T("Cliente", "Customer")}</div>
+          <div className="adm-fg-row">
+            <div className="adm-fg" style={{ flex: 1 }}>
+              <label className="adm-fl">{T("Nombre", "Name")} *</label>
+              <input className="adm-fi" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="John Smith" />
+            </div>
+            <div className="adm-fg" style={{ flex: 1 }}>
+              <label className="adm-fl">{T("Correo", "Email")} *</label>
+              <input type="email" className="adm-fi" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="client@email.com" />
+            </div>
+          </div>
+          <div className="adm-fg-row">
+            <div className="adm-fg" style={{ flex: 1 }}>
+              <label className="adm-fl">{T("Teléfono", "Phone")}</label>
+              <input className="adm-fi" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+1 787 555 0100" />
+            </div>
+            <div className="adm-fg" style={{ flex: 1 }}>
+              <label className="adm-fl">WhatsApp <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>({T("opcional, usa teléfono si vacío", "optional, falls back to phone")})</span></label>
+              <input className="adm-fi" value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} placeholder="+1 787 555 0100" />
+            </div>
+            <div className="adm-fg" style={{ flex: 1 }}>
+              <label className="adm-fl">{T("Vencimiento", "Due date")}</label>
+              <input type="date" className="adm-fi" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="adm-modal-section">
+          <div className="adm-modal-section-h"><FileText />{T("Líneas", "Line items")}<span style={{ marginLeft: "auto", color: "rgba(255,255,255,.4)", fontWeight: 600, letterSpacing: 0, textTransform: "none" }}>{items.length} {items.length === 1 ? T("ítem", "item") : T("ítems", "items")}</span></div>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 0", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,.06)" : "none" }}>
+              <div className="adm-fg" style={{ flex: 3, marginBottom: 0 }}>
+                <label className="adm-fl">{T("Descripción", "Description")} *</label>
+                <input className="adm-fi" value={it.description} onChange={(e) => updateItem(i, { description: e.target.value })} placeholder={T("Estadía Cabo Rojo · 2 noches", "Stay Cabo Rojo · 2 nights")} />
+              </div>
+              <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
+                <label className="adm-fl">{T("Cant.", "Qty")} *</label>
+                <input type="number" min="1" step="1" className="adm-fi" value={it.quantity} onChange={(e) => updateItem(i, { quantity: e.target.value })} />
+              </div>
+              <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
+                <label className="adm-fl">{T("Precio (USD)", "Price (USD)")} *</label>
+                <input type="number" min="0" step="0.01" className="adm-fi" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: e.target.value })} placeholder="0.00" />
+              </div>
+              <button
+                type="button"
+                className="adm-icon-btn"
+                title={T("Quitar", "Remove")}
+                onClick={() => removeItem(i)}
+                disabled={items.length <= 1}
+                style={{ opacity: items.length <= 1 ? 0.3 : 1, marginBottom: 4 }}
+              ><Trash2 /></button>
+            </div>
+          ))}
+          <button type="button" className="adm-btn adm-btn-ghost" onClick={addItem} style={{ marginTop: 10 }}>
+            <Plus />{T("Agregar línea", "Add line")}
+          </button>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12, marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", color: "rgba(255,255,255,.5)", textTransform: "uppercase" }}>Total</span>
+            <span style={{ fontSize: 24, fontFamily: "Bebas Neue", color: "#F5A623", letterSpacing: ".02em" }}>${subtotal.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="adm-modal-section">
+          <div className="adm-modal-section-h"><Edit />{T("Notas", "Notes")}</div>
+          <textarea className="adm-fi" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={T("Notas internas o instrucciones para el cliente (opcional)", "Internal notes or instructions for the client (optional)")} />
+        </div>
+
+        {error && (
+          <div style={{ padding: 11, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12.5, marginTop: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="adm-modal-actions">
+          <button className="adm-btn adm-btn-ghost" onClick={onClose} disabled={submitting}>{T("Cancelar", "Cancel")}</button>
+          <button className="adm-btn adm-btn-primary" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+            {submitting ? T("Creando...", "Creating...") : T("Crear factura", "Create invoice")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

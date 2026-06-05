@@ -507,6 +507,7 @@ export type Database = {
           customer_email: string
           customer_name: string
           customer_phone: string | null
+          customer_whatsapp: string | null
           discount_cents: number
           due_at: string | null
           id: string
@@ -515,7 +516,10 @@ export type Database = {
           number: string
           paid_at: string | null
           payment_ref: string | null
+          pdf_url: string | null
           status: string
+          stripe_payment_link_id: string | null
+          stripe_payment_link_url: string | null
           subtotal_cents: number
           tax_cents: number
           total_cents: number
@@ -527,6 +531,7 @@ export type Database = {
           customer_email: string
           customer_name: string
           customer_phone?: string | null
+          customer_whatsapp?: string | null
           discount_cents?: number
           due_at?: string | null
           id?: string
@@ -535,7 +540,10 @@ export type Database = {
           number: string
           paid_at?: string | null
           payment_ref?: string | null
+          pdf_url?: string | null
           status?: string
+          stripe_payment_link_id?: string | null
+          stripe_payment_link_url?: string | null
           subtotal_cents: number
           tax_cents?: number
           total_cents: number
@@ -547,6 +555,7 @@ export type Database = {
           customer_email?: string
           customer_name?: string
           customer_phone?: string | null
+          customer_whatsapp?: string | null
           discount_cents?: number
           due_at?: string | null
           id?: string
@@ -555,7 +564,10 @@ export type Database = {
           number?: string
           paid_at?: string | null
           payment_ref?: string | null
+          pdf_url?: string | null
           status?: string
+          stripe_payment_link_id?: string | null
+          stripe_payment_link_url?: string | null
           subtotal_cents?: number
           tax_cents?: number
           total_cents?: number
