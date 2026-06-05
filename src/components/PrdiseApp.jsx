@@ -1463,6 +1463,10 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
+      {/* Curated experiences: oculta la sección si no hay tours publicados en
+          Supabase, para evitar mostrar el encabezado con un grid vacío en una
+          base de datos sin contenido inicial. */}
+      {TOURS.filter(tr => !tr.status || tr.status === "published").length > 0 && (
       <section className="svc">
         <div className="container">
           <div className="sec-head">
@@ -1491,6 +1495,7 @@ function HomePage() {
           </div>
         </div>
       </section>
+      )}
 
       <section className="why">
         <div className="container">
@@ -1641,6 +1646,21 @@ function HotelsList() {
                 </select>
               </div>
               <div className="card-grid">
+                {filtered.length === 0 && (
+                  <div style={{ gridColumn: "1 / -1", padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.55)", background: "rgba(255,255,255,.03)", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 14 }}>
+                    <Home style={{ width: 36, height: 36, opacity: .35, marginBottom: 10 }} />
+                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", marginBottom: 6 }}>
+                      {HOTELS.length === 0
+                        ? (lang === "es" ? "Aún no hay estadías publicadas" : "No stays published yet")
+                        : (lang === "es" ? "Sin resultados con estos filtros" : "No results match these filters")}
+                    </h3>
+                    <p style={{ fontSize: 13 }}>
+                      {HOTELS.length === 0
+                        ? (lang === "es" ? "Nuestro equipo está cargando opciones. Vuelve pronto." : "Our team is uploading options. Check back soon.")
+                        : (lang === "es" ? "Prueba a ajustar los filtros o limpiarlos." : "Try adjusting or clearing the filters.")}
+                    </p>
+                  </div>
+                )}
                 {filtered.map((h) => {
                   const partner = h.partnerId ? PARTNERS.find((p) => p.id === h.partnerId) : null;
                   return (
@@ -1698,7 +1718,22 @@ function ToursList() {
           <BilingualNotice style={{ marginBottom: 22 }} />
 
           <div className="card-grid">
-            {TOURS.filter(tr => !tr.status || tr.status === "published").map((tr) => {
+            {(() => {
+              const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
+              if (visibleTours.length === 0) {
+                return (
+                  <div style={{ gridColumn: "1 / -1", padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.55)", background: "rgba(255,255,255,.03)", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 14 }}>
+                    <MapPin style={{ width: 36, height: 36, opacity: .35, marginBottom: 10 }} />
+                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", marginBottom: 6 }}>
+                      {lang === "es" ? "Aún no hay tours publicados" : "No tours published yet"}
+                    </h3>
+                    <p style={{ fontSize: 13 }}>
+                      {lang === "es" ? "Nuestro equipo está cargando opciones. Vuelve pronto." : "Our team is uploading options. Check back soon."}
+                    </p>
+                  </div>
+                );
+              }
+              return visibleTours.map((tr) => {
               const partner = tr.partnerId ? PARTNERS.find((p) => p.id === tr.partnerId) : null;
               return (
               <div key={tr.id} className="listing-card">
@@ -1732,7 +1767,8 @@ function ToursList() {
                 </div>
               </div>
               );
-            })}
+            });
+            })()}
           </div>
         </div>
       </div>
@@ -1744,8 +1780,10 @@ function ToursList() {
 function HotelDetail({ params }) {
   const { t, lang } = useLang();
   const L = (en, es) => (lang === "es" && es) ? es : en; // pick ES if available
-  const id = params.get("id") || "villa-blue-coral";
-  const hotel = HOTELS.find((h) => h.id === id) || HOTELS[0];
+  const id = params.get("id") || "";
+  // Fallback null para evitar mostrar un hotel aleatorio cuando el slug no
+  // existe. La rama `if (!hotel)` abajo renderiza un mensaje 404/empty state.
+  const hotel = id ? (HOTELS.find((h) => h.id === id) || null) : null;
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
   const [guests, setGuests] = useState(2);
@@ -1772,11 +1810,21 @@ function HotelDetail({ params }) {
     return { nights, subtotal, cleaning, service, total: subtotal + cleaning + service };
   }, [checkin, checkout, hotel?.price, hotel]);
   if (!hotel) {
+    const emptyDb = HOTELS.length === 0;
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.6)", padding: 40, textAlign: "center" }}>
         <div>
-          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>{lang === "es" ? "Sin estadías disponibles" : "No stays available"}</h2>
-          <p style={{ fontSize: 14 }}>{lang === "es" ? "Aún no hay opciones publicadas. Vuelve pronto." : "No options published yet. Check back soon."}</p>
+          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>
+            {emptyDb
+              ? (lang === "es" ? "Sin estadías disponibles" : "No stays available")
+              : (lang === "es" ? "Estadía no encontrada" : "Stay not found")}
+          </h2>
+          <p style={{ fontSize: 14, marginBottom: 16 }}>
+            {emptyDb
+              ? (lang === "es" ? "Aún no hay opciones publicadas. Vuelve pronto." : "No options published yet. Check back soon.")
+              : (lang === "es" ? "La estadía que buscas no existe o fue removida." : "The stay you're looking for doesn't exist or was removed.")}
+          </p>
+          <NavLink to="/stays" className="cta-sec">{lang === "es" ? "Ver todas las estadías" : "Browse all stays"}</NavLink>
         </div>
       </div>
     );
@@ -1999,8 +2047,10 @@ function HotelDetail({ params }) {
 function TourDetail({ params }) {
   const { t, lang } = useLang();
   const L = (en, es) => (lang === "es" && es) ? es : en;
-  const id = params.get("id") || "beach-escape";
-  const tour = TOURS.find((t) => t.id === id) || TOURS[0];
+  const id = params.get("id") || "";
+  // Fallback null para evitar mostrar un tour aleatorio cuando el slug no
+  // existe. La rama `if (!tour)` abajo renderiza un mensaje 404/empty state.
+  const tour = id ? (TOURS.find((t) => t.id === id) || null) : null;
   const [date, setDate] = useState("");
   const [travelers, setTravelers] = useState(2);
   const [user, setUser] = useState(null);
@@ -2018,11 +2068,21 @@ function TourDetail({ params }) {
     return { subtotal, service, total: subtotal + service };
   }, [travelers, tour?.price, tour]);
   if (!tour) {
+    const emptyDb = TOURS.length === 0;
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,.6)", padding: 40, textAlign: "center" }}>
         <div>
-          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>{lang === "es" ? "Sin tours disponibles" : "No tours available"}</h2>
-          <p style={{ fontSize: 14 }}>{lang === "es" ? "Aún no hay opciones publicadas. Vuelve pronto." : "No options published yet. Check back soon."}</p>
+          <h2 style={{ fontFamily: "Bebas Neue", fontSize: 28, marginBottom: 8 }}>
+            {emptyDb
+              ? (lang === "es" ? "Sin tours disponibles" : "No tours available")
+              : (lang === "es" ? "Tour no encontrado" : "Tour not found")}
+          </h2>
+          <p style={{ fontSize: 14, marginBottom: 16 }}>
+            {emptyDb
+              ? (lang === "es" ? "Aún no hay opciones publicadas. Vuelve pronto." : "No options published yet. Check back soon.")
+              : (lang === "es" ? "El tour que buscas no existe o fue removido." : "The tour you're looking for doesn't exist or was removed.")}
+          </p>
+          <NavLink to="/tours" className="cta-sec">{lang === "es" ? "Ver todos los tours" : "Browse all tours"}</NavLink>
         </div>
       </div>
     );
@@ -2351,6 +2411,9 @@ function TransferSearchPage() {
               </div>
             )}
           </div>
+          {/* Popular routes: oculta el panel si Supabase no tiene rutas
+              cargadas todavía, para evitar mostrar el encabezado vacío. */}
+          {ROUTES.length > 0 && (
           <div style={{ maxWidth: 900, margin: "28px auto 0", padding: 22, borderRadius: 18, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
             <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "var(--gold)", marginBottom: 14 }}>POPULAR ROUTES</h4>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
@@ -2362,6 +2425,7 @@ function TransferSearchPage() {
               ))}
             </div>
           </div>
+          )}
         </div>
       </div>
     </>
@@ -2780,8 +2844,18 @@ function ServicesPage() {
             ))}
           </div>
 
-          {/* NEWS SECTION — Editorial Magazine Layout. Solo se renderiza si hay posts reales en A_POSTS (DataLoader). */}
-          {A_POSTS.length > 0 && (
+          {/* NEWS SECTION — Editorial Magazine Layout. Solo renderiza si hay
+              al menos 1 post publicado en Supabase. Featured = primer post,
+              small stories = posts[1..3], sidebar = posts[0..6]. Sin contenido
+              falso hardcoded: si faltan posts para una posición, esa posición
+              no se renderiza. */}
+          {(() => {
+            const published = A_POSTS.filter((p) => p.status === "published");
+            if (published.length === 0) return null;
+            const featured = published[0];
+            const smallStories = published.slice(1, 3);
+            const sidebarHeadlines = published.slice(0, 6);
+            return (
           <div style={{ marginTop: 80, paddingTop: 56, borderTop: "1px solid rgba(255,255,255,.06)" }}>
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 36, flexWrap: "wrap", gap: 12 }}>
               <div>
@@ -2796,24 +2870,32 @@ function ServicesPage() {
               <div>
                 {/* FEATURED HERO STORY */}
                 <article
-                  onClick={() => nav("/post?slug=summer-2026-tours-live")}
+                  onClick={() => nav(`/post?slug=${featured.slug}`)}
                   style={{ position: "relative", borderRadius: 20, overflow: "hidden", cursor: "pointer", marginBottom: 20, transition: "all .35s", border: "1px solid rgba(255,255,255,.08)" }}
                   onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-3px)"}
                   onMouseLeave={(e) => e.currentTarget.style.transform = "none"}
                 >
                   <div style={{ position: "relative", height: 340, overflow: "hidden" }}>
-                    <img src={IMG_MANGROVES} alt="Summer 2026" style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform .6s" }} />
+                    <img src={featured.img || IMG_PALM} alt={featured.title} style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform .6s" }} />
                     <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(14,24,36,0) 30%,rgba(14,24,36,.5) 65%,rgba(14,24,36,.95) 100%)" }} />
                     <div style={{ position: "absolute", top: 18, left: 18, display: "flex", gap: 6, alignItems: "center" }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff" }}>★ Featured</span>
-                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99, background: "rgba(14,24,36,.65)", backdropFilter: "blur(8px)", color: "#fff", border: "1px solid rgba(255,255,255,.15)" }}>Season</span>
+                      {featured.featured && (
+                        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff" }}>★ Featured</span>
+                      )}
+                      {featured.category && (
+                        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99, background: "rgba(14,24,36,.65)", backdropFilter: "blur(8px)", color: "#fff", border: "1px solid rgba(255,255,255,.15)" }}>{featured.category}</span>
+                      )}
                     </div>
                     <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "24px 26px 26px" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8 }}>Apr 10, 2026 · 4 min read</div>
-                      <h3 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(1.8rem,3.2vw,2.4rem)", letterSpacing: ".02em", lineHeight: 1.1, marginBottom: 10, color: "#fff" }}>SUMMER 2026 IS HERE — AND IT'S WILD</h3>
-                      <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.55, marginBottom: 14, maxWidth: 560 }}>
-                        Our most ambitious season yet: 8 new tours including night kayaking in La Parguera's glowing bay, sunset cliff-jumping at Boquerón, and a brand-new coffee plantation experience in the highlands of Maricao.
-                      </p>
+                      {featured.date && (
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8 }}>{featured.date}</div>
+                      )}
+                      <h3 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(1.8rem,3.2vw,2.4rem)", letterSpacing: ".02em", lineHeight: 1.1, marginBottom: 10, color: "#fff" }}>{(featured.title || "").toUpperCase()}</h3>
+                      {featured.excerpt && (
+                        <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.55, marginBottom: 14, maxWidth: 560 }}>
+                          {featured.excerpt}
+                        </p>
+                      )}
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--gold)" }}>
                         {lang === "es" ? "Leer la historia" : "Read the story"} <ArrowRight style={{ width: 12, height: 12 }} />
                       </span>
@@ -2821,60 +2903,56 @@ function ServicesPage() {
                   </div>
                 </article>
 
-                {/* 2 SMALL STORIES */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="news-small-grid">
-                  {[
-                    { tag: "Travel Advisory", color: "sky", date: "Apr 5, 2026", title: "New Direct Flights to Aguadilla", desc: "JetBlue just announced 3 weekly direct flights from JFK to BQN — the easiest way yet to reach the west coast.", img: IMG_VAN_ROAD, slug: "jetblue-direct-flights-aguadilla" },
-                    { tag: "Local Event", color: "green", date: "Mar 28, 2026", title: "Festival de la Langosta", desc: "Boquerón's annual lobster festival returns May 15–18. Live music, food, boat rides — book your stay early.", img: IMG_SUNSET_JETSKI, slug: "lobster-festival-boqueron" },
-                  ].map((n, i) => (
-                    <article key={i}
+                {/* 2 SMALL STORIES — solo se renderizan si existen */}
+                {smallStories.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: smallStories.length === 1 ? "1fr" : "1fr 1fr", gap: 16 }} className="news-small-grid">
+                  {smallStories.map((n) => (
+                    <article key={n.id}
                       onClick={() => nav(`/post?slug=${n.slug}`)}
                       style={{ borderRadius: 16, overflow: "hidden", cursor: "pointer", transition: "all .3s", border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.03)" }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.06)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.03)"; e.currentTarget.style.transform = "none"; }}
                     >
                       <div style={{ height: 140, overflow: "hidden", position: "relative" }}>
-                        <img src={n.img} alt={n.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        <span style={{ position: "absolute", top: 10, left: 10, fontSize: 9, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 9px", borderRadius: 99, background: (COLORS[n.color] || "#F5A623"), color: "#0c1318" }}>{n.tag}</span>
+                        <img src={n.img || IMG_PALM} alt={n.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        {n.category && (
+                          <span style={{ position: "absolute", top: 10, left: 10, fontSize: 9, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 9px", borderRadius: 99, background: "var(--gold)", color: "#0c1318" }}>{n.category}</span>
+                        )}
                       </div>
                       <div style={{ padding: 16 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(255,255,255,.4)", marginBottom: 6 }}>{n.date}</div>
+                        {n.date && <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(255,255,255,.4)", marginBottom: 6 }}>{n.date}</div>}
                         <h4 style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 6, lineHeight: 1.3 }}>{n.title}</h4>
-                        <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.5)", lineHeight: 1.55 }}>{n.desc}</p>
+                        {n.excerpt && <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.5)", lineHeight: 1.55 }}>{n.excerpt}</p>}
                       </div>
                     </article>
                   ))}
                 </div>
+                )}
               </div>
 
-              {/* RIGHT — News List */}
+              {/* RIGHT — Latest Headlines from real published posts */}
               <aside>
                 <div style={{ padding: "24px 22px", borderRadius: 18, background: "linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02))", border: "1px solid rgba(255,255,255,.08)", position: "sticky", top: 100 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
                     <div style={{ width: 3, height: 18, background: "var(--gold)", borderRadius: 2 }} />
                     <h4 style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".1em", color: "#fff", margin: 0 }}>{lang === "es" ? "ÚLTIMOS TITULARES" : "LATEST HEADLINES"}</h4>
                   </div>
-                  {[
-                    { num: "01", tag: "Tips", date: "Mar 20", title: "5 Hidden Beaches Only Locals Know", slug: "hidden-beaches-locals" },
-                    { num: "02", tag: "Guide", date: "Mar 18", title: "How to Experience the Bio Bay at its Peak Glow", slug: "bio-bay-peak-glow-guide" },
-                    { num: "03", tag: "Food", date: "Mar 15", title: "Joyuda's Gold Mile — A Seafood Lover's Map", slug: "joyuda-gold-mile-seafood" },
-                    { num: "04", tag: "Season", date: "Mar 12", title: "Why March Is the Best Month to Visit Cabo Rojo", slug: "best-month-visit-cabo-rojo" },
-                    { num: "05", tag: "Culture", date: "Mar 8", title: "San Germán: Puerto Rico's Most Underrated Old Town", slug: "san-german-old-town" },
-                    { num: "06", tag: "Tips", date: "Mar 5", title: "Driving in Puerto Rico: What Americans Should Know", slug: "driving-puerto-rico" },
-                  ].map((h, i) => (
-                    <div key={i}
+                  {sidebarHeadlines.map((h, i) => (
+                    <div key={h.id}
                       onClick={() => h.slug && nav(`/post?slug=${h.slug}`)}
-                      style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: i < 5 ? "1px solid rgba(255,255,255,.05)" : "none", cursor: "pointer", transition: "transform .2s" }}
+                      style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: i < sidebarHeadlines.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none", cursor: "pointer", transition: "transform .2s" }}
                       onMouseEnter={(e) => e.currentTarget.style.transform = "translateX(3px)"}
                       onMouseLeave={(e) => e.currentTarget.style.transform = "none"}
                     >
-                      <span style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".03em", color: "var(--gold)", flexShrink: 0, lineHeight: 1, minWidth: 26 }}>{h.num}</span>
+                      <span style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".03em", color: "var(--gold)", flexShrink: 0, lineHeight: 1, minWidth: 26 }}>{String(i + 1).padStart(2, "0")}</span>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--gold)" }}>{h.tag}</span>
-                          <span style={{ fontSize: 9, color: "rgba(255,255,255,.3)" }}>·</span>
-                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>{h.date}</span>
-                        </div>
+                        {(h.category || h.date) && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                            {h.category && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--gold)" }}>{h.category}</span>}
+                            {h.category && h.date && <span style={{ fontSize: 9, color: "rgba(255,255,255,.3)" }}>·</span>}
+                            {h.date && <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>{h.date}</span>}
+                          </div>
+                        )}
                         <h5 style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,.85)", lineHeight: 1.35, margin: 0 }}>{h.title}</h5>
                       </div>
                     </div>
@@ -2886,58 +2964,51 @@ function ServicesPage() {
               </aside>
             </div>
 
-            {/* FEATURED TOUR PROMO */}
+            {/* FEATURED TOUR PROMO — usa solo datos reales del tour (sin texto
+                de adorno hardcoded ni testimonio falso). Reviews están dormant
+                post-pivote, así que la card de testimonio se removió. */}
             {TOURS[0] && (
               <div
                 style={{ marginTop: 56, position: "relative", borderRadius: 24, overflow: "hidden", minHeight: 320, cursor: "pointer" }}
                 onClick={() => nav(`/tour-detail?id=${TOURS[0].id}`)}
               >
                 <div style={{ position: "absolute", inset: 0 }}>
-                  <img src={TOURS[0].img} alt={TOURS[0].name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(95deg,rgba(14,24,36,.95) 0%,rgba(14,24,36,.7) 50%,rgba(14,24,36,.25) 100%)" }} />
+                  {TOURS[0].img && <img src={TOURS[0].img} alt={TOURS[0].name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(95deg,rgba(14,24,36,.95) 0%,rgba(14,24,36,.6) 60%,rgba(14,24,36,.3) 100%)" }} />
                 </div>
-                <div style={{ position: "relative", padding: "48px 44px", display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 32, alignItems: "center" }} className="promo-grid">
-                  <div>
+                <div style={{ position: "relative", padding: "48px 44px" }} className="promo-grid">
+                  <div style={{ maxWidth: 620 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
                       <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".2em", textTransform: "uppercase", padding: "6px 12px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff" }}>{t("editorsPick")}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".15em" }}>· {t("tourOfMonth")}</span>
                     </div>
-                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.2rem)", letterSpacing: ".02em", lineHeight: 1, marginBottom: 14 }}>{TOURS[0].name.toUpperCase()}</h3>
-                    <p style={{ fontSize: 15, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 20, maxWidth: 520 }}>
-                      {TOURS[0].desc} Spend a full day exploring the non-touristy beaches of the west coast — snorkel pristine reefs, swim in water so clear it looks like glass, and end the day with an authentic criollo lunch at a family-run spot.
-                    </p>
+                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.2rem)", letterSpacing: ".02em", lineHeight: 1, marginBottom: 14 }}>{(TOURS[0].name || "").toUpperCase()}</h3>
+                    {TOURS[0].desc && (
+                      <p style={{ fontSize: 15, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 20, maxWidth: 560 }}>
+                        {TOURS[0].desc}
+                      </p>
+                    )}
                     <div style={{ display: "flex", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <Clock style={{ width: 16, height: 16, color: "var(--gold)" }} />
-                        <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{TOURS[0].duration}</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <Users style={{ width: 16, height: 16, color: "var(--gold)" }} />
-                        <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>Max {TOURS[0].capacity}</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <Star style={{ width: 16, height: 16, fill: "var(--gold)", color: "var(--gold)" }} />
-                        <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{TOURS[0].rating} ({TOURS[0].reviews} reviews)</span>
-                      </div>
+                      {TOURS[0].duration && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Clock style={{ width: 16, height: 16, color: "var(--gold)" }} />
+                          <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{TOURS[0].duration}</span>
+                        </div>
+                      )}
+                      {TOURS[0].capacity && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Users style={{ width: 16, height: 16, color: "var(--gold)" }} />
+                          <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>Max {TOURS[0].capacity}</span>
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                       <button onClick={(e) => { e.stopPropagation(); nav(`/tour-detail?id=${TOURS[0].id}`); }} style={{ padding: "14px 28px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, boxShadow: "0 8px 28px rgba(245,166,35,.35)" }}>
                         {t("bookThisTour")} <ArrowRight style={{ width: 14, height: 14 }} />
                       </button>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{t("fromPrice")} <span style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)", letterSpacing: ".02em" }}>${TOURS[0].price}</span> {t("perPerson")}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }} className="promo-quote">
-                    <div style={{ maxWidth: 300, padding: "22px 24px", borderRadius: 18, background: "rgba(14,24,36,.7)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,.1)" }}>
-                      <div style={{ fontFamily: "Dancing Script, cursive", fontSize: 36, color: "var(--gold)", lineHeight: 1, marginBottom: 8 }}>"</div>
-                      <p style={{ fontSize: 14, color: "#fff", fontStyle: "italic", lineHeight: 1.5, marginBottom: 14 }}>The best day of our trip. Beaches we never would've found on our own.</p>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.1)" }}>
-                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,var(--gold),var(--orange))", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Bebas Neue", fontSize: 14, color: "#fff" }}>M</div>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>Mike & Jenny T.</div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>Philadelphia · Mar 2026</div>
-                        </div>
-                      </div>
+                      {TOURS[0].price && (
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{t("fromPrice")} <span style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)", letterSpacing: ".02em" }}>${TOURS[0].price}</span> {t("perPerson")}</div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2954,7 +3025,8 @@ function ServicesPage() {
               }
             `}</style>
           </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     </>
@@ -7257,7 +7329,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-stat green">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Clientes":"Customers"}</span><div className="adm-stat-ico"><CheckCircle /></div></div>
                 <div className="adm-stat-val">{contacts.filter(c => c.isCustomer).length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{Math.round(contacts.filter(c => c.isCustomer).length / contacts.length * 100)}% {lang==="es"?"conversión":"conversion"}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{contacts.length > 0 ? Math.round(contacts.filter(c => c.isCustomer).length / contacts.length * 100) : 0}% {lang==="es"?"conversión":"conversion"}</div>
               </div>
               <div className="adm-stat sky">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Nuevos leads":"New leads"}</span><div className="adm-stat-ico"><User /></div></div>
