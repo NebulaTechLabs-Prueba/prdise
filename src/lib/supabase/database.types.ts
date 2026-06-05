@@ -1398,7 +1398,7 @@ export type Database = {
         | "confirmed"
         | "rejected"
         | "refunded"
-      user_role: "admin" | "manager" | "employee" | "user"
+      user_role: "admin" | "employee" | "user"
       user_status: "active" | "inactive"
     }
     CompositeTypes: {
@@ -1550,7 +1550,7 @@ export const Constants = {
         "rejected",
         "refunded",
       ],
-      user_role: ["admin", "manager", "employee", "user"],
+      user_role: ["admin", "employee", "user"],
       user_status: ["active", "inactive"],
     },
   },

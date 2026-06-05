@@ -397,7 +397,7 @@ export const toggleCouponActiveSchema = z.object({ id: uuidSchema });
 
 // ─── Users ──────────────────────────────────────────────────────────────────
 
-export const USER_ROLES = ["admin", "manager", "employee", "user"] as const;
+export const USER_ROLES = ["admin", "employee", "user"] as const;
 export type UserRoleLiteral = (typeof USER_ROLES)[number];
 
 export const USER_STATUSES = ["active", "inactive"] as const;

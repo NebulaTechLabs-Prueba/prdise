@@ -19,7 +19,7 @@ export type ActionResult =
   | { ok: false; error: string };
 
 export type SignInResult =
-  | { ok: true; role: "admin" | "manager" | "employee" | "user" }
+  | { ok: true; role: "admin" | "employee" | "user" }
   | { ok: false; error: string }
   | { ok: false; needsReactivation: true; userId: string };
 
@@ -200,7 +200,6 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     ok: true,
     role: (profile?.role ?? "user") as
       | "admin"
-      | "manager"
       | "employee"
       | "user",
   };

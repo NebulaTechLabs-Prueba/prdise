@@ -9,7 +9,7 @@ import type { Database } from "@/lib/supabase/database.types";
 export type { ActionResult } from "./types";
 export type UserRole = Database["public"]["Enums"]["user_role"];
 
-const STAFF_ROLES: UserRole[] = ["admin", "manager", "employee"];
+const STAFF_ROLES: UserRole[] = ["admin", "employee"];
 
 /**
  * Obtiene el current user + profile sin redirigir.

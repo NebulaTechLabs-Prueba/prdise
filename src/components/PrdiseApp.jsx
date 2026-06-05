@@ -3260,7 +3260,7 @@ function LoginPage() {
     document.title = "Sign In — Living in PRDISE";
     const sess = PRDISE.load("session", null);
     if (sess) {
-      if (sess.role === "admin" || sess.role === "employee" || sess.role === "manager") nav("/admin");
+      if (sess.role === "admin" || sess.role === "employee") nav("/admin");
       else nav("/account");
     }
   }, []);
@@ -3293,7 +3293,7 @@ function LoginPage() {
       // cliente Supabase de AdminPanelRoute no encuentra la sesion ->
       // getUser() retorna null -> rebote al login.
       // Los stubs /admin y /account redirigen al hash route correspondiente.
-      const isStaff = result.role === "admin" || result.role === "manager" || result.role === "employee";
+      const isStaff = result.role === "admin" || result.role === "employee";
       window.location.assign(isStaff ? "/admin" : "/account");
     } catch (e) {
       setError(lang === "es" ? "Error inesperado, intenta de nuevo" : "Unexpected error, try again");
@@ -3435,7 +3435,7 @@ function RegisterPage() {
     // Si hay sesión legítima, AuthBridge la habrá conservado; si no, ya la limpió.
     const sess = PRDISE.load("session", null);
     if (sess && sess.email) {
-      if (sess.role === "admin" || sess.role === "manager" || sess.role === "employee") nav("/admin");
+      if (sess.role === "admin" || sess.role === "employee") nav("/admin");
       else nav("/account");
     }
   }, []);
@@ -4396,10 +4396,12 @@ function AdminPanel({ onClose }) {
             id: u.id,
             email: u.email || "",
             name: [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.email || "—",
-            role: u.role === "admin" ? "Admin"
-              : u.role === "manager" ? "Manager"
-              : u.role === "employee" ? "Employee"
-              : "Customer",
+            // Labels visibles en el panel. La DB usa enum corto (admin /
+            // employee / user) post-consolidación 2026-06-06; el display se
+            // localiza vía roleLabelLang (ver helper getRoleLabel).
+            role: u.role === "admin" ? (lang === "es" ? "Administrador" : "Administrator")
+              : u.role === "employee" ? (lang === "es" ? "Empleado" : "Employee")
+              : (lang === "es" ? "Cliente" : "Customer"),
             roleRaw: u.role,
             status: u.status || "active",
             department: u.department || "",
@@ -7610,7 +7612,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   {lang==="es"?"USUARIOS Y ROLES":"USERS & ROLES"}
                 </h2>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", margin: 0 }}>
-                  {users.length} {lang==="es"?"miembros del equipo":"team members"} · {users.filter((u) => u.role === "Manager").length} {lang==="es"?"gerentes":"managers"} · {users.filter(u => u.department === "Transfers" && u.status === "active").length} {lang==="es"?"conductores activos":"active drivers"}
+                  {users.length} {lang==="es"?"miembros del equipo":"team members"} · {users.filter((u) => u.roleRaw === "admin").length} {lang==="es"?"administradores":"administrators"} · {users.filter((u) => u.roleRaw === "employee").length} {lang==="es"?"empleados":"employees"}
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -9296,8 +9298,10 @@ function EditModal({ editing, onClose, onSave }) {
             <div className="adm-fg"><label className="adm-fl">Email</label><input type="email" className="adm-fi" defaultValue={it.email || ""} /></div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Role</label>
-                <select className="adm-fi" defaultValue={it.role || "Viewer"}>
-                  <option>Super Admin</option><option>Manager</option><option>Editor</option><option>Viewer</option>
+                <select className="adm-fi" defaultValue={it.roleRaw || "user"}>
+                  <option value="admin">{lang === "es" ? "Administrador" : "Administrator"}</option>
+                  <option value="employee">{lang === "es" ? "Empleado" : "Employee"}</option>
+                  <option value="user">{lang === "es" ? "Cliente / Usuario" : "Customer / User"}</option>
                 </select>
               </div>
               <div className="adm-fg"><label className="adm-fl">Department</label><input className="adm-fi" defaultValue={it.department || ""} /></div>
@@ -10345,7 +10349,7 @@ function AdminPanelRoute() {
   const [auth, setAuth] = useState(undefined);
   useEffect(() => {
     let mounted = true;
-    const isAuthorizedRole = (r) => r === "admin" || r === "manager" || r === "employee";
+    const isAuthorizedRole = (r) => r === "admin" || r === "employee";
     (async () => {
       try {
         const { createClient } = await import("@/lib/supabase/client");
