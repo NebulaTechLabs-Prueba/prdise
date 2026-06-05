@@ -80,6 +80,7 @@ import {
   generateInvoicePdf as sbGenerateInvoicePdf,
   getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
 } from "@/lib/admin/invoices";
+import { updateSiteSettingsBulk as sbUpdateSiteSettingsBulk } from "@/lib/admin/settings";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -243,20 +244,41 @@ function mapPostToAdminPost(p) {
   };
 }
 
+// Configuración global del sitio leída desde site_settings (KV en Supabase).
+// El admin la edita desde el panel Settings; el público la lee sin auth (RLS
+// SELECT abierto). Se mergea con defaults para que la app NUNCA tenga
+// strings vacíos rotos si la tabla está vacía.
+const SITE_SETTINGS_DEFAULTS = {
+  whatsapp_phone: "17872379519",
+  contact_phone: "+1 (787) 237-9519",
+  contact_phone_tel: "+17872379519",
+  contact_email: "info@prdise.com",
+  company_name: "Living in PRDISE",
+  tagline: "House of Tours",
+  address: "Cabo Rojo, Puerto Rico",
+};
+const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
+function getSetting(key) {
+  const v = SITE_SETTINGS[key];
+  return v && String(v).trim().length > 0 ? v : SITE_SETTINGS_DEFAULTS[key] || "";
+}
+
 async function loadInitialData() {
   try {
-    const [{ createClient }, { getStays, getTours, getTransferRoutes, getVehicles, getPublishedPosts, getPartners }] = await Promise.all([
+    const [{ createClient }, { getStays, getTours, getTransferRoutes, getVehicles, getPublishedPosts, getPartners }, { getSiteSettings }] = await Promise.all([
       import("@/lib/supabase/client"),
       import("@/lib/queries/catalog"),
+      import("@/lib/queries/settings"),
     ]);
     const sb = createClient();
-    const [stays, tours, routes, vehicles, posts, partners] = await Promise.all([
+    const [stays, tours, routes, vehicles, posts, partners, settings] = await Promise.all([
       getStays(sb),
       getTours(sb),
       getTransferRoutes(sb),
       getVehicles(sb),
       getPublishedPosts(sb, {}),
       getPartners(sb, { activeOnly: false }),
+      getSiteSettings(sb),
     ]);
     void sb; // Drivers se cargan en AdminPanel via Server Action listDrivers
              // (requiere staff auth) — no se pre-carga en loadInitialData
@@ -279,6 +301,10 @@ async function loadInitialData() {
 
     PARTNERS.length = 0;
     (partners || []).forEach((p) => PARTNERS.push(p));
+
+    // Mergear settings de DB sobre defaults — keys no presentes mantienen
+    // el default. Cualquier value vacío también cae al default vía getSetting.
+    Object.assign(SITE_SETTINGS, settings || {});
     return true;
   } catch (e) {
     console.error("loadInitialData error:", e);
@@ -556,7 +582,8 @@ const nav = (p) => { window.location.hash = p.startsWith("#") ? p : "#" + p; };
 // que el cliente contacte al responsable PRDISE por un servicio del catálogo.
 // Pivote 2026-06-04: PRDISE = catálogo + referral, sin checkout. El contacto
 // inicial es por WhatsApp y luego admin emite invoice con Payment Link Stripe.
-const PRDISE_WA_PHONE = "17872379519";
+// El número viene de site_settings.whatsapp_phone (editable desde admin),
+// con fallback al default si la tabla está vacía.
 function buildWhatsAppHref({ user, lang, service }) {
   const isEs = lang === "es";
   const greeting = isEs ? "Hola, soy" : "Hi, I'm";
@@ -577,7 +604,7 @@ function buildWhatsAppHref({ user, lang, service }) {
     ? "\n¿Me puedes ayudar con la disponibilidad y el siguiente paso?"
     : "\nCould you help me with availability and next steps?";
   const text = `${intro}${details}${ask}`;
-  return `https://wa.me/${PRDISE_WA_PHONE}?text=${encodeURIComponent(text)}`;
+  return `https://wa.me/${getSetting("whatsapp_phone")}?text=${encodeURIComponent(text)}`;
 }
 
 function NavLink({ to, children, className, style, external, ...rest }) {
@@ -1278,8 +1305,8 @@ function Footer() {
               <div className="foot-col">
                 <h5>Info</h5>
                 <NavLink to="/about">{t("about")}</NavLink>
-                <a href="mailto:info@livinginprdise.com">{t("email")}</a>
-                <a href="tel:+17872379519">(787) 237-9519</a>
+                <a href={`mailto:${getSetting("contact_email")}`}>{t("email")}</a>
+                <a href={`tel:${getSetting("contact_phone_tel")}`}>{getSetting("contact_phone")}</a>
               </div>
             </div>
             <div className="foot-bottom">
@@ -1299,7 +1326,7 @@ function Footer() {
 }
 
 function WhatsAppChat() {
-  const phone = "17872379519";
+  const phone = getSetting("whatsapp_phone");
   const msg = "Hi! I'm interested in your services in Cabo Rojo, Puerto Rico. Can you help me?";
   return (
     <a href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer" className="wa-float" aria-label="Chat on WhatsApp" title="Chat on WhatsApp">
@@ -1552,14 +1579,10 @@ function HomePage() {
               <div className="script">{t("houseOfTours")}</div>
               <p>{t("aboutUsP1")}<strong>{t("aboutUsP1b")}</strong>{t("aboutUsP1c")}</p>
               <p>{t("aboutUsP2")}</p>
-              <div className="stats">
-                {[["500+", t("happyTravelers")], ["15+", t("uniqueTours")], ["4.9", t("avgRating")], ["24/7", t("localSupport")]].map(([n, l]) => (
-                  <div key={l} className="stat">
-                    <div className="stat-n">{n}</div>
-                    <div className="stat-l">{l}</div>
-                  </div>
-                ))}
-              </div>
+              {/* Métricas removidas: eran hardcoded ("500+ happy travelers",
+                  "4.9 avg rating", etc.) sin base en datos reales. Cuando el
+                  sistema acumule reviews/bookings reales podrán mostrarse
+                  desde Supabase. */}
             </div>
           </div>
         </div>
@@ -1672,9 +1695,11 @@ function HotelsList() {
                       <div className="listing-body">
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,.5)", marginBottom: 4 }}>
                           <span>{h.type}</span>
-                          <span style={{ color: "var(--gold)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                            <Star style={{ width: 12, height: 12, fill: "var(--gold)" }} />{h.rating} ({h.reviews})
-                          </span>
+                          {h.reviews > 0 && (
+                            <span style={{ color: "var(--gold)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                              <Star style={{ width: 12, height: 12, fill: "var(--gold)" }} />{h.rating} ({h.reviews})
+                            </span>
+                          )}
                         </div>
                         <h3>{L(h.name, h.nameES)}</h3>
                         <p className="listing-meta"><MapPin style={{ width: 12, height: 12 }} />{h.zone} · Sleeps {h.sleeps}</p>
@@ -1744,9 +1769,11 @@ function ToursList() {
                 <div className="listing-body">
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,.5)", marginBottom: 4 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock style={{ width: 12, height: 12 }} />{tr.duration}</span>
-                    <span style={{ color: "var(--gold)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                      <Star style={{ width: 12, height: 12, fill: "var(--gold)" }} />{tr.rating} ({tr.reviews})
-                    </span>
+                    {tr.reviews > 0 && (
+                      <span style={{ color: "var(--gold)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                        <Star style={{ width: 12, height: 12, fill: "var(--gold)" }} />{tr.rating} ({tr.reviews})
+                      </span>
+                    )}
                   </div>
                   <h3>{L(tr.name, tr.nameES)}</h3>
                   <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {tr.difficulty}</p>
@@ -3045,7 +3072,8 @@ function AboutPage() {
     { name: t("thePlanners"), role: t("obsessive"), desc: t("plannersD") },
     { name: t("theCommunity"), role: t("localPartners"), desc: t("communityD") },
   ];
-  const stats = [["500+", t("happyTravelers")], ["15+", t("uniqueTours")], ["4.9", t("avgRating")], ["24/7", t("localSupport")]];
+  // Stats removidos: eran fake ("500+", "4.9", etc.). Cuando se acumulen
+  // reviews/bookings reales se podrán derivar desde Supabase.
   return (
     <>
       <PageHero tag={t("about")} title="WE ARE" titleEm="PRDISE" subtitle={t("aboutHeroSub")} />
@@ -3112,17 +3140,9 @@ function AboutPage() {
             </div>
           </div>
 
-          {/* STATS */}
-          <div style={{ padding: 40, borderRadius: 28, background: "linear-gradient(135deg,rgba(245,166,35,.08),rgba(239,108,43,.06),rgba(141,198,63,.06),rgba(41,171,226,.08))", border: "1px solid rgba(245,166,35,.15)", marginBottom: 64 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 24 }}>
-              {stats.map(([n, l]) => (
-                <div key={l} style={{ textAlign: "center" }}>
-                  <div style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.4rem,5vw,3.2rem)", letterSpacing: ".02em", color: "var(--gold)" }}>{n}</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginTop: 4 }}>{l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* STATS removidos: tarjeta fake con "500+ / 15+ / 4.9 / 24/7"
+              no respaldada por datos reales. Reactivar cuando haya reviews
+              y bookings reales para derivar las métricas de Supabase. */}
 
           {/* CTA */}
           <div style={{ padding: "56px 32px", borderRadius: 28, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}>
@@ -3203,10 +3223,10 @@ function ContactPage() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {[
-                { Icon: Phone, label: "Phone", value: "(787) 237-9519", href: "tel:+17872379519", c: "gold" },
-                { Icon: Mail, label: "Email", value: "info@livinginprdise.com", href: "mailto:info@livinginprdise.com", c: "orange" },
+                { Icon: Phone, label: "Phone", value: getSetting("contact_phone"), href: `tel:${getSetting("contact_phone_tel")}`, c: "gold" },
+                { Icon: Mail, label: "Email", value: getSetting("contact_email"), href: `mailto:${getSetting("contact_email")}`, c: "orange" },
                 { Icon: MapPin, label: "Location", value: "Cabo Rojo, Puerto Rico", href: null, c: "green" },
-                { Icon: MessageCircle, label: "WhatsApp", value: "Chat with us", href: "https://wa.me/17872379519", c: "sky" },
+                { Icon: MessageCircle, label: "WhatsApp", value: "Chat with us", href: `https://wa.me/${getSetting("whatsapp_phone")}`, c: "sky" },
               ].map((c, i) => (
                 <a key={i} href={c.href || "#"} target={c.href?.startsWith("http") ? "_blank" : undefined} rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 14, padding: 18, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)" }}>
                   <div style={{ width: 44, height: 44, borderRadius: 14, background: COLORS[c.c] + "22", color: COLORS[c.c], display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -4281,6 +4301,41 @@ function AdminPanel({ onClose }) {
   const [editing, setEditing] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("general");
+  // Settings de empresa (KV en site_settings). Pre-cargados desde
+  // SITE_SETTINGS (poblado por loadInitialData). El admin edita y guarda
+  // bulk; el resto del sitio los lee via getSetting().
+  const [companySettings, setCompanySettings] = useState(() => ({
+    company_name: getSetting("company_name"),
+    tagline: getSetting("tagline"),
+    contact_email: getSetting("contact_email"),
+    contact_phone: getSetting("contact_phone"),
+    contact_phone_tel: getSetting("contact_phone_tel"),
+    whatsapp_phone: getSetting("whatsapp_phone"),
+    address: getSetting("address"),
+  }));
+  const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
+  const updCompanySetting = (k, v) => setCompanySettings((s) => ({ ...s, [k]: v }));
+  const saveCompanySettings = async () => {
+    setCompanySettingsSaving(true);
+    try {
+      const entries = Object.entries(companySettings).map(([key, value]) => ({ key, value }));
+      const fd = new FormData();
+      fd.append("entries", JSON.stringify(entries));
+      const res = await sbUpdateSiteSettingsBulk(fd);
+      if (!res?.ok) {
+        alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
+        return;
+      }
+      // Reflejar en el cache en memoria para que el resto del sitio lea
+      // los valores nuevos sin recargar la página.
+      Object.assign(SITE_SETTINGS, companySettings);
+      alert(lang === "es" ? "Configuración guardada." : "Settings saved.");
+    } catch (e) {
+      alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+    } finally {
+      setCompanySettingsSaving(false);
+    }
+  };
   const [splashOff, setSplashOff] = useState(() => PRDISE.load("splashOff", false));
   const [transferTab, setTransferTab] = useState("routes");
   const [contactsFilter, setContactsFilter] = useState("all");
@@ -8203,16 +8258,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card">
                 <div className="adm-card-head"><div className="adm-card-title">{lang==="es"?"Información de la Empresa":"Company Information"}</div></div>
                 <div className="adm-fg-row">
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre de la Empresa":"Company Name"}</label><input className="adm-fi" defaultValue="Living in PRDISE" /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema":"Tagline"}</label><input className="adm-fi" defaultValue="House of Tours" /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre de la Empresa":"Company Name"}</label><input className="adm-fi" value={companySettings.company_name} onChange={(e) => updCompanySetting("company_name", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema":"Tagline"}</label><input className="adm-fi" value={companySettings.tagline} onChange={(e) => updCompanySetting("tagline", e.target.value)} /></div>
                 </div>
-                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Correo de Contacto":"Contact Email"}</label><input className="adm-fi" type="email" defaultValue="info@livinginprdise.com" /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Correo de Contacto":"Contact Email"}</label><input className="adm-fi" type="email" value={companySettings.contact_email} onChange={(e) => updCompanySetting("contact_email", e.target.value)} /></div>
                 <div className="adm-fg-row">
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono":"Phone"}</label><input className="adm-fi" type="tel" defaultValue="(787) 237-9519" /></div>
-                  <div className="adm-fg"><label className="adm-fl">WhatsApp</label><input className="adm-fi" defaultValue="+1 787-237-9519" /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono (mostrar)":"Phone (display)"}</label><input className="adm-fi" type="tel" value={companySettings.contact_phone} onChange={(e) => updCompanySetting("contact_phone", e.target.value)} placeholder="+1 (787) 237-9519" /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono (tel:)":"Phone (tel:)"}</label><input className="adm-fi" type="tel" value={companySettings.contact_phone_tel} onChange={(e) => updCompanySetting("contact_phone_tel", e.target.value)} placeholder="+17872379519" /></div>
                 </div>
-                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" defaultValue="Cabo Rojo, Puerto Rico" /></div>
-                <button className="adm-btn adm-btn-primary" onClick={() => alert(lang==="es"?"La persistencia de esta configuración llegará en una próxima actualización.":"Persistence of this configuration is coming in a future update.")}><Check />{t("adm_save")}</button>
+                <div className="adm-fg"><label className="adm-fl">WhatsApp <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>{lang === "es" ? "(solo dígitos con código país, ej. 17872379519)" : "(digits only with country code, e.g. 17872379519)"}</span></label><input className="adm-fi" value={companySettings.whatsapp_phone} onChange={(e) => updCompanySetting("whatsapp_phone", e.target.value)} placeholder="17872379519" /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" value={companySettings.address} onChange={(e) => updCompanySetting("address", e.target.value)} /></div>
+                <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving}>
+                  {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+                  {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : t("adm_save")}
+                </button>
               </div>
 
               {/* Language Settings */}
@@ -8530,11 +8589,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             const fd = new FormData();
             const priceCents = String(Math.round((ownedUpdate.price || 0) * 100));
             if (editing.type === "hotel") {
+              // Bilingüe: usa nameES/descES si existen, fallback a EN. La
+              // public detail page usa L(name, nameES) así que ambas columnas
+              // deben tener datos coherentes.
+              const enName = ownedUpdate.name || "";
+              const esName = ownedUpdate.nameES || enName;
+              const enDesc = ownedUpdate.desc || "";
+              const esDesc = ownedUpdate.descES || enDesc;
               fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
-              fd.append("title_es", ownedUpdate.name || "");
-              fd.append("title_en", ownedUpdate.name || "");
-              fd.append("short_desc_es", ownedUpdate.desc || "");
-              fd.append("short_desc_en", ownedUpdate.desc || "");
+              fd.append("title_es", esName);
+              fd.append("title_en", enName);
+              fd.append("short_desc_es", esDesc);
+              fd.append("short_desc_en", enDesc);
               fd.append("price_cents", priceCents);
               fd.append("max_guests", String(ownedUpdate.sleeps || 1));
               fd.append("bedrooms", String(ownedUpdate.bedrooms || 0));
@@ -8546,15 +8612,30 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("active", ownedUpdate.status === "hidden" ? "false" : "true");
               if (ownedUpdate.partnerId) fd.append("partner_id", ownedUpdate.partnerId);
               if (ownedUpdate.partnerUrl) fd.append("partner_url", ownedUpdate.partnerUrl);
+              // Amenities + galería: el Server Action readListField acepta
+              // JSON string, CSV, o múltiples entries. Usamos JSON por
+              // simplicidad y para preservar espacios/comas en valores.
+              const amenitiesArr = Array.isArray(ownedUpdate.amenities) ? ownedUpdate.amenities : [];
+              fd.append("amenities", JSON.stringify(amenitiesArr));
+              // Galería: combinar cover (`img`) + `gallery`, deduplicar y
+              // filtrar vacíos. La cover se persiste como primera imagen.
+              const coverImg = ownedUpdate.img || "";
+              const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
+              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
+              fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "tour") {
+              const enName = ownedUpdate.name || "";
+              const esName = ownedUpdate.nameES || enName;
+              const enDesc = ownedUpdate.desc || "";
+              const esDesc = ownedUpdate.descES || enDesc;
               fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
-              fd.append("title_es", ownedUpdate.name || "");
-              fd.append("title_en", ownedUpdate.name || "");
-              fd.append("short_desc_es", ownedUpdate.desc || "");
-              fd.append("short_desc_en", ownedUpdate.desc || "");
+              fd.append("title_es", esName);
+              fd.append("title_en", enName);
+              fd.append("short_desc_es", esDesc);
+              fd.append("short_desc_en", enDesc);
               fd.append("price_cents", priceCents);
               fd.append("duration_minutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
               fd.append("max_pax", String(ownedUpdate.capacity || 10));
@@ -8562,20 +8643,34 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (ownedUpdate.lat != null) fd.append("lat", String(ownedUpdate.lat));
               if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
-              fd.append("active", ownedUpdate.status === "draft" ? "false" : "true");
+              // Tour "hidden" debe desactivar el tour para que no salga en el
+              // catálogo público (RLS activeOnly). "draft" idem.
+              fd.append("active", (ownedUpdate.status === "draft" || ownedUpdate.status === "hidden") ? "false" : "true");
               if (ownedUpdate.partnerId) fd.append("partner_id", ownedUpdate.partnerId);
               if (ownedUpdate.partnerUrl) fd.append("partner_url", ownedUpdate.partnerUrl);
+              const includesArr = Array.isArray(ownedUpdate.includes) ? ownedUpdate.includes : [];
+              fd.append("includes", JSON.stringify(includesArr));
+              const coverImg = ownedUpdate.img || "";
+              const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
+              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
+              fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateTour : sbUpdateTour;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "post") {
+              const enTitle = ownedUpdate.title || "";
+              const esTitle = ownedUpdate.titleES || enTitle;
+              const enExcerpt = ownedUpdate.excerpt || "";
+              const esExcerpt = ownedUpdate.excerptES || enExcerpt;
+              const enBody = ownedUpdate.body || "";
+              const esBody = ownedUpdate.bodyES || enBody;
               fd.append("slug", ownedUpdate.slug || ownedUpdate.id || "");
-              fd.append("title_es", ownedUpdate.title || "");
-              fd.append("title_en", ownedUpdate.title || "");
-              fd.append("excerpt_es", ownedUpdate.excerpt || "");
-              fd.append("excerpt_en", ownedUpdate.excerpt || "");
-              fd.append("body_es", ownedUpdate.body || "");
-              fd.append("body_en", ownedUpdate.body || "");
+              fd.append("title_es", esTitle);
+              fd.append("title_en", enTitle);
+              fd.append("excerpt_es", esExcerpt);
+              fd.append("excerpt_en", enExcerpt);
+              fd.append("body_es", esBody);
+              fd.append("body_en", enBody);
               fd.append("category", ownedUpdate.category || "");
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               fd.append("image", ownedUpdate.img || "");
