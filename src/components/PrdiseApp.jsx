@@ -1308,6 +1308,39 @@ function WhatsAppChat() {
   );
 }
 
+// Aviso bilingüe pedido por el cliente: el turista debe saber que los tours
+// son liderados en español con apoyo en inglés. Se muestra siempre el par EN
+// + ES (no depende del idioma seleccionado) porque el aviso debe llegar al
+// turista que probablemente todavía no haya tocado el toggle de idioma.
+function BilingualNotice({ style }) {
+  const en = "Tours in Spanish with English assistance · Translation tools available";
+  const es = "Tours en español con asistencia en inglés · Herramientas de traducción disponibles";
+  return (
+    <div
+      style={{
+        padding: "12px 16px",
+        borderRadius: 12,
+        background: "linear-gradient(135deg, rgba(245,166,35,.10), rgba(141,198,63,.08))",
+        border: "1px solid rgba(245,166,35,.3)",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        ...(style || {}),
+      }}
+    >
+      <Globe style={{ width: 16, height: 16, color: "var(--gold)", flexShrink: 0, marginTop: 2 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, color: "#fff", fontWeight: 700, lineHeight: 1.45 }}>
+          {en}
+        </div>
+        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.65)", fontWeight: 500, lineHeight: 1.45, marginTop: 3 }}>
+          {es}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PageHero({ tag, title, titleEm, subtitle }) {
   return (
     <section className="page-hero bg-ink">
@@ -1419,6 +1452,7 @@ function HomePage() {
           </div>
           <h1 className={lang === "es" ? "lang-es" : ""}>{t("heroTitle")}<br /><span className="col-g">P</span><span className="col-o">R</span><span>DISE</span></h1>
           <p className="hero-sub">{t("heroSub")}</p>
+          <BilingualNotice style={{ maxWidth: 560, marginTop: 18, marginBottom: 4 }} />
           <div className="hero-btns">
             <NavLink to="/transfer-search" className="h-btn h-btn-fill"><Car />{t("heroCtaTransfer")}</NavLink>
             <NavLink to="/stays" className="h-btn h-btn-ghost"><Home />{t("heroCtaSec")}</NavLink>
@@ -1661,6 +1695,7 @@ function ToursList() {
       <PageHero tag={t("tours")} title={t("availTours")} titleEm="" subtitle="" />
       <div className="inner-page">
         <div className="inner-wrap">
+          <BilingualNotice style={{ marginBottom: 22 }} />
 
           <div className="card-grid">
             {TOURS.filter(tr => !tr.status || tr.status === "published").map((tr) => {
@@ -2148,6 +2183,7 @@ function TourDetail({ params }) {
                   <span className="booking-price">${tour.price}</span>
                   <span className="price-sub">{t("perPersonPrice")}</span>
                 </div>
+                <BilingualNotice style={{ marginBottom: 14 }} />
                 <div className="f-grp">
                   <label className="f-lab">{t("date")}</label>
                   <DatePicker value={date} onChange={setDate} min={minDate} placeholder={t("selectDate")} />
