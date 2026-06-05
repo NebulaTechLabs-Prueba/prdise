@@ -767,7 +767,8 @@ input,select,textarea{font-family:inherit}
 .hero{position:relative;min-height:100vh;display:flex;align-items:flex-end;overflow:hidden}
 .hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero-grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,19,24,.3) 0%,rgba(12,19,24,.1) 30%,rgba(12,19,24,.85) 75%,var(--deep) 100%)}
-.hero-body{position:relative;z-index:2;padding-bottom:80px;width:100%}
+.hero-body{position:relative;z-index:2;padding-top:120px;padding-bottom:80px;width:100%}
+@media(max-width:768px){.hero-body{padding-top:100px;padding-bottom:60px}}
 .hero-kicker{display:inline-flex;align-items:center;gap:8px;margin-bottom:28px}
 .hero-kicker i{width:8px;height:8px;border-radius:50%;animation:pulse 2s ease-in-out infinite}
 .hero-kicker i:nth-child(1){background:var(--gold);animation-delay:0s}
@@ -777,7 +778,11 @@ input,select,textarea{font-family:inherit}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.4);opacity:1}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .hero-kicker span{font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.5)}
-.hero h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(3rem,10vw,8rem);line-height:.92;letter-spacing:.02em;color:#fff;margin-bottom:20px}
+/* h1 con min-height fija (basada en la versión EN, que es más grande)
+   para que el cambio de idioma EN↔ES no altere la altura del h1 ni
+   desplace los elementos de abajo. clamp(...,18vw,...) ≈ 2 líneas
+   × clamp(...,10vw,...) × .92 line-height. */
+.hero h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(3rem,10vw,8rem);line-height:.92;letter-spacing:.02em;color:#fff;margin-bottom:20px;min-height:clamp(5.4rem,18.4vw,14.8rem);display:flex;flex-direction:column;justify-content:center}
 .hero h1.lang-es{font-size:clamp(2.6rem,8.5vw,6.8rem);letter-spacing:0}
 .hero h1 .col-g{color:var(--gold)}.hero h1 .col-o{color:var(--orange)}
 .hero h1 .col-gr{color:var(--green)}.hero h1 .col-s{color:var(--sky)}
@@ -1517,7 +1522,10 @@ function HomePage() {
           </div>
           <h1 className={lang === "es" ? "lang-es" : ""}>{t("heroTitle")}<br /><span className="col-g">P</span><span className="col-o">R</span><span>DISE</span></h1>
           <p className="hero-sub">{t("heroSub")}</p>
-          <BilingualNotice variant="compact" style={{ marginTop: 14, marginBottom: 2 }} />
+          {/* marginTop negativo recorta el margin-bottom:40 del .hero-sub
+              para que la separación visual quede aireada pero balanceada.
+              marginBottom:28 deja respiro entre la chip y los botones. */}
+          <BilingualNotice variant="compact" style={{ marginTop: -16, marginBottom: 28 }} />
           <div className="hero-btns">
             <NavLink to="/transfer-search" className="h-btn h-btn-fill"><Car />{t("heroCtaTransfer")}</NavLink>
             <NavLink to="/stays" className="h-btn h-btn-ghost"><Home />{t("heroCtaSec")}</NavLink>
@@ -2387,7 +2395,7 @@ const VEHICLE_ICONS = {
 };
 
 function TransferSearchPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = toISO(tomorrow);
   // Read query params from quick search
