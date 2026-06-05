@@ -103,8 +103,23 @@ const TOURS = [];
 const VEHICLES = [];
 const ROUTES = [];
 const PARTNERS = [];
-const ORIGINS = ["SJU Airport", "BQN Airport", "San Juan Hotel", "Ponce", "Rincón", "Other"];
-const DESTINATIONS = ["Cabo Rojo", "Boquerón", "La Parguera", "Joyuda", "Combate", "SJU Airport", "BQN Airport", "Other"];
+// Defaults para que los <select> de Desde/Hasta no aparezcan vacíos cuando
+// la tabla transfer_routes está sin filas. En tiempo de ejecución, las
+// opciones reales se derivan de ROUTES (poblada por loadInitialData), así
+// que cuando el admin agrega/edita rutas, los dropdowns reflejan el cambio
+// automáticamente sin necesidad de una tabla aparte de "locations".
+const ORIGINS_DEFAULTS = ["SJU Airport", "BQN Airport", "San Juan Hotel", "Ponce", "Rincón", "Other"];
+const DESTINATIONS_DEFAULTS = ["Cabo Rojo", "Boquerón", "La Parguera", "Joyuda", "Combate", "SJU Airport", "BQN Airport", "Other"];
+function getOrigins() {
+  if (!Array.isArray(ROUTES) || ROUTES.length === 0) return ORIGINS_DEFAULTS;
+  const set = new Set(ROUTES.map((r) => r?.from).filter(Boolean));
+  return set.size === 0 ? ORIGINS_DEFAULTS : Array.from(set).sort();
+}
+function getDestinations() {
+  if (!Array.isArray(ROUTES) || ROUTES.length === 0) return DESTINATIONS_DEFAULTS;
+  const set = new Set(ROUTES.map((r) => r?.to).filter(Boolean));
+  return set.size === 0 ? DESTINATIONS_DEFAULTS : Array.from(set).sort();
+}
 
 const STAY_ABOUT = {};
 const TOUR_ABOUT = {};
@@ -1339,28 +1354,51 @@ function WhatsAppChat() {
 // son liderados en español con apoyo en inglés. Se muestra siempre el par EN
 // + ES (no depende del idioma seleccionado) porque el aviso debe llegar al
 // turista que probablemente todavía no haya tocado el toggle de idioma.
-function BilingualNotice({ style }) {
-  const en = "Tours in Spanish with English assistance · Translation tools available";
-  const es = "Tours en español con asistencia en inglés · Herramientas de traducción disponibles";
+// Variant 'compact' = chip pequeño para hero (no rompe layout); 'full' =
+// panel con dos líneas para detail pages donde hay más aire.
+function BilingualNotice({ style, variant = "full" }) {
+  const en = "Tours in Spanish · English assistance available";
+  const es = "Tours en español · Asistencia en inglés disponible";
+  if (variant === "compact") {
+    return (
+      <div
+        style={{
+          padding: "7px 12px",
+          borderRadius: 99,
+          background: "rgba(245,166,35,.10)",
+          border: "1px solid rgba(245,166,35,.28)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          ...(style || {}),
+        }}
+      >
+        <Globe style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.85)", fontWeight: 600, lineHeight: 1.3 }}>
+          {en} <span style={{ opacity: 0.55, margin: "0 4px" }}>·</span> {es}
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       style={{
-        padding: "12px 16px",
-        borderRadius: 12,
+        padding: "10px 14px",
+        borderRadius: 10,
         background: "linear-gradient(135deg, rgba(245,166,35,.10), rgba(141,198,63,.08))",
-        border: "1px solid rgba(245,166,35,.3)",
+        border: "1px solid rgba(245,166,35,.28)",
         display: "flex",
-        alignItems: "flex-start",
-        gap: 12,
+        alignItems: "center",
+        gap: 10,
         ...(style || {}),
       }}
     >
-      <Globe style={{ width: 16, height: 16, color: "var(--gold)", flexShrink: 0, marginTop: 2 }} />
+      <Globe style={{ width: 14, height: 14, color: "var(--gold)", flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, color: "#fff", fontWeight: 700, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 11.5, color: "#fff", fontWeight: 700, lineHeight: 1.4 }}>
           {en}
         </div>
-        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.65)", fontWeight: 500, lineHeight: 1.45, marginTop: 3 }}>
+        <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.65)", fontWeight: 500, lineHeight: 1.4, marginTop: 1 }}>
           {es}
         </div>
       </div>
@@ -1425,7 +1463,7 @@ function TransferQuickSearch() {
               <label><MapPin />{t("from")}</label>
               <select value={from} onChange={(e) => setFrom(e.target.value)} className="transfer-quick-select">
                 <option value="">{t("selectOrigin")}</option>
-                {ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                {getOrigins().map(o => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
             <div className="transfer-quick-swap">
@@ -1439,7 +1477,7 @@ function TransferQuickSearch() {
               <label><MapPin />{t("to")}</label>
               <select value={to} onChange={(e) => setTo(e.target.value)} className="transfer-quick-select">
                 <option value="">{t("selectDest")}</option>
-                {DESTINATIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                {getDestinations().map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
             <div className="transfer-quick-field" style={{ flex: ".8", minWidth: 150 }}>
@@ -1479,7 +1517,7 @@ function HomePage() {
           </div>
           <h1 className={lang === "es" ? "lang-es" : ""}>{t("heroTitle")}<br /><span className="col-g">P</span><span className="col-o">R</span><span>DISE</span></h1>
           <p className="hero-sub">{t("heroSub")}</p>
-          <BilingualNotice style={{ maxWidth: 560, marginTop: 18, marginBottom: 4 }} />
+          <BilingualNotice variant="compact" style={{ marginTop: 14, marginBottom: 2 }} />
           <div className="hero-btns">
             <NavLink to="/transfer-search" className="h-btn h-btn-fill"><Car />{t("heroCtaTransfer")}</NavLink>
             <NavLink to="/stays" className="h-btn h-btn-ghost"><Home />{t("heroCtaSec")}</NavLink>
@@ -1490,10 +1528,9 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
-      {/* Curated experiences: oculta la sección si no hay tours publicados en
-          Supabase, para evitar mostrar el encabezado con un grid vacío en una
-          base de datos sin contenido inicial. */}
-      {TOURS.filter(tr => !tr.status || tr.status === "published").length > 0 && (
+      {/* Curated experiences: si no hay tours publicados, muestra empty
+          state "Próximamente" en vez de ocultar el header completo, para
+          comunicar al visitante que la sección existe y está por llenarse. */}
       <section className="svc">
         <div className="container">
           <div className="sec-head">
@@ -1501,6 +1538,19 @@ function HomePage() {
             <h2>{t("curatedExp")}</h2>
             <p>{t("curatedExpSub")}</p>
           </div>
+          {TOURS.filter(tr => !tr.status || tr.status === "published").length === 0 ? (
+            <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.15)", borderRadius: 16, background: "rgba(255,255,255,.02)" }}>
+              <Compass style={{ width: 32, height: 32, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
+              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
+                {lang === "es" ? "Próximamente" : "Coming soon"}
+              </h3>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 420, margin: "0 auto" }}>
+                {lang === "es"
+                  ? "Estamos preparando nuevas experiencias para esta temporada. Vuelve pronto."
+                  : "We're putting together new experiences for this season. Check back soon."}
+              </p>
+            </div>
+          ) : (
           <div className="svc-grid">
             {TOURS.filter(tr => !tr.status || tr.status === "published").map((tr) => (
               <NavLink to={`/tour?id=${tr.id}`} key={tr.id} className="svc-card">
@@ -1520,9 +1570,9 @@ function HomePage() {
               </NavLink>
             ))}
           </div>
+          )}
         </div>
       </section>
-      )}
 
       <section className="why">
         <div className="container">
@@ -2389,7 +2439,7 @@ function TransferSearchPage() {
                 <label className="f-lab">{t("from")} *</label>
                 <select className={`f-in ${errors.from?"err":""}`} value={form.from} onChange={(e) => upd("from", e.target.value)}>
                   <option value="">{t("selectOrigin")}</option>
-                  {ORIGINS.map((o) => <option key={o}>{o}</option>)}
+                  {getOrigins().map((o) => <option key={o}>{o}</option>)}
                 </select>
                 {errors.from && <p className="err-msg">{errors.from}</p>}
               </div>
@@ -2397,7 +2447,7 @@ function TransferSearchPage() {
                 <label className="f-lab">{t("to")} *</label>
                 <select className={`f-in ${errors.to?"err":""}`} value={form.to} onChange={(e) => upd("to", e.target.value)}>
                   <option value="">{t("selectDest")}</option>
-                  {DESTINATIONS.map((d) => <option key={d}>{d}</option>)}
+                  {getDestinations().map((d) => <option key={d}>{d}</option>)}
                 </select>
                 {errors.to && <p className="err-msg">{errors.to}</p>}
               </div>
@@ -2438,21 +2488,34 @@ function TransferSearchPage() {
               </div>
             )}
           </div>
-          {/* Popular routes: oculta el panel si Supabase no tiene rutas
-              cargadas todavía, para evitar mostrar el encabezado vacío. */}
-          {ROUTES.length > 0 && (
+          {/* Popular routes: viene de transfer_routes en Supabase. Si está
+              vacía, mostramos un empty state "Próximamente" para indicar al
+              visitante que la sección existe y será poblada por el admin. */}
           <div style={{ maxWidth: 900, margin: "28px auto 0", padding: 22, borderRadius: 18, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
-            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "var(--gold)", marginBottom: 14 }}>POPULAR ROUTES</h4>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-              {ROUTES.map((r, i) => (
-                <button key={i} type="button" onClick={() => selectRoute(r)} className="route-chip">
-                  <span className="rt-txt"><strong>{r.from}</strong> → {r.to}</span>
-                  <span className="rt-meta">{r.km} km · {r.time}</span>
-                </button>
-              ))}
-            </div>
+            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "var(--gold)", marginBottom: 14 }}>{lang === "es" ? "RUTAS POPULARES" : "POPULAR ROUTES"}</h4>
+            {ROUTES.length === 0 ? (
+              <div style={{ padding: "20px 16px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 12, color: "rgba(255,255,255,.55)" }}>
+                <Car style={{ width: 22, height: 22, opacity: 0.4, marginBottom: 6 }} />
+                <div style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 4 }}>
+                  {lang === "es" ? "Próximamente" : "Coming soon"}
+                </div>
+                <p style={{ fontSize: 12, margin: 0 }}>
+                  {lang === "es"
+                    ? "Aún no hay rutas configuradas. Usa el formulario de arriba para describir tu traslado."
+                    : "No routes configured yet. Use the form above to describe your transfer."}
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                {ROUTES.map((r, i) => (
+                  <button key={i} type="button" onClick={() => selectRoute(r)} className="route-chip">
+                    <span className="rt-txt"><strong>{r.from}</strong> → {r.to}</span>
+                    <span className="rt-meta">{r.km} km · {r.time}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          )}
         </div>
       </div>
     </>
@@ -2871,14 +2934,35 @@ function ServicesPage() {
             ))}
           </div>
 
-          {/* NEWS SECTION — Editorial Magazine Layout. Solo renderiza si hay
-              al menos 1 post publicado en Supabase. Featured = primer post,
-              small stories = posts[1..3], sidebar = posts[0..6]. Sin contenido
-              falso hardcoded: si faltan posts para una posición, esa posición
-              no se renderiza. */}
+          {/* NEWS SECTION — Editorial Magazine Layout. Si hay al menos 1
+              post publicado en Supabase, se renderiza el layout: featured =
+              primer post, small stories = posts[1..3], sidebar = posts[0..6].
+              Sin contenido falso: posiciones sin post no se renderizan.
+              Si no hay posts, mostramos un empty state "Próximamente" en
+              vez de ocultar todo el bloque. */}
           {(() => {
             const published = A_POSTS.filter((p) => p.status === "published");
-            if (published.length === 0) return null;
+            if (published.length === 0) {
+              return (
+                <div style={{ marginTop: 80, paddingTop: 56, borderTop: "1px solid rgba(255,255,255,.06)" }}>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".3em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 6 }}>{t("stayInformed")}</div>
+                    <h2 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.4rem)", letterSpacing: ".02em", lineHeight: 1, margin: 0 }}>{t("newsTitle")} <em style={{ color: "var(--gold)", fontStyle: "normal" }}>{t("newsBold")}</em></h2>
+                  </div>
+                  <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.15)", borderRadius: 16, background: "rgba(255,255,255,.02)" }}>
+                    <FileText style={{ width: 32, height: 32, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
+                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
+                      {lang === "es" ? "Próximamente" : "Coming soon"}
+                    </h3>
+                    <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 420, margin: "0 auto" }}>
+                      {lang === "es"
+                        ? "Estamos preparando contenido editorial sobre tours, estadías y la costa oeste. Vuelve pronto."
+                        : "We're putting together editorial content about tours, stays and the west coast. Check back soon."}
+                    </p>
+                  </div>
+                </div>
+              );
+            }
             const featured = published[0];
             const smallStories = published.slice(1, 3);
             const sidebarHeadlines = published.slice(0, 6);
