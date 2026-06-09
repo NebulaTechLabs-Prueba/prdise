@@ -239,6 +239,10 @@ function mapRouteToRoute(r) {
     to: r.to_location,
     km: Number(r.distance_km) || 0,
     time: r.duration_minutes ? `${Math.floor(r.duration_minutes / 60)}h ${r.duration_minutes % 60}min` : "",
+    // `featured`: el admin marca una ruta como "popular" (promoción).
+    // La sección Popular Routes del público filtra por este flag.
+    featured: r.featured === true,
+    active: r.active !== false,
   };
 }
 
@@ -377,6 +381,8 @@ const TX = {
     // Contact
     contactTag: "GET IN TOUCH", contactTitle: "CONTACT", contactBold: "US",
     sendMessage: "Send Message", yourName: "Your Name", email: "Email", phone: "Phone", subject: "Subject", message: "Message",
+    subjGeneral: "General inquiry", subjTour: "Tour booking", subjStay: "Stay booking", subjTransfer: "Transfer request", subjCustom: "Custom package",
+    backToSite: "← Back to site",
     // Checkout
     paymentMethod: "Payment Method", selectPay: "Select how to pay", card: "Card", confirmPay: "Confirm & Pay", signInRequired: "Sign in required to complete booking", infoSaved: "Your info is saved — you won't lose anything.",
     // Account
@@ -491,6 +497,8 @@ const TX = {
     searchTransfers: "BUSCAR TRASLADOS", from: "Desde", to: "Hasta", date: "Fecha", time: "Hora", passengers: "Pasajeros", luggage: "Piezas de equipaje", searchBtn: "Buscar Traslados", selectVehicle: "SELECCIONA TU VEHÍCULO",
     contactTag: "CONTÁCTANOS", contactTitle: "CONTACTO", contactBold: "",
     sendMessage: "Enviar Mensaje", yourName: "Tu Nombre", email: "Correo", phone: "Teléfono", subject: "Asunto", message: "Mensaje",
+    subjGeneral: "Consulta general", subjTour: "Reserva de tour", subjStay: "Reserva de estadía", subjTransfer: "Solicitud de traslado", subjCustom: "Paquete personalizado",
+    backToSite: "← Volver al sitio",
     paymentMethod: "Método de Pago", selectPay: "Selecciona cómo pagar", card: "Tarjeta", confirmPay: "Confirmar y Pagar", signInRequired: "Debes iniciar sesión para completar la reserva", infoSaved: "Tu información está guardada — no perderás nada.",
     myInfo: "Mi Info", activity: "Actividad", preferences: "Preferencias", security: "Seguridad",
     myCart: "MI CARRITO", cartItems: "artículos", cartEmpty: "TU CARRITO ESTÁ VACÍO", cartEmptySub: "Comienza a explorar para agregar estadías, tours o traslados.", cartSub: "Artículos en tu carrito — aún no pagados. Revisa, modifica o elimina antes del checkout.", proceedCheckout: "Proceder al Pago", modify: "Modificar", remove: "Eliminar", removeFromCart: "¿Eliminar del Carrito?",
@@ -1605,50 +1613,17 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="dest">
-        <div className="container">
-          <div className="sec-head" style={{ marginBottom: 48 }}>
-            <div className="tag">{t("destTag")}</div>
-            <h2>{t("exploreWest")}</h2>
-          </div>
-          <div className="dest-grid">
-            {[
-              { img: IMG_PALM, pill: t("popular"), pillColor: "orange", label: t("historic"), title: "LOS MORRILLOS" },
-              { img: IMG_SUNSET_JETSKI, pill: t("top"), pillColor: "green", label: t("beach"), title: "PLAYA SUCIA" },
-              { img: IMG_VAN_ROAD, pill: t("magic"), pillColor: "sky", label: t("bioBay"), title: "LA PARGUERA" },
-              { img: IMG_ZIPLINE, pill: t("unique"), pillColor: "orange", label: t("nature"), title: "SALT FLATS" },
-            ].map((d, i) => (
-              <div key={i} className="dest-card">
-                <img src={d.img} alt={d.title} />
-                <div className="dest-pill" style={{ background: COLORS[d.pillColor] }}>{d.pill}</div>
-                <div className="dest-label">
-                  <span>{d.label}</span>
-                  <h4>{d.title}</h4>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Bloque "Destinations / EXPLORE WEST PR" removido: era un grid
+          hardcoded con 4 landmarks (Los Morrillos, Playa Sucia, La Parguera,
+          Salt Flats) que no provenían del backend. PM (2026-06-09): el sitio
+          no puede promocionar elementos que el admin no haya curado. Si en
+          el futuro se quiere una sección de destinos destacados, se hace
+          tabla nueva editable desde admin. */}
 
-      <section className="about">
-        <div className="container">
-          <div className="about-grid">
-            <div><div className="about-main"><img src={IMG_PALM} alt="Team" /></div></div>
-            <div className="about-txt">
-              <div className="tag">{t("aboutUsTag")}</div>
-              <h2>{t("weAre")} PRDISE</h2>
-              <div className="script">{t("houseOfTours")}</div>
-              <p>{t("aboutUsP1")}<strong>{t("aboutUsP1b")}</strong>{t("aboutUsP1c")}</p>
-              <p>{t("aboutUsP2")}</p>
-              {/* Métricas removidas: eran hardcoded ("500+ happy travelers",
-                  "4.9 avg rating", etc.) sin base en datos reales. Cuando el
-                  sistema acumule reviews/bookings reales podrán mostrarse
-                  desde Supabase. */}
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Bloque "About" del home removido: la copy "We're a team of
+          passionate boricuas..." está duplicada en /about con más detalle.
+          Eliminada de aquí para no duplicar contenido brand-only ni dar
+          impresión de info que el admin no controla. */}
 
       {/* Sección de testimonios: oculta hasta que existan reviews aprobadas reales en Supabase. */}
     </>
@@ -2500,34 +2475,28 @@ function TransferSearchPage() {
               </div>
             )}
           </div>
-          {/* Popular routes: viene de transfer_routes en Supabase. Si está
-              vacía, mostramos un empty state "Próximamente" para indicar al
-              visitante que la sección existe y será poblada por el admin. */}
-          <div style={{ maxWidth: 900, margin: "28px auto 0", padding: 22, borderRadius: 18, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
-            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "var(--gold)", marginBottom: 14 }}>{lang === "es" ? "RUTAS POPULARES" : "POPULAR ROUTES"}</h4>
-            {ROUTES.length === 0 ? (
-              <div style={{ padding: "20px 16px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 12, color: "rgba(255,255,255,.55)" }}>
-                <Car style={{ width: 22, height: 22, opacity: 0.4, marginBottom: 6 }} />
-                <div style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 4 }}>
-                  {lang === "es" ? "Próximamente" : "Coming soon"}
+          {/* Popular routes: solo rutas marcadas como `featured` por el
+              admin. Si no hay ninguna featured, todo el panel se oculta
+              (no mostramos "Próximamente" porque el formulario de arriba
+              ya cubre el flujo principal y la sección de promoción es
+              opcional — no queremos vender un slot vacío). */}
+          {(() => {
+            const featured = ROUTES.filter((r) => r.featured && r.active !== false);
+            if (featured.length === 0) return null;
+            return (
+              <div style={{ maxWidth: 900, margin: "28px auto 0", padding: 22, borderRadius: 18, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+                <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "var(--gold)", marginBottom: 14 }}>{lang === "es" ? "RUTAS POPULARES" : "POPULAR ROUTES"}</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                  {featured.map((r, i) => (
+                    <button key={i} type="button" onClick={() => selectRoute(r)} className="route-chip">
+                      <span className="rt-txt"><strong>{r.from}</strong> → {r.to}</span>
+                      <span className="rt-meta">{r.km} km · {r.time}</span>
+                    </button>
+                  ))}
                 </div>
-                <p style={{ fontSize: 12, margin: 0 }}>
-                  {lang === "es"
-                    ? "Aún no hay rutas configuradas. Usa el formulario de arriba para describir tu traslado."
-                    : "No routes configured yet. Use the form above to describe your transfer."}
-                </p>
               </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                {ROUTES.map((r, i) => (
-                  <button key={i} type="button" onClick={() => selectRoute(r)} className="route-chip">
-                    <span className="rt-txt"><strong>{r.from}</strong> → {r.to}</span>
-                    <span className="rt-meta">{r.km} km · {r.time}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </div>
     </>
@@ -3306,7 +3275,15 @@ function ContactPage() {
                   <div className="f-row">
                     <div><label className="f-lab">{t("phone")}</label><input type="tel" className="f-in" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} /></div>
                     <div><label className="f-lab">{t("subject")}</label><select className="f-in" value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}>
-                      <option>General Inquiry</option><option>Tour Booking</option><option>Stay Booking</option><option>Transfer Request</option><option>Custom Package</option>
+                      {/* Valor estable en EN para que el backend siempre
+                          reciba el mismo key; el label visible se
+                          localiza vía t(). Así el cambio de idioma no
+                          rompe el value persistido en form.subject. */}
+                      <option value="General Inquiry">{t("subjGeneral")}</option>
+                      <option value="Tour Booking">{t("subjTour")}</option>
+                      <option value="Stay Booking">{t("subjStay")}</option>
+                      <option value="Transfer Request">{t("subjTransfer")}</option>
+                      <option value="Custom Package">{t("subjCustom")}</option>
                     </select></div>
                   </div>
                   <div className="f-grp">
@@ -3356,7 +3333,7 @@ function LoginPage() {
     document.title = "Sign In — Living in PRDISE";
     const sess = PRDISE.load("session", null);
     if (sess) {
-      if (sess.role === "admin" || sess.role === "employee") nav("/admin");
+      if (sess.role === "admin") nav("/admin");
       else nav("/account");
     }
   }, []);
@@ -3389,7 +3366,7 @@ function LoginPage() {
       // cliente Supabase de AdminPanelRoute no encuentra la sesion ->
       // getUser() retorna null -> rebote al login.
       // Los stubs /admin y /account redirigen al hash route correspondiente.
-      const isStaff = result.role === "admin" || result.role === "employee";
+      const isStaff = result.role === "admin";
       window.location.assign(isStaff ? "/admin" : "/account");
     } catch (e) {
       setError(lang === "es" ? "Error inesperado, intenta de nuevo" : "Unexpected error, try again");
@@ -3473,7 +3450,7 @@ function LoginPage() {
         </NavLink>
 
         <div style={{ textAlign: "center", marginTop: 20 }}>
-          <NavLink to="/" style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>← Back to site</NavLink>
+          <NavLink to="/" style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{t("backToSite")}</NavLink>
         </div>
       </div>
     </div>
@@ -3531,7 +3508,7 @@ function RegisterPage() {
     // Si hay sesión legítima, AuthBridge la habrá conservado; si no, ya la limpió.
     const sess = PRDISE.load("session", null);
     if (sess && sess.email) {
-      if (sess.role === "admin" || sess.role === "employee") nav("/admin");
+      if (sess.role === "admin") nav("/admin");
       else nav("/account");
     }
   }, []);
@@ -3835,7 +3812,7 @@ function RegisterPage() {
           {t("alreadyHave")} <NavLink to="/login" style={{ color: "var(--gold)", fontWeight: 700, textDecoration: "none" }}>{t("signIn")}</NavLink>
         </div>
         <div style={{ textAlign: "center", marginTop: 10 }}>
-          <NavLink to="/" style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>← Back to site</NavLink>
+          <NavLink to="/" style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>{t("backToSite")}</NavLink>
         </div>
       </div>
     </div>
@@ -4493,10 +4470,10 @@ function AdminPanel({ onClose }) {
             email: u.email || "",
             name: [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.email || "—",
             // Labels visibles en el panel. La DB usa enum corto (admin /
-            // employee / user) post-consolidación 2026-06-06; el display se
-            // localiza vía roleLabelLang (ver helper getRoleLabel).
-            role: u.role === "admin" ? (lang === "es" ? "Administrador" : "Administrator")
-              : u.role === "employee" ? (lang === "es" ? "Empleado" : "Employee")
+            // user) post-reducción a 2 roles 2026-06-09; el display se
+            // localiza acá según lang.
+            role: u.role === "admin"
+              ? (lang === "es" ? "Administrador" : "Administrator")
               : (lang === "es" ? "Cliente" : "Customer"),
             roleRaw: u.role,
             status: u.status || "active",
@@ -5186,18 +5163,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             const sess = PRDISE.load("session", null) || PRDISE.load("adminSession", null) || {};
             const displayName = sess.name || "Usuario";
             const displayEmail = sess.email || "admin@prdise.com";
-            const isEmployee = sess.role === "employee";
+            // Roles reducidos a admin + user (2026-06-09). El sidebar del
+            // admin panel solo lo ve admin (el guard de ruta redirige a /
+            // si no), así que mostramos siempre la insignia de Administrador.
             return (
               <>
-                <div className="adm-avatar" style={isEmployee ? { background: "linear-gradient(135deg,#F5A623,#EF6C2B)" } : {}}>{displayName[0]?.toUpperCase() || "A"}</div>
+                <div className="adm-avatar">{displayName[0]?.toUpperCase() || "A"}</div>
                 <div className="adm-foot-info">
                   <h5>{displayName}</h5>
                   <p>{displayEmail}</p>
-                  {isEmployee && (
-                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", color: "var(--gold)", textTransform: "uppercase", marginTop: 2 }}>
-                      {sess.position || (lang === "es" ? "Empleado" : "Employee")}
-                    </div>
-                  )}
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", color: "var(--gold)", textTransform: "uppercase", marginTop: 2 }}>
+                    {lang === "es" ? "Administrador" : "Administrator"}
+                  </div>
                 </div>
               </>
             );
@@ -5916,6 +5893,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   fd.append("base_price_cents", String(Math.round((r.price || 0) * 100)));
                                   fd.append("max_pax", String(r.maxPax || r.capacity || 4));
                                   fd.append("active", newActive ? "true" : "false");
+                                  // Preservar featured (sin esto el schema lo
+                                  // defaultea a false y resetearíamos la
+                                  // marca de "popular" al togglear activo).
+                                  fd.append("featured", r.featured ? "true" : "false");
                                   const res = await sbUpdateRoute(fd);
                                   if (!res?.ok) { setRoutes(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
                                 } catch (e) { setRoutes(prev); alert("Error: " + e.message); }
@@ -7708,7 +7689,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   {lang==="es"?"USUARIOS Y ROLES":"USERS & ROLES"}
                 </h2>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", margin: 0 }}>
-                  {users.length} {lang==="es"?"miembros del equipo":"team members"} · {users.filter((u) => u.roleRaw === "admin").length} {lang==="es"?"administradores":"administrators"} · {users.filter((u) => u.roleRaw === "employee").length} {lang==="es"?"empleados":"employees"}
+                  {users.length} {lang==="es"?"usuarios":"users"} · {users.filter((u) => u.roleRaw === "admin").length} {lang==="es"?"administradores":"administrators"} · {users.filter((u) => u.roleRaw === "user").length} {lang==="es"?"clientes":"customers"}
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -8784,6 +8765,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (ownedUpdate.durationMinutes != null) fd.append("duration_minutes", String(ownedUpdate.durationMinutes));
               fd.append("max_pax", String(ownedUpdate.maxPax || ownedUpdate.capacity || 4));
               fd.append("active", ownedUpdate.status === "inactive" ? "false" : "true");
+              // `featured` marca la ruta como popular para promoción en
+              // /transfers > "Popular Routes". Solo featured = true aparece.
+              fd.append("featured", ownedUpdate.featured ? "true" : "false");
               const action = editing.isNew ? sbCreateRoute : sbUpdateRoute;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
@@ -9396,8 +9380,7 @@ function EditModal({ editing, onClose, onSave }) {
               <div className="adm-fg"><label className="adm-fl">Role</label>
                 <select className="adm-fi" defaultValue={it.roleRaw || "user"}>
                   <option value="admin">{lang === "es" ? "Administrador" : "Administrator"}</option>
-                  <option value="employee">{lang === "es" ? "Empleado" : "Employee"}</option>
-                  <option value="user">{lang === "es" ? "Cliente / Usuario" : "Customer / User"}</option>
+                  <option value="user">{lang === "es" ? "Cliente" : "Customer"}</option>
                 </select>
               </div>
               <div className="adm-fg"><label className="adm-fl">Department</label><input className="adm-fi" defaultValue={it.department || ""} /></div>
@@ -9417,16 +9400,34 @@ function EditModal({ editing, onClose, onSave }) {
         {/* ══ ROUTE FORM ══ */}
         {type === "route" && (
           <>
-            <div className="adm-fg"><label className="adm-fl">Name</label><input className="adm-fi" defaultValue={it.name || ""} placeholder="Route name" /></div>
+            {/* Campos alineados al schema real de transfer_routes en
+                Supabase. El form previo (Name/Type/Vehicle/Base Price/Peak
+                Hour/City) era legacy y ninguno mapeaba al insert/update. */}
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">Type</label><input className="adm-fi" defaultValue={it.type || ""} placeholder="Private / Shared" /></div>
-              <div className="adm-fg"><label className="adm-fl">Vehicle</label><input className="adm-fi" defaultValue={it.vehicle || ""} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Desde" : "From"} *</label><input className="adm-fi" defaultValue={it.from || ""} onChange={(e) => (it.from = e.target.value)} placeholder={lang === "es" ? "SJU Airport" : "SJU Airport"} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hasta" : "To"} *</label><input className="adm-fi" defaultValue={it.to || ""} onChange={(e) => (it.to = e.target.value)} placeholder={lang === "es" ? "Cabo Rojo" : "Cabo Rojo"} /></div>
             </div>
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">Base Price ($)</label><input type="number" className="adm-fi" defaultValue={it.basePrice || ""} /></div>
-              <div className="adm-fg"><label className="adm-fl">Peak Hour (%)</label><input type="number" className="adm-fi" defaultValue={it.peak || ""} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Precio base ($)" : "Base price ($)"} *</label><input type="number" step="0.01" className="adm-fi" defaultValue={it.price ?? ""} onChange={(e) => (it.price = parseFloat(e.target.value) || 0)} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Cap. máx. pasajeros" : "Max passengers"}</label><input type="number" className="adm-fi" defaultValue={it.maxPax || it.capacity || 4} onChange={(e) => (it.maxPax = parseInt(e.target.value) || 4)} /></div>
             </div>
-            <div className="adm-fg"><label className="adm-fl">City</label><input className="adm-fi" defaultValue={it.city || ""} /></div>
+            <div className="adm-fg-row">
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Distancia (km)" : "Distance (km)"}</label><input type="number" step="0.1" className="adm-fi" defaultValue={it.km || ""} onChange={(e) => (it.distanceKm = parseFloat(e.target.value) || null)} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Duración (min)" : "Duration (min)"}</label><input type="number" className="adm-fi" defaultValue={it.durationMinutes || ""} onChange={(e) => (it.durationMinutes = parseInt(e.target.value) || null)} /></div>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", marginTop: 6 }}>
+              <input type="checkbox" defaultChecked={!!it.featured} onChange={(e) => (it.featured = e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }}>
+                  ⭐ {lang === "es" ? "Marcar como ruta popular" : "Mark as popular route"}
+                </div>
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                  {lang === "es"
+                    ? "Aparecerá en la sección \"Rutas Populares\" del público en /transfers."
+                    : "Will appear in the public \"Popular Routes\" section at /transfers."}
+                </div>
+              </div>
+            </label>
           </>
         )}
 

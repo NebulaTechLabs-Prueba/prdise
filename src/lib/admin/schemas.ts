@@ -251,6 +251,8 @@ const transferRouteBaseSchema = z.object({
     .nullable(),
   max_pax: positiveIntSchema("Capacidad"),
   active: booleanFlagSchema.default(true),
+  // Marca de promoción: si true, aparece en "Popular Routes" del público.
+  featured: booleanFlagSchema.default(false),
 });
 
 export const createTransferRouteSchema = transferRouteBaseSchema;
@@ -397,7 +399,7 @@ export const toggleCouponActiveSchema = z.object({ id: uuidSchema });
 
 // ─── Users ──────────────────────────────────────────────────────────────────
 
-export const USER_ROLES = ["admin", "employee", "user"] as const;
+export const USER_ROLES = ["admin", "user"] as const;
 export type UserRoleLiteral = (typeof USER_ROLES)[number];
 
 export const USER_STATUSES = ["active", "inactive"] as const;

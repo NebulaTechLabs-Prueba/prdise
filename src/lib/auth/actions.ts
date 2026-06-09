@@ -19,7 +19,7 @@ export type ActionResult =
   | { ok: false; error: string };
 
 export type SignInResult =
-  | { ok: true; role: "admin" | "employee" | "user" }
+  | { ok: true; role: "admin" | "user" }
   | { ok: false; error: string }
   | { ok: false; needsReactivation: true; userId: string };
 
@@ -198,10 +198,7 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
   // explícita con window.location.assign al destino correcto.
   return {
     ok: true,
-    role: (profile?.role ?? "user") as
-      | "admin"
-      | "employee"
-      | "user",
+    role: (profile?.role ?? "user") as "admin" | "user",
   };
 }
 

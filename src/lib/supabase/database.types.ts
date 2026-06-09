@@ -1248,6 +1248,7 @@ export type Database = {
           created_at: string
           distance_km: number | null
           duration_minutes: number | null
+          featured: boolean
           from_location: string
           id: string
           max_pax: number
@@ -1260,6 +1261,7 @@ export type Database = {
           created_at?: string
           distance_km?: number | null
           duration_minutes?: number | null
+          featured?: boolean
           from_location: string
           id?: string
           max_pax?: number
@@ -1272,6 +1274,7 @@ export type Database = {
           created_at?: string
           distance_km?: number | null
           duration_minutes?: number | null
+          featured?: boolean
           from_location?: string
           id?: string
           max_pax?: number
@@ -1398,7 +1401,7 @@ export type Database = {
         | "confirmed"
         | "rejected"
         | "refunded"
-      user_role: "admin" | "employee" | "user"
+      user_role: "admin" | "user"
       user_status: "active" | "inactive"
     }
     CompositeTypes: {
@@ -1550,7 +1553,7 @@ export const Constants = {
         "rejected",
         "refunded",
       ],
-      user_role: ["admin", "employee", "user"],
+      user_role: ["admin", "user"],
       user_status: ["active", "inactive"],
     },
   },

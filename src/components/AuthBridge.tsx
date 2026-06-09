@@ -99,7 +99,7 @@ export default function AuthBridge() {
 
       writePrdise("session", session);
 
-      if (profile.role === "admin" || profile.role === "employee") {
+      if (profile.role === "admin") {
         writePrdise("adminSession", session);
       } else {
         clearPrdise("adminSession");
