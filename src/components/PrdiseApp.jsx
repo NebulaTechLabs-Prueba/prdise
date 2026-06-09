@@ -298,14 +298,15 @@ const SITE_SETTINGS_DEFAULTS = {
   company_name: "Living in PRDISE",
   tagline: "House of Tours",
   address: "Cabo Rojo, Puerto Rico",
-  // Contenido legal — editable desde admin Settings → Legal. Defaults son
-  // placeholders; el admin reemplaza con el texto definitivo cuando lo
-  // tenga el cliente. Se guarda como text plano; el renderer público usa
-  // white-space: pre-wrap para preservar saltos de línea.
-  terms_es: "Términos y Condiciones\n\nEl contenido legal será publicado próximamente.",
-  terms_en: "Terms & Conditions\n\nLegal content will be published soon.",
-  privacy_es: "Política de Privacidad\n\nEl contenido legal será publicado próximamente.",
-  privacy_en: "Privacy Policy\n\nLegal content will be published soon.",
+  // Contenido legal — editable desde admin Settings → Legal. Estos defaults
+  // son placeholders user-facing (NO incluyen instrucciones para el admin
+  // tipo "edit this from..."). El admin reemplaza con el texto definitivo
+  // cuando el cliente lo entregue. Se guarda como text plano; el renderer
+  // público usa white-space: pre-wrap para preservar saltos de línea.
+  terms_es: "Próximamente publicaremos nuestros Términos y Condiciones. Mientras tanto, si tienes alguna duda, contáctanos por WhatsApp.",
+  terms_en: "Our Terms & Conditions will be published soon. In the meantime, if you have any questions, contact us via WhatsApp.",
+  privacy_es: "Próximamente publicaremos nuestra Política de Privacidad. Mientras tanto, si tienes alguna duda, contáctanos por WhatsApp.",
+  privacy_en: "Our Privacy Policy will be published soon. In the meantime, if you have any questions, contact us via WhatsApp.",
 };
 const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
 function getSetting(key) {
@@ -8659,8 +8660,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-card-head"><div className="adm-card-title"><FileText />{lang === "es" ? "Contenido Legal" : "Legal Content"}</div></div>
                   <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 18, lineHeight: 1.6 }}>
                     {lang === "es"
-                      ? "Edita los Términos y Condiciones y la Política de Privacidad. Se publican en /terms y /privacy y el flujo de registro enlaza a estas páginas. Texto plano (los saltos de línea se preservan)."
-                      : "Edit the Terms & Conditions and Privacy Policy. They're published at /terms and /privacy and linked from the signup flow. Plain text (line breaks are preserved)."}
+                      ? "Edita los Términos y Condiciones y la Política de Privacidad. Se publican en /terms y /privacy y el flujo de registro enlaza a estas páginas. Texto plano (los saltos de línea se preservan). El texto que ingreses acá es lo que verá el público — no incluyas notas internas tipo 'editar desde admin'."
+                      : "Edit the Terms & Conditions and Privacy Policy. They're published at /terms and /privacy and linked from the signup flow. Plain text (line breaks are preserved). What you type here is what users will see — don't include internal notes like 'edit from admin'."}
                   </p>
 
                   <h4 style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".08em", color: "var(--gold)", marginTop: 8, marginBottom: 10 }}>{lang === "es" ? "TÉRMINOS Y CONDICIONES" : "TERMS & CONDITIONS"}</h4>
