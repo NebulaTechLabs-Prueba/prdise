@@ -103,6 +103,15 @@ const TOURS = [];
 const VEHICLES = [];
 const ROUTES = [];
 const PARTNERS = [];
+// Lista de países usada en /register y /account → Mi info. Texto en inglés
+// (el value se almacena como tal); el orden es US/PR primero porque son el
+// target principal del producto.
+const COUNTRIES = [
+  "United States", "Puerto Rico", "Mexico", "Canada", "Argentina", "Brazil",
+  "Chile", "Colombia", "Costa Rica", "Dominican Republic", "Ecuador",
+  "Peru", "Spain", "Venezuela", "Other",
+];
+
 // Defaults para que los <select> de Desde/Hasta no aparezcan vacíos cuando
 // la tabla transfer_routes está sin filas. En tiempo de ejecución, las
 // opciones reales se derivan de ROUTES (poblada por loadInitialData), así
@@ -275,6 +284,14 @@ const SITE_SETTINGS_DEFAULTS = {
   company_name: "Living in PRDISE",
   tagline: "House of Tours",
   address: "Cabo Rojo, Puerto Rico",
+  // Contenido legal — editable desde admin Settings → Legal. Defaults son
+  // placeholders; el admin reemplaza con el texto definitivo cuando lo
+  // tenga el cliente. Se guarda como text plano; el renderer público usa
+  // white-space: pre-wrap para preservar saltos de línea.
+  terms_es: "Términos y Condiciones\n\nEl contenido legal será publicado próximamente.",
+  terms_en: "Terms & Conditions\n\nLegal content will be published soon.",
+  privacy_es: "Política de Privacidad\n\nEl contenido legal será publicado próximamente.",
+  privacy_en: "Privacy Policy\n\nLegal content will be published soon.",
 };
 const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
 function getSetting(key) {
@@ -1433,6 +1450,41 @@ function PageHero({ tag, title, titleEm, subtitle }) {
         {subtitle && <p>{subtitle}</p>}
       </div>
     </section>
+  );
+}
+
+// Página legal genérica (Terms / Privacy). El contenido viene de
+// site_settings.{terms,privacy}_{es,en}, editable desde admin Settings → Legal.
+// Renderiza con white-space:pre-wrap para preservar saltos de línea del
+// textarea sin necesidad de un parser de markdown en v1.
+function LegalPage({ kind }) {
+  const { lang } = useLang();
+  const key = `${kind}_${lang}`;
+  const title = kind === "terms"
+    ? (lang === "es" ? "Términos y Condiciones" : "Terms & Conditions")
+    : (lang === "es" ? "Política de Privacidad" : "Privacy Policy");
+  const tag = kind === "terms"
+    ? (lang === "es" ? "Legal" : "Legal")
+    : (lang === "es" ? "Legal" : "Legal");
+  const body = getSetting(key);
+  // Si el body empieza con el título (caso default), lo quitamos para no
+  // duplicarlo con el PageHero. El admin puede escribir el body como prefiera.
+  const lines = body.split("\n");
+  const cleanBody = lines[0]?.trim() === title ? lines.slice(1).join("\n").trimStart() : body;
+  return (
+    <>
+      <PageHero tag={tag} title={title} titleEm="" subtitle="" />
+      <div className="inner-page">
+        <div className="inner-wrap">
+          <article style={{ maxWidth: 760, margin: "0 auto", padding: "32px 4px", whiteSpace: "pre-wrap", fontSize: 14.5, lineHeight: 1.75, color: "rgba(255,255,255,.85)" }}>
+            {cleanBody || (lang === "es" ? "Sin contenido cargado todavía." : "No content uploaded yet.")}
+          </article>
+          <div style={{ textAlign: "center", marginTop: 12 }}>
+            <NavLink to="/" style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "← Volver al inicio" : "← Back to home"}</NavLink>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -2672,11 +2724,9 @@ function AccountPage() {
     setConfirmLogout(true);
   };
 
-  const COUNTRY_OPTIONS = [
-    "United States", "Puerto Rico", "Mexico", "Canada", "Argentina", "Brazil",
-    "Chile", "Colombia", "Costa Rica", "Dominican Republic", "Ecuador",
-    "Peru", "Spain", "Venezuela", "Other",
-  ];
+  // COUNTRIES vive a nivel módulo (top del archivo) para compartirse con
+  // /register. Acá solo re-exponemos como COUNTRY_OPTIONS para el helper local.
+  const COUNTRY_OPTIONS = COUNTRIES;
   const LANGUAGE_OPTIONS = ["Español", "English"];
 
   const baseFieldBox = {
@@ -3459,17 +3509,13 @@ function LoginPage() {
 
 /* ═══════════════ REGISTER ═══════════════ */
 function RegisterPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "", confirmPassword: "", country: "", acceptTerms: false, acceptPrivacy: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [showPwdConfirm, setShowPwdConfirm] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quickTerms, setQuickTerms] = useState(true);
-  const [quickPrivacy, setQuickPrivacy] = useState(true);
-  const [quickError, setQuickError] = useState("");
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
@@ -3514,7 +3560,12 @@ function RegisterPage() {
   }, []);
 
   // Live validation
-  const emailValid = form.email === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+  // Regex estricto: el local-part permite alfanuméricos + . _ + -; el dominio
+  // permite solo alfanuméricos y guiones por etiqueta, con al menos un punto
+  // y un TLD de 2+ letras. Esto descarta entradas como "user@gmail+x.com"
+  // que el regex laxo anterior aceptaba pero Supabase Auth rechaza.
+  const EMAIL_RE = /^[a-zA-Z0-9._+-]+@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$/;
+  const emailValid = form.email === "" || EMAIL_RE.test(form.email);
   const passwordsMatch = form.confirmPassword === "" || form.password === form.confirmPassword;
 
   // Password strength
@@ -3629,7 +3680,11 @@ function RegisterPage() {
               {resendCooldown > 0 ? `reenviar en ${resendCooldown}s` : "reenviar"}
             </button>
           </div>
-          <a href="#/login" style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textDecoration: "underline" }}>Ya confirmé, ir a iniciar sesión</a>
+          <button type="button" onClick={() => { setSuccess(false); window.location.hash = "#/login"; }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6, padding: "8px 14px", borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.85)", fontSize: 12, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
+            <ArrowRight style={{ width: 12, height: 12 }} />
+            {lang === "es" ? "Ya confirmé, ir a iniciar sesión" : "Already confirmed, go to sign in"}
+          </button>
         </div>
       </div>
     );
@@ -3647,68 +3702,9 @@ function RegisterPage() {
           <p style={{ fontSize: 13, color: "rgba(255,255,255,.6)" }}>{t("registerSub")}</p>
         </div>
 
-        {/* Quick Sign Up */}
-        <button type="button" onClick={() => { setQuickOpen(true); setQuickError(""); }}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", padding: "13px 0", borderRadius: 12, background: "linear-gradient(135deg,rgba(245,166,35,.14),rgba(239,108,43,.14))", border: "1.5px solid rgba(245,166,35,.35)", color: "#F5A623", fontSize: 13, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", cursor: "pointer", transition: "all .25s", marginBottom: 18 }}
-        >
-          <Zap style={{ width: 15, height: 15 }} />{t("quickSignUp")}
-        </button>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.08)" }} />
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>{t("orWithEmail")}</span>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.08)" }} />
-        </div>
-
-        {/* Quick Sign Up Modal */}
-        {quickOpen && (
-          <div onClick={() => setQuickOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-          >
-            <div onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: 400, width: "100%", background: "linear-gradient(180deg,#1A2634,#0E1824)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 22, padding: "32px 28px", position: "relative" }}
-            >
-              <button onClick={() => setQuickOpen(false)} style={{ position: "absolute", top: 14, right: 14, width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.06)", border: "none", color: "rgba(255,255,255,.6)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <X style={{ width: 14, height: 14 }} />
-              </button>
-
-              <div style={{ textAlign: "center", marginBottom: 22 }}>
-                <div style={{ width: 54, height: 54, borderRadius: 14, background: "linear-gradient(135deg,var(--gold),var(--orange))", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 28px rgba(239,108,43,.35)" }}>
-                  <Zap style={{ width: 22, height: 22, color: "#fff" }} />
-                </div>
-                <h2 style={{ fontFamily: "Bebas Neue", fontSize: 24, letterSpacing: ".04em", marginBottom: 6 }}>ONE-CLICK SIGN UP</h2>
-                <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)" }}>Choose your preferred provider</p>
-              </div>
-
-              {/* Terms — pre-checked, required */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "14px 16px", borderRadius: 12, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", marginBottom: 18 }}>
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>
-                  <input type="checkbox" checked={quickTerms} onChange={(e) => { setQuickTerms(e.target.checked); setQuickError(""); }}
-                    style={{ accentColor: "#F5A623", width: 15, height: 15, marginTop: 1, flexShrink: 0 }} />
-                  <span>I accept the <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "var(--gold)", textDecoration: "underline" }}>Terms & Conditions</a></span>
-                </label>
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>
-                  <input type="checkbox" checked={quickPrivacy} onChange={(e) => { setQuickPrivacy(e.target.checked); setQuickError(""); }}
-                    style={{ accentColor: "#F5A623", width: 15, height: 15, marginTop: 1, flexShrink: 0 }} />
-                  <span>I accept the <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "var(--gold)", textDecoration: "underline" }}>Privacy Policy</a></span>
-                </label>
-              </div>
-
-              {quickError && (
-                <div style={{ padding: 10, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 7 }}>
-                  <AlertTriangle style={{ width: 13, height: 13, flexShrink: 0 }} />
-                  <span>{quickError}</span>
-                </div>
-              )}
-
-              <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px dashed rgba(245,166,35,.3)", fontSize: 12, color: "rgba(255,255,255,.65)", lineHeight: 1.5, textAlign: "center" }}>
-                {lang === "es"
-                  ? "Inicio de sesión con proveedores externos estará disponible próximamente. Por ahora usa el formulario con email y contraseña."
-                  : "External provider sign-in coming soon. For now please use the email + password form."}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* "Quick Sign Up / One-Click" removido: el flujo Google/Apple/Facebook
+            no está implementado y mostraba un modal "Coming soon" engañoso.
+            Si se habilita OAuth en el futuro, se restaura desde git history. */}
 
         {/* Form */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
@@ -3779,8 +3775,11 @@ function RegisterPage() {
         </div>
 
         <div className="f-grp">
-          <label className="f-lab">Country <span style={{ color: "rgba(255,255,255,.35)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></label>
-          <input className="f-in" placeholder="United States" value={form.country} onChange={(e) => setForm(f => ({ ...f, country: e.target.value }))} />
+          <label className="f-lab">{lang === "es" ? "País" : "Country"} <span style={{ color: "rgba(255,255,255,.35)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>({lang === "es" ? "opcional" : "optional"})</span></label>
+          <select className="f-in" value={form.country} onChange={(e) => setForm(f => ({ ...f, country: e.target.value }))}>
+            <option value="">{lang === "es" ? "Selecciona tu país…" : "Select your country…"}</option>
+            {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
 
         {/* Checkboxes */}
@@ -3788,12 +3787,12 @@ function RegisterPage() {
           <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", fontSize: 12.5, color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>
             <input type="checkbox" checked={form.acceptTerms} onChange={(e) => setForm(f => ({ ...f, acceptTerms: e.target.checked }))}
               style={{ accentColor: "#F5A623", width: 16, height: 16, marginTop: 1, flexShrink: 0 }} />
-            <span>I accept the <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "var(--gold)", textDecoration: "underline" }}>Terms & Conditions</a></span>
+            <span>{lang === "es" ? "Acepto los " : "I accept the "}<a href="#/terms" target="_blank" rel="noopener noreferrer" style={{ color: "var(--gold)", textDecoration: "underline" }}>{lang === "es" ? "Términos y Condiciones" : "Terms & Conditions"}</a></span>
           </label>
           <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", fontSize: 12.5, color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>
             <input type="checkbox" checked={form.acceptPrivacy} onChange={(e) => setForm(f => ({ ...f, acceptPrivacy: e.target.checked }))}
               style={{ accentColor: "#F5A623", width: 16, height: 16, marginTop: 1, flexShrink: 0 }} />
-            <span>I accept the <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "var(--gold)", textDecoration: "underline" }}>Privacy Policy</a></span>
+            <span>{lang === "es" ? "Acepto la " : "I accept the "}<a href="#/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--gold)", textDecoration: "underline" }}>{lang === "es" ? "Política de Privacidad" : "Privacy Policy"}</a></span>
           </label>
         </div>
 
@@ -4407,6 +4406,36 @@ function AdminPanel({ onClose }) {
       alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
     } finally {
       setCompanySettingsSaving(false);
+    }
+  };
+  // Contenido legal: 4 textareas (terms ES/EN + privacy ES/EN) persistidos
+  // en site_settings vía sbUpdateSiteSettingsBulk. Reflejo en cache para que
+  // /terms y /privacy reciban el cambio sin reload.
+  const [legalSettings, setLegalSettings] = useState(() => ({
+    terms_es: getSetting("terms_es"),
+    terms_en: getSetting("terms_en"),
+    privacy_es: getSetting("privacy_es"),
+    privacy_en: getSetting("privacy_en"),
+  }));
+  const [legalSettingsSaving, setLegalSettingsSaving] = useState(false);
+  const updLegalSetting = (k, v) => setLegalSettings((s) => ({ ...s, [k]: v }));
+  const saveLegalSettings = async () => {
+    setLegalSettingsSaving(true);
+    try {
+      const entries = Object.entries(legalSettings).map(([key, value]) => ({ key, value }));
+      const fd = new FormData();
+      fd.append("entries", JSON.stringify(entries));
+      const res = await sbUpdateSiteSettingsBulk(fd);
+      if (!res?.ok) {
+        alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
+        return;
+      }
+      Object.assign(SITE_SETTINGS, legalSettings);
+      alert(lang === "es" ? "Contenido legal guardado." : "Legal content saved.");
+    } catch (e) {
+      alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+    } finally {
+      setLegalSettingsSaving(false);
     }
   };
   const [splashOff, setSplashOff] = useState(() => PRDISE.load("splashOff", false));
@@ -7679,6 +7708,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-tab ${settingsTab === "notifications" ? "active" : ""}`} onClick={() => setSettingsTab("notifications")}><Bell />{t("adm_notifications")}</button>
               <button className={`adm-tab ${settingsTab === "security" ? "active" : ""}`} onClick={() => setSettingsTab("security")}><Shield />{t("adm_security")}</button>
               <button className={`adm-tab ${settingsTab === "integrations" ? "active" : ""}`} onClick={() => setSettingsTab("integrations")}><Globe />{t("adm_integrations")}</button>
+              <button className={`adm-tab ${settingsTab === "legal" ? "active" : ""}`} onClick={() => setSettingsTab("legal")}><FileText />{lang === "es" ? "Legal" : "Legal"}</button>
             </div>
 
         {settingsTab === "team" && (
@@ -8467,6 +8497,32 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
             {settingsTab === "integrations" && (
               <IntegrationsPanel />
+            )}
+
+            {settingsTab === "legal" && (
+              <>
+                <div className="adm-card">
+                  <div className="adm-card-head"><div className="adm-card-title"><FileText />{lang === "es" ? "Contenido Legal" : "Legal Content"}</div></div>
+                  <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 18, lineHeight: 1.6 }}>
+                    {lang === "es"
+                      ? "Edita los Términos y Condiciones y la Política de Privacidad. Se publican en /terms y /privacy y el flujo de registro enlaza a estas páginas. Texto plano (los saltos de línea se preservan)."
+                      : "Edit the Terms & Conditions and Privacy Policy. They're published at /terms and /privacy and linked from the signup flow. Plain text (line breaks are preserved)."}
+                  </p>
+
+                  <h4 style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".08em", color: "var(--gold)", marginTop: 8, marginBottom: 10 }}>{lang === "es" ? "TÉRMINOS Y CONDICIONES" : "TERMS & CONDITIONS"}</h4>
+                  <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Español" : "Spanish"}</label><textarea className="adm-fi" rows={8} value={legalSettings.terms_es} onChange={(e) => updLegalSetting("terms_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Inglés" : "English"}</label><textarea className="adm-fi" rows={8} value={legalSettings.terms_en} onChange={(e) => updLegalSetting("terms_en", e.target.value)} /></div>
+
+                  <h4 style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".08em", color: "var(--gold)", marginTop: 22, marginBottom: 10 }}>{lang === "es" ? "POLÍTICA DE PRIVACIDAD" : "PRIVACY POLICY"}</h4>
+                  <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Español" : "Spanish"}</label><textarea className="adm-fi" rows={8} value={legalSettings.privacy_es} onChange={(e) => updLegalSetting("privacy_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Inglés" : "English"}</label><textarea className="adm-fi" rows={8} value={legalSettings.privacy_en} onChange={(e) => updLegalSetting("privacy_en", e.target.value)} /></div>
+
+                  <button className="adm-btn adm-btn-primary" onClick={saveLegalSettings} disabled={legalSettingsSaving}>
+                    {legalSettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+                    {legalSettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : t("adm_save")}
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}
@@ -10533,6 +10589,8 @@ export default function PrdiseApp() {
     case "/services": page = <ServicesPage />; break;
     case "/about": page = <AboutPage />; break;
     case "/contact": page = <ContactPage />; break;
+    case "/terms": page = <LegalPage kind="terms" />; break;
+    case "/privacy": page = <LegalPage kind="privacy" />; break;
     case "/login":
     case "/admin-login": page = <LoginPage />; break;
     case "/register": page = <RegisterPage />; break;
