@@ -21,11 +21,22 @@ const nameSchema = z
   .min(1, "Nombre requerido")
   .max(80, "El nombre es demasiado largo");
 
+// Teléfono / WhatsApp del cliente. Lo guardamos en profiles.phone para que
+// el admin pueda contactarlo por WhatsApp en el modelo catálogo+referral.
+// Validación liviana: solo dígitos, +, espacios, -, () (formatos típicos).
+const phoneSchema = z
+  .string({ required_error: "WhatsApp requerido" })
+  .trim()
+  .min(7, "Teléfono inválido (mínimo 7 dígitos)")
+  .max(40, "Teléfono demasiado largo")
+  .regex(/^[+\d\s().-]+$/, "Solo dígitos, +, espacios, paréntesis y guiones");
+
 export const signUpSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   firstName: nameSchema,
   lastName: nameSchema,
+  phone: phoneSchema,
 });
 
 export const signInSchema = z.object({

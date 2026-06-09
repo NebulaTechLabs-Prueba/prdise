@@ -41,24 +41,28 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
     password: formData.get("password"),
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
+    phone: formData.get("phone"),
   });
 
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
   }
 
-  const { email, password, firstName, lastName } = parsed.data;
+  const { email, password, firstName, lastName, phone } = parsed.data;
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       // El trigger tg_handle_new_user lee estos campos de raw_user_meta_data
-      // para poblar profiles.first_name / last_name.
+      // para poblar profiles.first_name / last_name. Pasamos phone también
+      // como redundancia, pero por defecto el trigger no lo lee (sería
+      // necesario una migración). Persistimos phone más abajo via admin client.
       data: {
         first_name: firstName,
         last_name: lastName,
+        phone,
       },
       emailRedirectTo: `${getAppUrl()}/auth/callback`,
     },
@@ -77,6 +81,25 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
       };
     }
     return { ok: false, error: "No se pudo crear la cuenta. Intenta de nuevo" };
+  }
+
+  // Persistir phone en profiles. El trigger ya creó la fila con first_name +
+  // last_name; ahora hacemos UPDATE con phone. Usamos admin client porque
+  // el cliente aún no está autenticado (email pendiente de confirmación) y
+  // las RLS de profiles requieren auth.uid() = id para self-update.
+  const userId = data?.user?.id;
+  if (userId) {
+    try {
+      const admin = createAdminClient();
+      await admin
+        .from("profiles")
+        .update({ phone })
+        .eq("id", userId);
+    } catch (e) {
+      // No es bloqueante: la cuenta se creó OK; el phone se puede agregar
+      // después desde /account → Mi info.
+      console.warn("[signUp] update phone failed:", e);
+    }
   }
 
   // Email confirmation está ON: NO auto-login.

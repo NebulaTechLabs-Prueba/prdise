@@ -29,12 +29,15 @@ const emailSchema = z.string().trim().email("Email inválido").max(200);
  * SMTP no funciona: el admin copia el link y se lo envía al cliente por
  * WhatsApp. El cliente abre el link y queda confirmado automáticamente.
  *
+ * Devuelve también `phone` (de profiles.phone) si el cliente lo cargó en el
+ * registro, para que el UI pueda pre-llenar el wa.me link automáticamente.
+ *
  * Requiere que el usuario ya esté registrado en auth.users (signUp creó la
  * fila pero el confirmation email nunca llegó).
  */
 export async function generateSignupConfirmLink(
   formData: FormData
-): Promise<ActionResult<{ url: string; expires: string | null }>> {
+): Promise<ActionResult<{ url: string; expires: string | null; phone: string | null; name: string | null }>> {
   const guard = await getAdminOrError();
   if (!guard.ok) return guard;
 
@@ -66,6 +69,25 @@ export async function generateSignupConfirmLink(
     if (!url) {
       return { ok: false, error: "Supabase no devolvió un link válido." };
     }
+    // Buscar phone/nombre del cliente en profiles para pre-llenar wa.me.
+    let phone: string | null = null;
+    let name: string | null = null;
+    try {
+      const userId = data?.user?.id;
+      if (userId) {
+        const { data: profile } = await admin
+          .from("profiles")
+          .select("phone, first_name, last_name")
+          .eq("id", userId)
+          .maybeSingle();
+        if (profile) {
+          phone = (profile.phone || "").trim() || null;
+          name = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || null;
+        }
+      }
+    } catch {
+      /* best-effort, no bloqueante */
+    }
     console.log(
       `[auth_tools] generateSignupConfirmLink: admin=${guard.current.user.id} email=${email}`
     );
@@ -76,6 +98,8 @@ export async function generateSignupConfirmLink(
         expires: data?.properties?.verification_type
           ? String(data.properties.verification_type)
           : null,
+        phone,
+        name,
       },
     };
   } catch (e) {
@@ -144,7 +168,7 @@ export async function forceConfirmEmail(
  */
 export async function generateRecoveryLink(
   formData: FormData
-): Promise<ActionResult<{ url: string }>> {
+): Promise<ActionResult<{ url: string; phone: string | null; name: string | null }>> {
   const guard = await getAdminOrError();
   if (!guard.ok) return guard;
 
@@ -167,10 +191,28 @@ export async function generateRecoveryLink(
     if (!url) {
       return { ok: false, error: "Supabase no devolvió un link válido." };
     }
+    let phone: string | null = null;
+    let name: string | null = null;
+    try {
+      const userId = data?.user?.id;
+      if (userId) {
+        const { data: profile } = await admin
+          .from("profiles")
+          .select("phone, first_name, last_name")
+          .eq("id", userId)
+          .maybeSingle();
+        if (profile) {
+          phone = (profile.phone || "").trim() || null;
+          name = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || null;
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
     console.log(
       `[auth_tools] generateRecoveryLink: admin=${guard.current.user.id} email=${email}`
     );
-    return { ok: true, data: { url } };
+    return { ok: true, data: { url, phone, name } };
   } catch (e) {
     return {
       ok: false,

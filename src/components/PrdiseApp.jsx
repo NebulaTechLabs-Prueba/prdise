@@ -3527,7 +3527,7 @@ function LoginPage() {
 /* ═══════════════ REGISTER ═══════════════ */
 function RegisterPage() {
   const { t, lang } = useLang();
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "", confirmPassword: "", country: "", acceptTerms: false, acceptPrivacy: false });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", password: "", confirmPassword: "", country: "", acceptTerms: false, acceptPrivacy: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -3608,12 +3608,13 @@ function RegisterPage() {
 
   const handleRegister = async () => {
     setError("");
-    if (!form.firstName.trim() || !form.lastName.trim()) { setError("Please enter your first and last name."); return; }
-    if (!emailValid || !form.email) { setError("Please enter a valid email address."); return; }
-    if (!form.password || form.password.length < 8) { setError("Password must be at least 8 characters long."); return; }
-    if (form.password !== form.confirmPassword) { setError("Passwords do not match."); return; }
-    if (!form.acceptTerms) { setError("You must accept the Terms & Conditions."); return; }
-    if (!form.acceptPrivacy) { setError("You must accept the Privacy Policy."); return; }
+    if (!form.firstName.trim() || !form.lastName.trim()) { setError(lang === "es" ? "Ingresa nombre y apellido." : "Please enter your first and last name."); return; }
+    if (!emailValid || !form.email) { setError(lang === "es" ? "Ingresa un email válido." : "Please enter a valid email address."); return; }
+    if (!form.phone.trim() || form.phone.trim().length < 7) { setError(lang === "es" ? "Ingresa tu número de WhatsApp (con código de país, ej. +1 787 555 1234)." : "Please enter your WhatsApp number (with country code, e.g. +1 787 555 1234)."); return; }
+    if (!form.password || form.password.length < 8) { setError(lang === "es" ? "La contraseña debe tener al menos 8 caracteres." : "Password must be at least 8 characters long."); return; }
+    if (form.password !== form.confirmPassword) { setError(lang === "es" ? "Las contraseñas no coinciden." : "Passwords do not match."); return; }
+    if (!form.acceptTerms) { setError(lang === "es" ? "Debes aceptar los Términos y Condiciones." : "You must accept the Terms & Conditions."); return; }
+    if (!form.acceptPrivacy) { setError(lang === "es" ? "Debes aceptar la Política de Privacidad." : "You must accept the Privacy Policy."); return; }
 
     setLoading(true);
     const fd = new FormData();
@@ -3621,6 +3622,7 @@ function RegisterPage() {
     fd.append("password", form.password);
     fd.append("firstName", form.firstName.trim());
     fd.append("lastName", form.lastName.trim());
+    fd.append("phone", form.phone.trim());
     const result = await sbSignUp(fd);
     setLoading(false);
     if (result.ok) {
@@ -3748,6 +3750,28 @@ function RegisterPage() {
             )}
           </div>
           {form.email && !emailValid && <p style={{ fontSize: 11, color: "#EF6C2B", marginTop: 4 }}>Enter a valid email address</p>}
+        </div>
+
+        <div className="f-grp">
+          <label className="f-lab">
+            {lang === "es" ? "WhatsApp" : "WhatsApp"} *
+            <span style={{ color: "rgba(255,255,255,.45)", fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}>
+              {lang === "es" ? "(con código de país)" : "(with country code)"}
+            </span>
+          </label>
+          <input
+            type="tel"
+            className="f-in"
+            placeholder="+1 787 555 1234"
+            value={form.phone}
+            onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
+            autoComplete="tel"
+          />
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 4, lineHeight: 1.45 }}>
+            {lang === "es"
+              ? "Te contactaremos por WhatsApp para coordinar reservas y enviarte la factura/recibos."
+              : "We'll reach out via WhatsApp to coordinate bookings and send invoices/receipts."}
+          </p>
         </div>
 
         <div className="f-grp">
@@ -10419,13 +10443,39 @@ function AuthToolsPanel({ lang }) {
         </div>
       )}
 
-      {result && result.url && (
+      {result && result.url && (() => {
+        // Pre-fill destinatario WhatsApp con el phone del cliente (registro)
+        // si lo hay. Admin puede override con manualPhone state. Si no hay
+        // phone, wa.me/?text=... abre WhatsApp sin destinatario y el admin
+        // pega el contacto manualmente.
+        const greeting = result.name ? (lang === "es" ? `Hola ${result.name},` : `Hi ${result.name},`) : (lang === "es" ? "Hola," : "Hi,");
+        const linkMsg = result.kind === "link"
+          ? (lang === "es" ? "este es tu link para confirmar tu cuenta en PRDISE. Ábrelo desde el mismo navegador donde vas a iniciar sesión:" : "here's your PRDISE account confirmation link. Open it in the same browser you'll sign in from:")
+          : (lang === "es" ? "este es tu link para restablecer tu contraseña en PRDISE (válido ~1h):" : "here's your PRDISE password reset link (~1h valid):");
+        const fullText = `${greeting} ${linkMsg}\n${result.url}`;
+        const phoneDigits = (result.phone || "").replace(/\D/g, "");
+        const waHref = phoneDigits
+          ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(fullText)}`
+          : `https://wa.me/?text=${encodeURIComponent(fullText)}`;
+        return (
         <div style={{ marginTop: 14, padding: "14px 16px", borderRadius: 12, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.3)" }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8 }}>
             {result.kind === "link"
               ? (lang === "es" ? "Link de confirmación (válido ~24h)" : "Confirmation link (~24h valid)")
               : (lang === "es" ? "Link de reset password (válido ~1h)" : "Password reset link (~1h valid)")}
           </div>
+          {(result.phone || result.name) && (
+            <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)", marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)" }}>
+              {lang === "es" ? "Destinatario: " : "To: "}
+              <strong style={{ color: "#fff" }}>{result.name || email}</strong>
+              {result.phone && <> · <code style={{ fontFamily: "monospace", color: "#8DC63F" }}>{result.phone}</code></>}
+              {!result.phone && (
+                <span style={{ marginLeft: 6, color: "#F5A623" }}>
+                  ({lang === "es" ? "sin WhatsApp registrado — abre WhatsApp Web y elegí destinatario" : "no WhatsApp on file — pick contact in WhatsApp Web"})
+                </span>
+              )}
+            </div>
+          )}
           <code style={{ display: "block", padding: "10px 12px", borderRadius: 8, background: "rgba(0,0,0,.3)", fontSize: 11, color: "#fff", wordBreak: "break-all", fontFamily: "monospace", lineHeight: 1.5 }}>
             {result.url}
           </code>
@@ -10434,17 +10484,16 @@ function AuthToolsPanel({ lang }) {
               <Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar link" : "Copy link"}
             </button>
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(
-                (lang === "es"
-                  ? "Hola, este es tu link para confirmar tu cuenta en PRDISE. Ábrelo desde el mismo navegador donde vas a iniciar sesión: "
-                  : "Hi, here's your PRDISE account confirmation link. Open it in the same browser you'll sign in from: ") + result.url
-              )}`}
+              href={waHref}
               target="_blank"
               rel="noopener noreferrer"
               className="adm-btn adm-btn-ghost"
               style={{ padding: "8px 14px", textDecoration: "none" }}
             >
-              <MessageCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Compartir WhatsApp" : "Share WhatsApp"}
+              <MessageCircle style={{ width: 12, height: 12 }} />
+              {result.phone
+                ? (lang === "es" ? `Enviar por WhatsApp a ${result.phone}` : `Send WhatsApp to ${result.phone}`)
+                : (lang === "es" ? "Abrir WhatsApp" : "Open WhatsApp")}
             </a>
           </div>
           <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", marginTop: 10, lineHeight: 1.5 }}>
@@ -10453,7 +10502,8 @@ function AuthToolsPanel({ lang }) {
               : "The customer should open the link in the same browser they'll sign in from. If opened on another device, the account still confirms and they can sign in normally."}
           </p>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
