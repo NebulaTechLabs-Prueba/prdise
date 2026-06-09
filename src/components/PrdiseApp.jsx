@@ -778,11 +778,15 @@ input,select,textarea{font-family:inherit}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.4);opacity:1}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .hero-kicker span{font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.5)}
-/* h1 con min-height fija (basada en la versión EN, que es más grande)
-   para que el cambio de idioma EN↔ES no altere la altura del h1 ni
-   desplace los elementos de abajo. clamp(...,18vw,...) ≈ 2 líneas
-   × clamp(...,10vw,...) × .92 line-height. */
-.hero h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(3rem,10vw,8rem);line-height:.92;letter-spacing:.02em;color:#fff;margin-bottom:20px;min-height:clamp(5.4rem,18.4vw,14.8rem);display:flex;flex-direction:column;justify-content:center}
+/* h1 con min-height fija (basada en la versión EN, que es la más alta).
+   Cuando el usuario cambia EN↔ES la ES es más chica pero el bloque h1
+   reserva la altura del EN, por lo que el resto del layout (hero-sub,
+   chip bilingüe, botones) NO se desplaza al toggle de idioma.
+   NO usamos flex/justify-content acá: el h1 mezcla texto suelto
+   ("LIVING IN<br>") con <span> hijos (P, R, DISE coloreados). En modo
+   block, los spans inline forman la segunda línea como debería; con
+   flex column cada span saltaba a su propia línea (bug visual). */
+.hero h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(3rem,10vw,8rem);line-height:.92;letter-spacing:.02em;color:#fff;margin-bottom:20px;min-height:clamp(5.4rem,18.4vw,14.8rem)}
 .hero h1.lang-es{font-size:clamp(2.6rem,8.5vw,6.8rem);letter-spacing:0}
 .hero h1 .col-g{color:var(--gold)}.hero h1 .col-o{color:var(--orange)}
 .hero h1 .col-gr{color:var(--green)}.hero h1 .col-s{color:var(--sky)}
