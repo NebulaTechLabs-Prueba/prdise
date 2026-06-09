@@ -415,6 +415,9 @@ const TX = {
     sendMessage: "Send Message", yourName: "Your Name", email: "Email", phone: "Phone", subject: "Subject", message: "Message",
     subjGeneral: "General inquiry", subjTour: "Tour booking", subjStay: "Stay booking", subjTransfer: "Transfer request", subjCustom: "Custom package",
     backToSite: "← Back to site",
+    // Servicios con precio = 0 son "a consultar" (TBD en el catálogo del
+    // cliente). El card no muestra "$0"; muestra este label.
+    onRequest: "On request",
     // Checkout
     paymentMethod: "Payment Method", selectPay: "Select how to pay", card: "Card", confirmPay: "Confirm & Pay", signInRequired: "Sign in required to complete booking", infoSaved: "Your info is saved — you won't lose anything.",
     // Account
@@ -531,6 +534,7 @@ const TX = {
     sendMessage: "Enviar Mensaje", yourName: "Tu Nombre", email: "Correo", phone: "Teléfono", subject: "Asunto", message: "Mensaje",
     subjGeneral: "Consulta general", subjTour: "Reserva de tour", subjStay: "Reserva de estadía", subjTransfer: "Solicitud de traslado", subjCustom: "Paquete personalizado",
     backToSite: "← Volver al sitio",
+    onRequest: "A consultar",
     paymentMethod: "Método de Pago", selectPay: "Selecciona cómo pagar", card: "Tarjeta", confirmPay: "Confirmar y Pagar", signInRequired: "Debes iniciar sesión para completar la reserva", infoSaved: "Tu información está guardada — no perderás nada.",
     myInfo: "Mi Info", activity: "Actividad", preferences: "Preferencias", security: "Seguridad",
     myCart: "MI CARRITO", cartItems: "artículos", cartEmpty: "TU CARRITO ESTÁ VACÍO", cartEmptySub: "Comienza a explorar para agregar estadías, tours o traslados.", cartSub: "Artículos en tu carrito — aún no pagados. Revisa, modifica o elimina antes del checkout.", proceedCheckout: "Proceder al Pago", modify: "Modificar", remove: "Eliminar", removeFromCart: "¿Eliminar del Carrito?",
@@ -646,8 +650,14 @@ function buildWhatsAppHref({ user, lang, service }) {
   const kindLabel = isEs
     ? ({ stay: "una estadía", tour: "un tour", transfer: "un traslado" }[service?.kind] || "un servicio")
     : ({ stay: "a stay", tour: "a tour", transfer: "a transfer" }[service?.kind] || "a service");
-  const priceStr = service?.priceUsd != null
-    ? (isEs ? ` (referencia $${Number(service.priceUsd).toFixed(0)} USD)` : ` (reference $${Number(service.priceUsd).toFixed(0)} USD)`)
+  // Precio en el mensaje:
+  //   > 0       → "(referencia $X USD)"
+  //   = 0/null  → no incluye precio en el intro; pide info en la ask line.
+  //               Esto es para servicios marcados "A consultar" (TBD).
+  const priceVal = Number(service?.priceUsd);
+  const hasPrice = Number.isFinite(priceVal) && priceVal > 0;
+  const priceStr = hasPrice
+    ? (isEs ? ` (referencia $${priceVal.toFixed(0)} USD)` : ` (reference $${priceVal.toFixed(0)} USD)`)
     : "";
   const intro = isEs
     ? `${greeting}${name ? " " + name : ""}. Me interesa ${kindLabel}: ${service?.name || ""}${priceStr}.`
@@ -655,9 +665,16 @@ function buildWhatsAppHref({ user, lang, service }) {
   const details = service?.details
     ? (isEs ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
     : "";
-  const ask = isEs
-    ? "\n¿Me puedes ayudar con la disponibilidad y el siguiente paso?"
-    : "\nCould you help me with availability and next steps?";
+  // Si el precio es "a consultar" (hasPrice=false), pedimos también
+  // el costo en el ask line — así el responsable PRDISE responde con
+  // disponibilidad + precio en un solo mensaje.
+  const ask = hasPrice
+    ? (isEs
+        ? "\n¿Me puedes ayudar con la disponibilidad y el siguiente paso?"
+        : "\nCould you help me with availability and next steps?")
+    : (isEs
+        ? "\n¿Me puedes confirmar el precio, la disponibilidad y el siguiente paso?"
+        : "\nCould you confirm the price, availability and next steps?");
   const text = `${intro}${details}${ask}`;
   return `https://wa.me/${getSetting("whatsapp_phone")}?text=${encodeURIComponent(text)}`;
 }
@@ -1652,8 +1669,14 @@ function HomePage() {
                   <h3>{L(tr.name, tr.nameES).toUpperCase()}</h3>
                   <p>{L(tr.desc, tr.descES)}</p>
                   <div style={{ display: "flex", alignItems: "baseline", marginBottom: 14 }}>
-                    <span className="price" style={{ color: COLORS[tr.color] }}>${tr.price}</span>
-                    <span className="price-sub">{t("perPerson")}</span>
+                    {tr.price > 0 ? (
+                      <>
+                        <span className="price" style={{ color: COLORS[tr.color] }}>${tr.price}</span>
+                        <span className="price-sub">{t("perPerson")}</span>
+                      </>
+                    ) : (
+                      <span className="price" style={{ color: COLORS[tr.color], fontSize: 18 }}>{t("onRequest")}</span>
+                    )}
                   </div>
                   <span className="svc-link" style={{ color: COLORS[tr.color] }}>{t("bookNow")} <ArrowRight /></span>
                 </div>
@@ -1893,8 +1916,14 @@ function ToursList() {
                   )}
                   <div className="listing-foot">
                     <div>
-                      <span className="price">${tr.price}</span>
-                      <span className="price-sub">{t("perPerson")}</span>
+                      {tr.price > 0 ? (
+                        <>
+                          <span className="price">${tr.price}</span>
+                          <span className="price-sub">{t("perPerson")}</span>
+                        </>
+                      ) : (
+                        <span className="price" style={{ fontSize: 18 }}>{t("onRequest")}</span>
+                      )}
                     </div>
                     <NavLink to={`/tour?id=${tr.id}`} className="listing-btn">{t("view")} <ArrowRight style={{ width: 12, height: 12 }} /></NavLink>
                   </div>
@@ -2374,8 +2403,14 @@ function TourDetail({ params }) {
             <aside>
               <div className="booking-box">
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                  <span className="booking-price">${tour.price}</span>
-                  <span className="price-sub">{t("perPersonPrice")}</span>
+                  {tour.price > 0 ? (
+                    <>
+                      <span className="booking-price">${tour.price}</span>
+                      <span className="price-sub">{t("perPersonPrice")}</span>
+                    </>
+                  ) : (
+                    <span className="booking-price" style={{ fontSize: 26 }}>{t("onRequest")}</span>
+                  )}
                 </div>
                 <BilingualNotice style={{ marginBottom: 14 }} />
                 <div className="f-grp">
@@ -2389,11 +2424,19 @@ function TourDetail({ params }) {
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n} {t("traveler")}{n > 1 ? "s" : ""}</option>)}
                   </select>
                 </div>
-                <div style={{ margin: "16px 0", padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)" }}>
-                  <div className="summary-row"><span>{travelers} × ${tour.price}</span><span>{fmt(pricing.subtotal)}</span></div>
-                  <div className="summary-row"><span>Service fee (5%)</span><span>{fmt(pricing.service)}</span></div>
-                  <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
-                </div>
+                {tour.price > 0 ? (
+                  <div style={{ margin: "16px 0", padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)" }}>
+                    <div className="summary-row"><span>{travelers} × ${tour.price}</span><span>{fmt(pricing.subtotal)}</span></div>
+                    <div className="summary-row"><span>Service fee (5%)</span><span>{fmt(pricing.service)}</span></div>
+                    <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
+                  </div>
+                ) : (
+                  <div style={{ margin: "16px 0", padding: 14, borderRadius: 14, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", fontSize: 12.5, color: "rgba(255,255,255,.75)", lineHeight: 1.55 }}>
+                    {lang === "es"
+                      ? "Precio a consultar con el proveedor. Contáctanos por WhatsApp y te confirmamos disponibilidad y costo según fecha y cantidad de personas."
+                      : "Price on request. Contact us via WhatsApp and we'll confirm availability and cost based on date and number of people."}
+                  </div>
+                )}
                 <button type="button" onClick={goToTourPartner} disabled={tourRedirecting || !tourPartner} className="f-submit" style={{ opacity: !tourPartner ? 0.55 : 1, cursor: !tourPartner ? "not-allowed" : "pointer" }}>
                   <ExternalLink style={{ width: 16, height: 16 }} />
                   {tourRedirecting

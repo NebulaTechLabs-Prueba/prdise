@@ -67,3 +67,10 @@ desktop.ini
 *-secrets*
 *.pem
 *.key
+
+# Catálogo del cliente (data cruda — no se commitea, se importa a Supabase
+# vía scripts/import-catalog.mjs). docs/ permanece versionable para .md y
+# otros assets internos; solo se ignoran los archivos de data.
+/docs/*.xlsx
+/docs/*.xls
+/docs/*.csv
