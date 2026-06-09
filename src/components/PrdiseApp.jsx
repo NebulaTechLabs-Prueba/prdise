@@ -71,6 +71,7 @@ import {
 } from "@/lib/admin/drivers";
 import {
   listAllUsers as sbListAllUsers,
+  updateUserRole as sbUpdateUserRole,
 } from "@/lib/admin/users";
 import {
   listInvoices as sbListInvoices,
@@ -81,6 +82,14 @@ import {
   getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
 } from "@/lib/admin/invoices";
 import { updateSiteSettingsBulk as sbUpdateSiteSettingsBulk } from "@/lib/admin/settings";
+import {
+  listCustomRoles as sbListCustomRoles,
+  createCustomRole as sbCreateCustomRole,
+  updateCustomRole as sbUpdateCustomRole,
+  deleteCustomRole as sbDeleteCustomRole,
+  assignCustomRoleToUser as sbAssignCustomRoleToUser,
+} from "@/lib/admin/roles";
+import { ALL_PERMISSION_KEYS, PERMISSION_AREAS } from "@/lib/permissions/constants";
 
 /* ═══════════════ DATA ═══════════════ */
 const IMG_PALM = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20600%20400%22%20preserveAspectRatio%3D%22xMidYMid%20slice%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22psky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFB060%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23FF7C3F%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23D34A5C%22/%3E%0A%3C/linearGradient%3E%0A%3ClinearGradient%20id%3D%22psea%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%0A%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23A85D8C%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233D2B5A%22/%3E%0A%3C/linearGradient%3E%0A%3C/defs%3E%0A%3Crect%20width%3D%22600%22%20height%3D%22260%22%20fill%3D%22url%28%23psky%29%22/%3E%0A%3Crect%20y%3D%22260%22%20width%3D%22600%22%20height%3D%22140%22%20fill%3D%22url%28%23psea%29%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2255%22%20fill%3D%22%23FFE066%22/%3E%0A%3Ccircle%20cx%3D%22430%22%20cy%3D%22200%22%20r%3D%2280%22%20fill%3D%22%23FFE066%22%20opacity%3D%22.25%22/%3E%0A%3Cg%20transform%3D%22translate%28120%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-5%2C-180%20-45%2C-220%20M%200%2C0%20Q%205%2C-185%2050%2C-225%20M%200%2C0%20Q%20-10%2C-175%20-85%2C-200%20M%200%2C0%20Q%2010%2C-180%2080%2C-205%20M%200%2C0%20Q%200%2C-180%20-10%2C-235%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-100%200%2C-200%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%226%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%22translate%28500%2C400%29%22%3E%0A%3Cpath%20d%3D%22M%200%2C0%20Q%20-3%2C-90%200%2C-180%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%225%22%20fill%3D%22none%22/%3E%0A%3Cpath%20d%3D%22M%200%2C-180%20Q%20-50%2C-200%20-80%2C-185%20M%200%2C-180%20Q%2050%2C-205%2085%2C-180%20M%200%2C-180%20Q%20-25%2C-220%20-10%2C-225%20M%200%2C-180%20Q%2025%2C-225%205%2C-225%22%20stroke%3D%22%231A0F2E%22%20stroke-width%3D%223%22%20fill%3D%22none%22/%3E%0A%3C/g%3E%0A%3C/svg%3E";
@@ -4438,6 +4447,26 @@ function AdminPanel({ onClose }) {
       setLegalSettingsSaving(false);
     }
   };
+  // Custom roles: roles "overlay" creables por admin que conceden permisos
+  // granulares a usuarios con base role 'user'. Backend: tabla custom_roles +
+  // custom_role_permissions + profiles.custom_role_id.
+  const [customRoles, setCustomRoles] = useState([]);
+  const [customRolesLoading, setCustomRolesLoading] = useState(false);
+  const [editingCustomRole, setEditingCustomRole] = useState(null);
+  const reloadCustomRoles = async () => {
+    setCustomRolesLoading(true);
+    try {
+      const list = await sbListCustomRoles();
+      setCustomRoles(Array.isArray(list) ? list : []);
+    } catch (e) {
+      console.warn("listCustomRoles:", e);
+      setCustomRoles([]);
+    } finally {
+      setCustomRolesLoading(false);
+    }
+  };
+  useEffect(() => { reloadCustomRoles(); }, []);
+
   const [splashOff, setSplashOff] = useState(() => PRDISE.load("splashOff", false));
   const [transferTab, setTransferTab] = useState("routes");
   const [contactsFilter, setContactsFilter] = useState("all");
@@ -4505,6 +4534,9 @@ function AdminPanel({ onClose }) {
               ? (lang === "es" ? "Administrador" : "Administrator")
               : (lang === "es" ? "Cliente" : "Customer"),
             roleRaw: u.role,
+            // Rol custom overlay (puede ser null). Se asigna desde la UI de
+            // usuarios y concede permisos granulares además del rol base.
+            customRoleId: u.custom_role_id || null,
             status: u.status || "active",
             department: u.department || "",
             position: u.position || "",
@@ -7709,6 +7741,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-tab ${settingsTab === "security" ? "active" : ""}`} onClick={() => setSettingsTab("security")}><Shield />{t("adm_security")}</button>
               <button className={`adm-tab ${settingsTab === "integrations" ? "active" : ""}`} onClick={() => setSettingsTab("integrations")}><Globe />{t("adm_integrations")}</button>
               <button className={`adm-tab ${settingsTab === "legal" ? "active" : ""}`} onClick={() => setSettingsTab("legal")}><FileText />{lang === "es" ? "Legal" : "Legal"}</button>
+              <button className={`adm-tab ${settingsTab === "roles" ? "active" : ""}`} onClick={() => setSettingsTab("roles")}><Key />{lang === "es" ? "Roles" : "Roles"}</button>
             </div>
 
         {settingsTab === "team" && (
@@ -8499,6 +8532,90 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <IntegrationsPanel />
             )}
 
+            {settingsTab === "roles" && (
+              <>
+                <div className="adm-card">
+                  <div className="adm-card-head">
+                    <div className="adm-card-title"><Key />{lang === "es" ? "Roles Personalizados" : "Custom Roles"}</div>
+                    <button className="adm-btn adm-btn-primary" onClick={() => setEditingCustomRole({ id: "new", name: "", label_es: "", label_en: "", description: "", active: true, permissions: [] })}>
+                      <Plus />{lang === "es" ? "Nuevo rol" : "New role"}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 16, lineHeight: 1.6 }}>
+                    {lang === "es"
+                      ? "Los roles personalizados son una extensión sobre los roles base (Administrador / Cliente). Asignar un rol custom a un cliente le concede los permisos administrativos seleccionados sin promoverlo a admin completo. El admin siempre tiene todos los permisos."
+                      : "Custom roles are an extension over the base roles (Administrator / Customer). Assigning a custom role to a customer grants them the selected admin permissions without promoting them to full admin. Admin always has every permission."}
+                  </p>
+                  {customRolesLoading && (
+                    <div style={{ padding: "20px 0", textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 12 }}>
+                      {lang === "es" ? "Cargando…" : "Loading…"}
+                    </div>
+                  )}
+                  {!customRolesLoading && customRoles.length === 0 && (
+                    <div style={{ padding: "32px 20px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 12, color: "rgba(255,255,255,.55)" }}>
+                      <Key style={{ width: 26, height: 26, opacity: 0.35, marginBottom: 8 }} />
+                      <div style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".04em", color: "rgba(255,255,255,.7)", marginBottom: 4 }}>
+                        {lang === "es" ? "Sin roles personalizados" : "No custom roles yet"}
+                      </div>
+                      <p style={{ fontSize: 12, margin: 0 }}>
+                        {lang === "es"
+                          ? "Crea tu primer rol para empezar a delegar permisos administrativos a usuarios."
+                          : "Create your first role to start delegating admin permissions to users."}
+                      </p>
+                    </div>
+                  )}
+                  {!customRolesLoading && customRoles.length > 0 && (
+                    <div className="adm-tbl-wrap">
+                      <table className="adm-tbl">
+                        <thead>
+                          <tr>
+                            <th>{lang === "es" ? "Nombre" : "Name"}</th>
+                            <th>{lang === "es" ? "Etiqueta" : "Label"}</th>
+                            <th>{lang === "es" ? "Permisos" : "Permissions"}</th>
+                            <th>{lang === "es" ? "Usuarios" : "Users"}</th>
+                            <th>{lang === "es" ? "Estado" : "Status"}</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {customRoles.map((r) => (
+                            <tr key={r.id}>
+                              <td><code style={{ fontFamily: "monospace", color: "var(--gold)" }}>{r.name}</code></td>
+                              <td>{lang === "es" ? r.label_es : r.label_en}</td>
+                              <td>{r.permissions.length}</td>
+                              <td>{r.user_count}</td>
+                              <td><span className={`adm-pill ${r.active ? "published" : "hidden"}`}>{r.active ? (lang === "es" ? "Activo" : "Active") : (lang === "es" ? "Inactivo" : "Inactive")}</span></td>
+                              <td>
+                                <div className="adm-row-actions">
+                                  <button className="adm-icon-btn" onClick={() => setEditingCustomRole({ ...r })} title={lang === "es" ? "Editar" : "Edit"}><Pencil /></button>
+                                  <button className="adm-icon-btn danger" onClick={async () => {
+                                    if (!confirm(lang === "es" ? `¿Eliminar el rol "${r.label_es}"? Los ${r.user_count} usuario(s) con este rol quedarán sin él.` : `Delete role "${r.label_en}"? The ${r.user_count} user(s) with this role will lose it.`)) return;
+                                    const fd = new FormData(); fd.append("id", r.id);
+                                    const res = await sbDeleteCustomRole(fd);
+                                    if (res?.ok) reloadCustomRoles();
+                                    else alert((lang === "es" ? "No se pudo eliminar: " : "Could not delete: ") + (res?.error || ""));
+                                  }} title={lang === "es" ? "Eliminar" : "Delete"}><Trash2 /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {editingCustomRole && (
+                  <CustomRoleEditModal
+                    role={editingCustomRole}
+                    lang={lang}
+                    onClose={() => setEditingCustomRole(null)}
+                    onSaved={() => { setEditingCustomRole(null); reloadCustomRoles(); }}
+                  />
+                )}
+              </>
+            )}
+
             {settingsTab === "legal" && (
               <>
                 <div className="adm-card">
@@ -8717,7 +8834,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
 
       {editing && (
-        <EditModal editing={editing} onClose={() => setEditing(null)} onSave={async (updated) => {
+        <EditModal editing={editing} customRolesGlobal={customRoles} onClose={() => setEditing(null)} onSave={async (updated) => {
           const ownedUpdate = editing.isNew && currentEmployeeId ? { ...updated, _createdBy: currentEmployeeId } : updated;
           let saveResult = { ok: false, error: "Tipo no soportado" };
           try {
@@ -8827,6 +8944,38 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               const action = editing.isNew ? sbCreateRoute : sbUpdateRoute;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
+            } else if (editing.type === "user") {
+              // Edición de usuario: dos persistencias separadas — el rol base
+              // (enum admin/user) via updateUserRole, y el custom_role_id
+              // (overlay opcional) via assignCustomRoleToUser. Ambas son
+              // admin-only. Si el rol base no cambió, omitimos updateUserRole
+              // (devuelve error "ya tiene ese rol").
+              const targetUserId = ownedUpdate.id;
+              const original = editing.item || {};
+              const newRole = ownedUpdate.roleRaw || original.roleRaw || "user";
+              const newCustomRoleId = ownedUpdate.customRoleId ?? null;
+              const baseRoleChanged = newRole !== original.roleRaw;
+              const customRoleChanged = (newCustomRoleId || null) !== (original.customRoleId || null);
+
+              if (!targetUserId) {
+                saveResult = { ok: false, error: "User ID requerido" };
+              } else {
+                saveResult = { ok: true };
+                if (baseRoleChanged) {
+                  const fdRole = new FormData();
+                  fdRole.append("targetUserId", targetUserId);
+                  fdRole.append("newRole", newRole);
+                  const r1 = await sbUpdateUserRole(fdRole);
+                  if (!r1?.ok) saveResult = r1;
+                }
+                if (saveResult.ok && customRoleChanged) {
+                  const fdCR = new FormData();
+                  fdCR.append("user_id", targetUserId);
+                  if (newCustomRoleId) fdCR.append("role_id", newCustomRoleId);
+                  const r2 = await sbAssignCustomRoleToUser(fdCR);
+                  if (!r2?.ok) saveResult = r2;
+                }
+              }
             }
           } catch (e) {
             saveResult = { ok: false, error: e?.message || String(e) };
@@ -8869,7 +9018,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
   );
 }
 
-function EditModal({ editing, onClose, onSave }) {
+function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const { t } = useLang();
   const it = editing.item || {};
   const isNew = editing.isNew;
@@ -9434,14 +9583,29 @@ function EditModal({ editing, onClose, onSave }) {
             <div className="adm-fg"><label className="adm-fl">Email</label><input type="email" className="adm-fi" defaultValue={it.email || ""} /></div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Role</label>
-                <select className="adm-fi" defaultValue={it.roleRaw || "user"}>
+                <select className="adm-fi" defaultValue={it.roleRaw || "user"} onChange={(e) => (it.roleRaw = e.target.value)}>
                   <option value="admin">{lang === "es" ? "Administrador" : "Administrator"}</option>
                   <option value="user">{lang === "es" ? "Cliente" : "Customer"}</option>
                 </select>
               </div>
-              <div className="adm-fg"><label className="adm-fl">Department</label><input className="adm-fi" defaultValue={it.department || ""} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Rol custom" : "Custom role"} <span style={{ color: "rgba(255,255,255,.35)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>({lang === "es" ? "opcional" : "optional"})</span></label>
+                <select className="adm-fi" defaultValue={it.customRoleId || ""} onChange={(e) => (it.customRoleId = e.target.value || null)}>
+                  <option value="">{lang === "es" ? "— Sin rol custom —" : "— No custom role —"}</option>
+                  {(customRolesGlobal || []).filter((r) => r.active).map((r) => (
+                    <option key={r.id} value={r.id}>{lang === "es" ? r.label_es : r.label_en}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="adm-fg"><label className="adm-fl">Position</label><input className="adm-fi" defaultValue={it.position || ""} /></div>
+            <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginTop: -8, marginBottom: 8, lineHeight: 1.45 }}>
+              {lang === "es"
+                ? "El rol custom (si se asigna) concede permisos administrativos adicionales sobre el rol base. Configura roles en Settings → Roles."
+                : "The custom role (if assigned) grants additional admin permissions over the base role. Configure roles in Settings → Roles."}
+            </p>
+            <div className="adm-fg-row">
+              <div className="adm-fg"><label className="adm-fl">Department</label><input className="adm-fi" defaultValue={it.department || ""} /></div>
+              <div className="adm-fg"><label className="adm-fl">Position</label><input className="adm-fi" defaultValue={it.position || ""} /></div>
+            </div>
           </>
         )}
 
@@ -10128,6 +10292,154 @@ function IntegRow({ name, desc, connected }) {
       <button className={`adm-btn ${c ? "adm-btn-ghost" : "adm-btn-primary"}`} onClick={() => setC(!c)}>
         {c ? "Disconnect" : "Connect"}
       </button>
+    </div>
+  );
+}
+
+/* ═══════════════ CUSTOM ROLE EDIT MODAL ═══════════════ */
+// Crea o edita un rol custom: name (kebab), labels ES/EN, descripción y
+// matriz de permisos agrupada por área. Submit usa createCustomRole o
+// updateCustomRole según role.id === "new".
+function CustomRoleEditModal({ role, lang, onClose, onSaved }) {
+  const isNew = role.id === "new";
+  const [form, setForm] = useState(() => ({
+    name: role.name || "",
+    label_es: role.label_es || "",
+    label_en: role.label_en || "",
+    description: role.description || "",
+    active: role.active !== false,
+  }));
+  const [perms, setPerms] = useState(() => new Set(role.permissions || []));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const togglePerm = (key) => {
+    setPerms((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const toggleArea = (area) => {
+    const keysInArea = ALL_PERMISSION_KEYS.filter((k) => k.startsWith(area + ":"));
+    const allChecked = keysInArea.every((k) => perms.has(k));
+    setPerms((prev) => {
+      const next = new Set(prev);
+      if (allChecked) keysInArea.forEach((k) => next.delete(k));
+      else keysInArea.forEach((k) => next.add(k));
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setError("");
+    if (!form.name.trim() || !form.label_es.trim() || !form.label_en.trim()) {
+      setError(lang === "es" ? "Nombre y etiquetas ES/EN son requeridos." : "Name and ES/EN labels are required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("name", form.name);
+      fd.append("label_es", form.label_es);
+      fd.append("label_en", form.label_en);
+      fd.append("description", form.description);
+      fd.append("active", form.active ? "true" : "false");
+      fd.append("permissions", JSON.stringify(Array.from(perms)));
+      if (!isNew) fd.append("id", role.id);
+      const action = isNew ? sbCreateCustomRole : sbUpdateCustomRole;
+      const res = await action(fd);
+      if (!res?.ok) {
+        setError(res?.error || (lang === "es" ? "No se pudo guardar" : "Could not save"));
+        return;
+      }
+      onSaved?.();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Agrupar keys por área para la matriz visual.
+  const byArea = PERMISSION_AREAS.map((area) => ({
+    area,
+    keys: ALL_PERMISSION_KEYS.filter((k) => k.startsWith(area + ":")),
+  })).filter((g) => g.keys.length > 0);
+
+  return (
+    <div className="adm-modal-bg" onClick={onClose}>
+      <div className="adm-modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+        <button className="adm-modal-close" onClick={onClose}><X /></button>
+        <h3>{isNew ? (lang === "es" ? "NUEVO ROL" : "NEW ROLE") : (lang === "es" ? "EDITAR ROL" : "EDIT ROLE")}</h3>
+        <p className="adm-modal-sub">
+          {lang === "es"
+            ? "Define un rol custom y los permisos que otorga. Asignable a cualquier cliente desde su edición."
+            : "Define a custom role and the permissions it grants. Assignable to any customer from their edit panel."}
+        </p>
+
+        <div className="adm-fg">
+          <label className="adm-fl">{lang === "es" ? "Nombre interno (slug)" : "Internal name (slug)"} *</label>
+          <input className="adm-fi" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") }))} placeholder="content_manager" />
+          <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginTop: 4 }}>
+            {lang === "es" ? "Solo minúsculas, números, _ y -. Empieza con letra. No se puede cambiar después." : "Lowercase, numbers, _ and - only. Starts with a letter. Cannot change after creation."}
+          </p>
+        </div>
+        <div className="adm-fg-row">
+          <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Etiqueta ES" : "Spanish label"} *</label><input className="adm-fi" value={form.label_es} onChange={(e) => setForm((f) => ({ ...f, label_es: e.target.value }))} placeholder={lang === "es" ? "Gestor de Contenido" : "Gestor de Contenido"} /></div>
+          <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Etiqueta EN" : "English label"} *</label><input className="adm-fi" value={form.label_en} onChange={(e) => setForm((f) => ({ ...f, label_en: e.target.value }))} placeholder="Content Manager" /></div>
+        </div>
+        <div className="adm-fg">
+          <label className="adm-fl">{lang === "es" ? "Descripción" : "Description"}</label>
+          <textarea className="adm-fi" rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder={lang === "es" ? "Qué puede hacer este rol y cuándo asignarlo" : "What this role can do and when to assign it"} />
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", cursor: "pointer", marginBottom: 16 }}>
+          <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} style={{ accentColor: "#8DC63F", width: 15, height: 15 }} />
+          <span style={{ fontSize: 12.5, color: "rgba(255,255,255,.8)" }}>
+            {lang === "es" ? "Activo (los usuarios con este rol mantienen sus permisos)" : "Active (users with this role keep their permissions)"}
+          </span>
+        </label>
+
+        <h4 style={{ fontFamily: "Bebas Neue", fontSize: 14, letterSpacing: ".1em", color: "var(--gold)", margin: "14px 0 8px" }}>
+          {lang === "es" ? "PERMISOS" : "PERMISSIONS"} <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>({perms.size} {lang === "es" ? "seleccionados" : "selected"})</span>
+        </h4>
+        <div style={{ maxHeight: 320, overflowY: "auto", padding: 4, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10 }}>
+          {byArea.map((g) => {
+            const allChecked = g.keys.every((k) => perms.has(k));
+            const someChecked = !allChecked && g.keys.some((k) => perms.has(k));
+            return (
+              <div key={g.area} style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,.05)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={allChecked} ref={(el) => { if (el) el.indeterminate = someChecked; }} onChange={() => toggleArea(g.area)} style={{ accentColor: "var(--gold)", width: 15, height: 15 }} />
+                  <span style={{ fontFamily: "Bebas Neue", fontSize: 13, letterSpacing: ".1em", color: "#fff", textTransform: "uppercase" }}>{g.area}</span>
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 6, paddingLeft: 22 }}>
+                  {g.keys.map((k) => (
+                    <label key={k} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: "rgba(255,255,255,.7)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={perms.has(k)} onChange={() => togglePerm(k)} style={{ accentColor: "var(--gold)", width: 13, height: 13 }} />
+                      <code style={{ fontFamily: "monospace", fontSize: 11 }}>{k.split(":")[1]}</code>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {error && (
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 9, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)", color: "#f87171", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <AlertTriangle style={{ width: 13, height: 13 }} /> {error}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+          <button className="adm-btn adm-btn-ghost" onClick={onClose} disabled={saving}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+          <button className="adm-btn adm-btn-primary" onClick={save} disabled={saving}>
+            {saving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+            {saving ? (lang === "es" ? "Guardando…" : "Saving…") : (isNew ? (lang === "es" ? "Crear rol" : "Create role") : (lang === "es" ? "Guardar cambios" : "Save changes"))}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

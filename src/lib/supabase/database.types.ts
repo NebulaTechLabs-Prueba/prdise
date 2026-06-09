@@ -402,6 +402,86 @@ export type Database = {
           },
         ]
       }
+      custom_role_permissions: {
+        Row: {
+          granted_at: string
+          permission_key: string
+          role_id: string
+        }
+        Insert: {
+          granted_at?: string
+          permission_key: string
+          role_id: string
+        }
+        Update: {
+          granted_at?: string
+          permission_key?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_role_permissions_permission_key_fkey"
+            columns: ["permission_key"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "custom_role_permissions_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "custom_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      custom_roles: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          id: string
+          label_en: string
+          label_es: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          label_en: string
+          label_es: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          label_en?: string
+          label_es?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_roles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drivers: {
         Row: {
           created_at: string
@@ -875,6 +955,7 @@ export type Database = {
           avatar_url: string | null
           country: string | null
           created_at: string
+          custom_role_id: string | null
           deleted_at: string | null
           department: string | null
           employee_id: string | null
@@ -898,6 +979,7 @@ export type Database = {
           avatar_url?: string | null
           country?: string | null
           created_at?: string
+          custom_role_id?: string | null
           deleted_at?: string | null
           department?: string | null
           employee_id?: string | null
@@ -921,6 +1003,7 @@ export type Database = {
           avatar_url?: string | null
           country?: string | null
           created_at?: string
+          custom_role_id?: string | null
           deleted_at?: string | null
           department?: string | null
           employee_id?: string | null
@@ -940,7 +1023,15 @@ export type Database = {
           tier?: Database["public"]["Enums"]["loyalty_tier"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_custom_role_id_fkey"
+            columns: ["custom_role_id"]
+            isOneToOne: false
+            referencedRelation: "custom_roles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reviews: {
         Row: {
