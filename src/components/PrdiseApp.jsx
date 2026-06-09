@@ -637,6 +637,16 @@ function useHashRoute() {
 }
 const nav = (p) => { window.location.hash = p.startsWith("#") ? p : "#" + p; };
 
+// Devuelve true si el partner tiene una web real (no es el fallback wa.me
+// que usamos cuando el partner no tiene sitio propio). El botón "Reservar
+// en partner" solo debe aparecer cuando hay un destino externo legítimo;
+// si no, el cliente solo ve el botón WhatsApp para consultarnos.
+function partnerHasRealWeb(item, partner) {
+  const url = String(item?.partnerUrl || partner?.base_url || "").trim();
+  if (!url) return false;
+  return !/^https?:\/\/wa\.me\//i.test(url);
+}
+
 // WhatsApp helper: construye un enlace wa.me con un mensaje pre-llenado para
 // que el cliente contacte al responsable PRDISE por un servicio del catálogo.
 // Pivote 2026-06-04: PRDISE = catálogo + referral, sin checkout. El contacto
@@ -1635,9 +1645,18 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
-      {/* Curated experiences: si no hay tours publicados, muestra empty
-          state "Próximamente" en vez de ocultar el header completo, para
-          comunicar al visitante que la sección existe y está por llenarse. */}
+      {/* Curated experiences: el home es teaser/escaparate, NO listado.
+          Mostramos máximo 3 tours featured (o los 3 más recientes si no
+          hay featured). Si querés ver todo, "Ver todos los tours" lleva
+          a /tours. Si no hay tours publicados → empty state Próximamente. */}
+      {(() => {
+        const published = TOURS.filter(tr => !tr.status || tr.status === "published");
+        // Prioridad: featured primero (color === "gold" en el map),
+        // después el resto por orden natural. Cortar a 3.
+        const featured = published.filter(tr => tr.color === "gold");
+        const rest = published.filter(tr => tr.color !== "gold");
+        const homeTours = [...featured, ...rest].slice(0, 3);
+        return (
       <section className="svc">
         <div className="container">
           <div className="sec-head">
@@ -1645,7 +1664,7 @@ function HomePage() {
             <h2>{t("curatedExp")}</h2>
             <p>{t("curatedExpSub")}</p>
           </div>
-          {TOURS.filter(tr => !tr.status || tr.status === "published").length === 0 ? (
+          {published.length === 0 ? (
             <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.15)", borderRadius: 16, background: "rgba(255,255,255,.02)" }}>
               <Compass style={{ width: 32, height: 32, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
               <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
@@ -1658,8 +1677,9 @@ function HomePage() {
               </p>
             </div>
           ) : (
+          <>
           <div className="svc-grid">
-            {TOURS.filter(tr => !tr.status || tr.status === "published").map((tr) => (
+            {homeTours.map((tr) => (
               <NavLink to={`/tour?id=${tr.id}`} key={tr.id} className="svc-card">
                 <div className="svc-pic">
                   <img src={tr.img} alt={tr.name} />
@@ -1683,9 +1703,20 @@ function HomePage() {
               </NavLink>
             ))}
           </div>
+          {published.length > homeTours.length && (
+            <div style={{ textAlign: "center", marginTop: 32 }}>
+              <NavLink to="/tours" className="cta-sec" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px" }}>
+                {lang === "es" ? `Ver todos los tours (${published.length})` : `View all tours (${published.length})`}
+                <ArrowRight style={{ width: 14, height: 14 }} />
+              </NavLink>
+            </div>
+          )}
+          </>
           )}
         </div>
       </section>
+        );
+      })()}
 
       <section className="why">
         <div className="container">
@@ -2081,27 +2112,10 @@ function HotelDetail({ params }) {
                 <h3>{t("policies")}</h3>
                 <p>{t("checkInAfter")}: 3:00 PM · {t("checkOutBefore")}: 11:00 AM<br />{lang === "es" ? "Cancelación gratis hasta 48h antes. Dentro de 48h, aplica cargo del 50%." : "Free cancellation up to 48h before. Within 48h, 50% fee applies."}<br />{lang === "es" ? "No se permiten mascotas · No fumar · Depósito de seguridad requerido." : "Pets not allowed · No smoking · Security deposit required."}</p>
               </div>
-              <div className="detail-section">
-                <h3>{t("location")}</h3>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13, color: "rgba(255,255,255,.6)" }}>
-                  <MapPin style={{ width: 14, height: 14, color: "var(--gold)" }} />
-                  <span>{hotel.zone}, Cabo Rojo, Puerto Rico</span>
-                  <a href={`https://www.google.com/maps?q=${hotel.lat},${hotel.lng}`} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "var(--gold)", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Globe style={{ width: 11, height: 11 }} />{t("openMaps")}
-                  </a>
-                </div>
-                <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)", height: 260 }}>
-                  <iframe
-                    title="Location"
-                    width="100%" height="100%" style={{ border: 0, filter: "invert(90%) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(1.2)" }}
-                    loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${hotel.lng-0.008},${hotel.lat-0.005},${hotel.lng+0.008},${hotel.lat+0.005}&layer=mapnik&marker=${hotel.lat},${hotel.lng}`}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                  <span>GPS: {hotel.lat.toFixed(4)}, {hotel.lng.toFixed(4)}</span>
-                </div>
-              </div>
+              {/* Sección "Location" con mapa GPS removida (PM 2026-06-09).
+                  El catálogo no provee coordenadas reales y el iframe con
+                  (0,0) no aportaba valor. La zona/área sigue mostrándose
+                  arriba del listing. Restaurar cuando admin cargue lat/lng. */}
               {(STAY_REVIEWS[hotel.id] || []).length > 0 && (
                 <div className="detail-section">
                   <h3>Guest Reviews</h3>
@@ -2164,14 +2178,17 @@ function HotelDetail({ params }) {
                     <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
                   </div>
                 )}
-                <button type="button" onClick={goToPartner} disabled={redirecting || !partner} className="f-submit" style={{ opacity: !partner ? 0.55 : 1, cursor: !partner ? "not-allowed" : "pointer" }}>
-                  <ExternalLink style={{ width: 16, height: 16 }} />
-                  {redirecting
-                    ? (lang==="es"?"Abriendo…":"Opening…")
-                    : partner
-                      ? (lang==="es"?`Reservar en ${partner.name}`:`Book on ${partner.name}`)
-                      : (lang==="es"?"Sin partner asignado":"No partner assigned")}
-                </button>
+                {/* Botón "Reservar en <partner>" solo si el partner tiene
+                    web real (no fallback wa.me). Si no, el cliente solo
+                    ve el WhatsApp abajo. */}
+                {partnerHasRealWeb(hotel, partner) && (
+                  <button type="button" onClick={goToPartner} disabled={redirecting} className="f-submit">
+                    <ExternalLink style={{ width: 16, height: 16 }} />
+                    {redirecting
+                      ? (lang==="es"?"Abriendo…":"Opening…")
+                      : (lang==="es"?`Reservar en ${partner.name}`:`Book on ${partner.name}`)}
+                  </button>
+                )}
                 <a
                   href={buildWhatsAppHref({
                     user,
@@ -2193,9 +2210,9 @@ function HotelDetail({ params }) {
                   {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
                 </a>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {partner
+                  {partnerHasRealWeb(hotel, partner)
                     ? (lang==="es"?`Te redirigimos a nuestro aliado ${partner.name} para completar la reserva.`:`We'll redirect you to our partner ${partner.name} to complete the booking.`)
-                    : (lang==="es"?"Este alojamiento aún no está disponible para reservar.":"This stay isn't available for booking yet.")}
+                    : (lang==="es"?"Coordinamos tu reserva por WhatsApp.":"We coordinate your booking via WhatsApp.")}
                 </p>
               </div>
             </aside>
@@ -2347,27 +2364,10 @@ function TourDetail({ params }) {
                   <div key={i} className="list-line"><Info style={{ color: "var(--gold)" }} />{i}</div>
                 ))}
               </div>
-              <div className="detail-section">
-                <h3>{t("meetingPoint")}</h3>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13, color: "rgba(255,255,255,.6)" }}>
-                  <MapPin style={{ width: 14, height: 14, color: "var(--gold)" }} />
-                  <span>{tour.location || "Cabo Rojo, Puerto Rico"}</span>
-                  <a href={`https://www.google.com/maps?q=${tour.lat},${tour.lng}`} target="_blank" rel="noreferrer" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "var(--gold)", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Globe style={{ width: 11, height: 11 }} />{t("openMaps")}
-                  </a>
-                </div>
-                <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)", height: 260 }}>
-                  <iframe
-                    title="Location"
-                    width="100%" height="100%" style={{ border: 0, filter: "invert(90%) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(1.2)" }}
-                    loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${tour.lng-0.015},${tour.lat-0.01},${tour.lng+0.015},${tour.lat+0.01}&layer=mapnik&marker=${tour.lat},${tour.lng}`}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                  <span>GPS: {tour.lat.toFixed(4)}, {tour.lng.toFixed(4)}</span>
-                </div>
-              </div>
+              {/* Sección "Meeting Point" con mapa GPS removida (PM 2026-06-09).
+                  El catálogo del cliente no provee coordenadas confiables y el
+                  mapa con (0,0) se veía como un pin perdido. Si en el futuro
+                  el admin carga lat/lng reales por tour, se puede restaurar. */}
               {(TOUR_REVIEWS[tour.id] || []).length > 0 && (
                 <div className="detail-section">
                   <h3>Traveler Reviews</h3>
@@ -2437,14 +2437,17 @@ function TourDetail({ params }) {
                       : "Price on request. Contact us via WhatsApp and we'll confirm availability and cost based on date and number of people."}
                   </div>
                 )}
-                <button type="button" onClick={goToTourPartner} disabled={tourRedirecting || !tourPartner} className="f-submit" style={{ opacity: !tourPartner ? 0.55 : 1, cursor: !tourPartner ? "not-allowed" : "pointer" }}>
-                  <ExternalLink style={{ width: 16, height: 16 }} />
-                  {tourRedirecting
-                    ? (lang==="es"?"Abriendo…":"Opening…")
-                    : tourPartner
-                      ? (lang==="es"?`Reservar en ${tourPartner.name}`:`Book on ${tourPartner.name}`)
-                      : (lang==="es"?"Sin partner asignado":"No partner assigned")}
-                </button>
+                {/* Botón "Reservar en <partner>" solo si el partner tiene
+                    web real. Si no la tiene, el cliente solo ve WhatsApp
+                    abajo (que igualmente nos llega para gestionar). */}
+                {partnerHasRealWeb(tour, tourPartner) && (
+                  <button type="button" onClick={goToTourPartner} disabled={tourRedirecting} className="f-submit">
+                    <ExternalLink style={{ width: 16, height: 16 }} />
+                    {tourRedirecting
+                      ? (lang==="es"?"Abriendo…":"Opening…")
+                      : (lang==="es"?`Reservar en ${tourPartner.name}`:`Book on ${tourPartner.name}`)}
+                  </button>
+                )}
                 <a
                   href={buildWhatsAppHref({
                     user,
@@ -2466,9 +2469,9 @@ function TourDetail({ params }) {
                   {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
                 </a>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {tourPartner
+                  {partnerHasRealWeb(tour, tourPartner)
                     ? (lang==="es"?`Te redirigimos a nuestro aliado ${tourPartner.name} para completar la reserva.`:`We'll redirect you to our partner ${tourPartner.name} to complete the booking.`)
-                    : (lang==="es"?"Este tour aún no está disponible para reservar.":"This tour isn't available for booking yet.")} {t("smallGroups")} · Max {tour.capacity} people
+                    : (lang==="es"?"Coordinamos tu reserva por WhatsApp.":"We coordinate your booking via WhatsApp.")} {t("smallGroups")} · Max {tour.capacity} people
                 </p>
               </div>
             </aside>
