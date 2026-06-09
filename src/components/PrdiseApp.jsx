@@ -89,6 +89,11 @@ import {
   deleteCustomRole as sbDeleteCustomRole,
   assignCustomRoleToUser as sbAssignCustomRoleToUser,
 } from "@/lib/admin/roles";
+import {
+  generateSignupConfirmLink as sbGenerateSignupConfirmLink,
+  forceConfirmEmail as sbForceConfirmEmail,
+  generateRecoveryLink as sbGenerateRecoveryLink,
+} from "@/lib/admin/auth_tools";
 import { ALL_PERMISSION_KEYS, PERMISSION_AREAS } from "@/lib/permissions/constants";
 
 /* ═══════════════ DATA ═══════════════ */
@@ -748,10 +753,13 @@ input,select,textarea{font-family:inherit}
 .nav-color span:nth-child(3){background:var(--green)}.nav-color span:nth-child(4){background:var(--sky)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .logo{display:flex;align-items:center;gap:14px}
-.logo-img{display:block;height:44px;width:auto;max-width:200px}
-.logo-img-sm{height:38px}
-.logo-img-lg{height:72px;max-width:280px}
-@media(max-width:640px){.logo-img{height:36px;max-width:150px}.logo-img-lg{height:60px;max-width:220px}}
+/* +30% sobre tamaños previos para que la firma "LIVING IN PRDISE / Your
+   Transportation Solution / Transport · Discover · Experience" sea legible.
+   Antes: 44/72px desktop, 36/60px mobile. */
+.logo-img{display:block;height:58px;width:auto;max-width:260px}
+.logo-img-sm{height:48px}
+.logo-img-lg{height:92px;max-width:360px}
+@media(max-width:640px){.logo-img{height:48px;max-width:200px}.logo-img-lg{height:78px;max-width:280px}}
 .logo-shapes{display:flex;gap:3px;height:34px}
 .logo-shapes i{display:block;width:12px;border-radius:3px;transform:perspective(200px) rotateY(-6deg)}
 .logo-shapes i:nth-child(1){background:var(--gold)}.logo-shapes i:nth-child(2){background:var(--orange)}
@@ -7742,6 +7750,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-tab ${settingsTab === "integrations" ? "active" : ""}`} onClick={() => setSettingsTab("integrations")}><Globe />{t("adm_integrations")}</button>
               <button className={`adm-tab ${settingsTab === "legal" ? "active" : ""}`} onClick={() => setSettingsTab("legal")}><FileText />{lang === "es" ? "Legal" : "Legal"}</button>
               <button className={`adm-tab ${settingsTab === "roles" ? "active" : ""}`} onClick={() => setSettingsTab("roles")}><Key />{lang === "es" ? "Roles" : "Roles"}</button>
+              <button className={`adm-tab ${settingsTab === "authtools" ? "active" : ""}`} onClick={() => setSettingsTab("authtools")}><Lock />{lang === "es" ? "Auth Tools" : "Auth Tools"}</button>
             </div>
 
         {settingsTab === "team" && (
@@ -8530,6 +8539,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
             {settingsTab === "integrations" && (
               <IntegrationsPanel />
+            )}
+
+            {settingsTab === "authtools" && (
+              <AuthToolsPanel lang={lang} />
             )}
 
             {settingsTab === "roles" && (
@@ -10300,6 +10313,151 @@ function IntegRow({ name, desc, connected }) {
 // Crea o edita un rol custom: name (kebab), labels ES/EN, descripción y
 // matriz de permisos agrupada por área. Submit usa createCustomRole o
 // updateCustomRole según role.id === "new".
+/* ═══════════════ AUTH TOOLS PANEL ═══════════════ */
+// Workarounds para SMTP roto: genera links de confirmación/recovery sin
+// enviar email (admin copia y manda al cliente por WhatsApp/etc), o fuerza
+// la confirmación de un email cuando el cliente es de confianza. Todo es
+// admin-only (RLS en lib/admin/auth_tools.ts via getAdminOrError).
+function AuthToolsPanel({ lang }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(null); // 'link' | 'force' | 'recovery' | null
+  const [result, setResult] = useState(null); // { kind, url?, msg? }
+  const [error, setError] = useState("");
+
+  const run = async (kind, fn) => {
+    setBusy(kind);
+    setError("");
+    setResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("email", email);
+      const res = await fn(fd);
+      if (!res?.ok) {
+        setError(res?.error || (lang === "es" ? "Error desconocido" : "Unknown error"));
+        return;
+      }
+      setResult({ kind, ...(res.data || {}) });
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copy = (txt) => {
+    try {
+      navigator.clipboard.writeText(txt);
+      alert(lang === "es" ? "Copiado al portapapeles." : "Copied to clipboard.");
+    } catch {}
+  };
+
+  return (
+    <div className="adm-card">
+      <div className="adm-card-head">
+        <div className="adm-card-title"><Lock />{lang === "es" ? "Herramientas de Autenticación" : "Auth Tools"}</div>
+      </div>
+      <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 14, lineHeight: 1.6 }}>
+        {lang === "es"
+          ? "Workarounds para cuando el SMTP no entrega emails (Brevo en validación, sender no verificado, rate limit). Genera el link y envíaselo al cliente por WhatsApp, o fuerza la confirmación si confías en el cliente."
+          : "Workarounds for when SMTP doesn't deliver emails (Brevo pending validation, sender not verified, rate limit). Generate the link and send it to the customer via WhatsApp, or force-confirm if you trust them."}
+      </p>
+
+      <div className="adm-fg">
+        <label className="adm-fl">{lang === "es" ? "Email del usuario" : "User email"}</label>
+        <input
+          className="adm-fi"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="cliente@ejemplo.com"
+          autoComplete="off"
+        />
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+        <button
+          className="adm-btn adm-btn-primary"
+          onClick={() => run("link", sbGenerateSignupConfirmLink)}
+          disabled={!email || busy !== null}
+        >
+          {busy === "link" ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> : <Mail />}
+          {lang === "es" ? "Generar link de confirmación" : "Generate signup link"}
+        </button>
+        <button
+          className="adm-btn adm-btn-ghost"
+          onClick={() => run("recovery", sbGenerateRecoveryLink)}
+          disabled={!email || busy !== null}
+        >
+          {busy === "recovery" ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> : <Key />}
+          {lang === "es" ? "Link de reset password" : "Password reset link"}
+        </button>
+        <button
+          className="adm-btn adm-btn-ghost"
+          onClick={() => {
+            if (!confirm(lang === "es"
+              ? `¿Confirmar manualmente el email "${email}" sin verificar? Solo úsalo con usuarios de confianza.`
+              : `Manually confirm "${email}" without verification? Only use for trusted users.`)) return;
+            run("force", sbForceConfirmEmail);
+          }}
+          disabled={!email || busy !== null}
+        >
+          {busy === "force" ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> : <CheckCircle />}
+          {lang === "es" ? "Forzar confirmación" : "Force confirm"}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 9, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)", color: "#f87171", fontSize: 12.5, display: "flex", alignItems: "center", gap: 8 }}>
+          <AlertTriangle style={{ width: 13, height: 13 }} /> {error}
+        </div>
+      )}
+
+      {result && result.kind === "force" && (
+        <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 10, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.3)", color: "#8DC63F", fontSize: 13 }}>
+          <CheckCircle style={{ width: 14, height: 14, display: "inline", marginRight: 6 }} />
+          {lang === "es" ? "Email confirmado. El usuario ya puede iniciar sesión." : "Email confirmed. The user can sign in now."}
+        </div>
+      )}
+
+      {result && result.url && (
+        <div style={{ marginTop: 14, padding: "14px 16px", borderRadius: 12, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.3)" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8 }}>
+            {result.kind === "link"
+              ? (lang === "es" ? "Link de confirmación (válido ~24h)" : "Confirmation link (~24h valid)")
+              : (lang === "es" ? "Link de reset password (válido ~1h)" : "Password reset link (~1h valid)")}
+          </div>
+          <code style={{ display: "block", padding: "10px 12px", borderRadius: 8, background: "rgba(0,0,0,.3)", fontSize: 11, color: "#fff", wordBreak: "break-all", fontFamily: "monospace", lineHeight: 1.5 }}>
+            {result.url}
+          </code>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button className="adm-btn adm-btn-primary" onClick={() => copy(result.url)} style={{ padding: "8px 14px" }}>
+              <Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar link" : "Copy link"}
+            </button>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(
+                (lang === "es"
+                  ? "Hola, este es tu link para confirmar tu cuenta en PRDISE. Ábrelo desde el mismo navegador donde vas a iniciar sesión: "
+                  : "Hi, here's your PRDISE account confirmation link. Open it in the same browser you'll sign in from: ") + result.url
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="adm-btn adm-btn-ghost"
+              style={{ padding: "8px 14px", textDecoration: "none" }}
+            >
+              <MessageCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Compartir WhatsApp" : "Share WhatsApp"}
+            </a>
+          </div>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", marginTop: 10, lineHeight: 1.5 }}>
+            {lang === "es"
+              ? "El cliente debe abrir el link en el mismo navegador donde va a iniciar sesión. Si lo abre en otro dispositivo, igual se confirma su cuenta y puede loguear normal."
+              : "The customer should open the link in the same browser they'll sign in from. If opened on another device, the account still confirms and they can sign in normally."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomRoleEditModal({ role, lang, onClose, onSaved }) {
   const isNew = role.id === "new";
   const [form, setForm] = useState(() => ({
