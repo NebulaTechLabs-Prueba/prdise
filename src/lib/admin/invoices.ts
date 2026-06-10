@@ -23,6 +23,13 @@ export type InvoiceRow = Tables<"invoices"> & {
 // SCHEMAS (createInvoiceManual)
 // ===========================================================================
 
+const uuidNullable = z
+  .string()
+  .uuid("UUID inválido")
+  .optional()
+  .or(z.literal(""))
+  .nullable();
+
 const lineItemSchema = z.object({
   description: z
     .string()
@@ -39,6 +46,11 @@ const lineItemSchema = z.object({
     .int("Precio unitario debe estar en centavos enteros")
     .min(0, "Precio no puede ser negativo")
     .max(100_000_000, "Precio fuera de rango"),
+  // FKs opcionales al catálogo. Permiten reporting + dedupe; null = línea
+  // custom no vinculada al catálogo.
+  tourId: uuidNullable,
+  stayId: uuidNullable,
+  transferRouteId: uuidNullable,
 });
 
 const createInvoiceManualSchema = z.object({
@@ -58,6 +70,9 @@ const createInvoiceManualSchema = z.object({
     .optional()
     .or(z.literal("")),
   items: z.array(lineItemSchema).min(1, "Agregá al menos un ítem a la factura"),
+  // Si está poblado, asociamos la invoice a ese profile. Si está vacío, la
+  // invoice queda atada al admin actor (customer info por campos sueltos).
+  userId: uuidNullable,
 });
 
 function firstZodError(err: { errors: { message: string }[] }): string {
@@ -258,11 +273,15 @@ export async function createInvoiceManual(
 
   // Insert invoice — user_id apunta al admin que crea (el cliente puede no
   // tener perfil en profiles). RLS permite a staff insertar.
+  // user_id: el del cliente si está poblado; sino el actor (admin) como
+  // fallback para que la invoice tenga FK válida. Esto permite que el
+  // cliente vea sus invoices en /account → Mis Facturas vía RLS.
+  const invoiceUserId = (d.userId && d.userId.length > 0) ? d.userId : actorId;
   const { data: invoice, error: invErr } = await supabase
     .from("invoices")
     .insert({
       number,
-      user_id: actorId,
+      user_id: invoiceUserId,
       customer_name: d.customerName,
       customer_email: d.customerEmail,
       customer_phone: d.customerPhone || null,
@@ -283,13 +302,16 @@ export async function createInvoiceManual(
     };
   }
 
-  // Insert items
+  // Insert items con FKs al catálogo (cuando aplicable).
   const itemsPayload = d.items.map((it) => ({
     invoice_id: invoice.id,
     description: it.description,
     quantity: it.quantity,
     unit_cents: it.unitCents,
     line_total_cents: it.unitCents * it.quantity,
+    tour_id: it.tourId || null,
+    stay_id: it.stayId || null,
+    transfer_route_id: it.transferRouteId || null,
   }));
   const { error: itErr } = await supabase
     .from("invoice_items")
@@ -572,4 +594,289 @@ export async function getInvoiceWhatsAppLink(
     : `https://wa.me/?text=${text}`;
 
   return { ok: true, data: { url, phone: phone || null } };
+}
+
+// ===========================================================================
+// SEARCH PROFILES (autocomplete del modal de invoice)
+// ===========================================================================
+
+export type ProfileSearchResult = {
+  id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+};
+
+/**
+ * Busca profiles por email (auth.users), nombre o teléfono. Devuelve hasta
+ * 10 matches. Solo admin (datos personales sensibles).
+ *
+ * El email vive en auth.users; lo cruzamos via admin client. La búsqueda
+ * en profiles es por first_name/last_name/phone con ilike.
+ */
+export async function searchProfiles(
+  formData: FormData
+): Promise<ActionResult<{ results: ProfileSearchResult[] }>> {
+  const guard = await getStaffWithPermissionOrError("users:read");
+  if (!guard.ok) return guard;
+
+  const q = String(formData.get("q") ?? "").trim();
+  if (!q || q.length < 2) {
+    return { ok: true, data: { results: [] } };
+  }
+
+  const admin = createAdminClient();
+
+  // Trae auth.users (con email) y profiles, cruza, filtra.
+  const { data: auth, error: authErr } = await admin.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  if (authErr) {
+    return { ok: false, error: `No se pudo buscar usuarios: ${authErr.message}` };
+  }
+
+  const pattern = `%${q}%`;
+  const { data: profiles, error: profErr } = await admin
+    .from("profiles")
+    .select("id, first_name, last_name, phone")
+    .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},phone.ilike.${pattern}`)
+    .limit(30);
+
+  if (profErr) {
+    return { ok: false, error: `No se pudo buscar profiles: ${profErr.message}` };
+  }
+
+  // Combinamos: matches por nombre/phone + matches por email.
+  const emailMatches = auth.users.filter((u) =>
+    (u.email || "").toLowerCase().includes(q.toLowerCase())
+  );
+  const byId = new Map<string, ProfileSearchResult>();
+  for (const u of emailMatches) {
+    byId.set(u.id, {
+      id: u.id,
+      email: u.email || null,
+      first_name: null,
+      last_name: null,
+      phone: null,
+    });
+  }
+  for (const p of profiles ?? []) {
+    const authUser = auth.users.find((u) => u.id === p.id);
+    const existing = byId.get(p.id);
+    byId.set(p.id, {
+      id: p.id,
+      email: authUser?.email || existing?.email || null,
+      first_name: p.first_name,
+      last_name: p.last_name,
+      phone: p.phone,
+    });
+  }
+  // Para emailMatches que no tuvieron profile, intentamos enriquecer ahora.
+  for (const u of emailMatches) {
+    if (byId.get(u.id)?.first_name) continue;
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("first_name, last_name, phone")
+      .eq("id", u.id)
+      .maybeSingle();
+    if (profile) {
+      const existing = byId.get(u.id)!;
+      byId.set(u.id, { ...existing, ...profile });
+    }
+  }
+
+  const results = Array.from(byId.values()).slice(0, 10);
+  return { ok: true, data: { results } };
+}
+
+// ===========================================================================
+// CREATE CUSTOMER FOR INVOICE
+// ===========================================================================
+
+/**
+ * Crea un cliente nuevo (auth.users + profile) cuando el admin lo necesita
+ * para emitir una invoice. Email confirmado automáticamente (el cliente no
+ * tiene que verificar nada). Password aleatorio que se devuelve UNA SOLA VEZ
+ * al admin para que lo envíe al cliente por WhatsApp.
+ *
+ * Idempotente: si el email ya existe, devuelve el user_id sin tocar la
+ * password (no la expone tampoco). El admin puede usar Auth Tools si
+ * necesita resetear el password.
+ */
+const createCustomerSchema = z.object({
+  email: z.string().trim().email("Email inválido").max(200),
+  firstName: z.string().trim().min(1).max(80).optional().or(z.literal("")),
+  lastName: z.string().trim().min(1).max(80).optional().or(z.literal("")),
+  phone: z.string().trim().max(40).optional().or(z.literal("")),
+});
+
+function randomPassword(): string {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let p = "";
+  const len = 14;
+  // Usamos crypto.getRandomValues en runtime Node 19+/web.
+  const arr = new Uint32Array(len);
+  globalThis.crypto.getRandomValues(arr);
+  for (let i = 0; i < len; i++) p += chars[arr[i] % chars.length];
+  return p + "!2"; // garantiza un símbolo + dígitos (política Supabase default)
+}
+
+export async function createCustomerForInvoice(
+  formData: FormData
+): Promise<
+  ActionResult<{
+    userId: string;
+    email: string;
+    password: string | null;
+    isNew: boolean;
+  }>
+> {
+  const guard = await getStaffWithPermissionOrError("invoices:write");
+  if (!guard.ok) return guard;
+
+  const parsed = createCustomerSchema.safeParse({
+    email: formData.get("email"),
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    phone: formData.get("phone"),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: firstZodError(parsed.error) };
+  }
+  const { email, firstName, lastName, phone } = parsed.data;
+  const emailLower = email.toLowerCase();
+
+  const admin = createAdminClient();
+
+  // Lookup primero.
+  const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const existing = list?.users.find((u) => (u.email || "").toLowerCase() === emailLower);
+  if (existing) {
+    // Asegurar profile poblado (idempotente).
+    await admin
+      .from("profiles")
+      .update({
+        ...(firstName ? { first_name: firstName } : {}),
+        ...(lastName ? { last_name: lastName } : {}),
+        ...(phone ? { phone } : {}),
+      })
+      .eq("id", existing.id);
+    return {
+      ok: true,
+      data: { userId: existing.id, email: emailLower, password: null, isNew: false },
+    };
+  }
+
+  // Crear nuevo.
+  const password = randomPassword();
+  const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
+    email: emailLower,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      first_name: firstName || null,
+      last_name: lastName || null,
+      phone: phone || null,
+    },
+  });
+  if (createErr || !newUser?.user) {
+    return { ok: false, error: `No se pudo crear el cliente: ${createErr?.message ?? "desconocido"}` };
+  }
+
+  // Update profile con phone (el trigger ya creó la fila con first/last).
+  if (phone) {
+    await admin.from("profiles").update({ phone }).eq("id", newUser.user.id);
+  }
+
+  await writeAuditLog(guard.current.user.id, "customer.create", "profile", newUser.user.id, {
+    email: emailLower,
+  });
+
+  return {
+    ok: true,
+    data: { userId: newUser.user.id, email: emailLower, password, isNew: true },
+  };
+}
+
+// ===========================================================================
+// FIND RECENT DUPLICATES
+// ===========================================================================
+
+/**
+ * Detecta invoices recientes (últimos 30 días, status draft/pending) del
+ * mismo cliente que incluyan algún tour/stay/transfer en común. Útil para
+ * advertir al admin antes de generar una invoice duplicada accidentalmente.
+ */
+const dedupeSchema = z.object({
+  userId: z.string().uuid(),
+  tourIds: z.array(z.string().uuid()).default([]),
+  stayIds: z.array(z.string().uuid()).default([]),
+  transferRouteIds: z.array(z.string().uuid()).default([]),
+});
+
+export type DuplicateMatch = {
+  invoiceId: string;
+  number: string;
+  status: string;
+  totalCents: number;
+  createdAt: string;
+  matchedServices: string[]; // descripciones que matchean
+};
+
+export async function findRecentDuplicates(
+  formData: FormData
+): Promise<ActionResult<{ matches: DuplicateMatch[] }>> {
+  const guard = await getStaffWithPermissionOrError("invoices:read");
+  if (!guard.ok) return guard;
+
+  const raw = String(formData.get("payload") ?? "{}");
+  let payload: unknown;
+  try { payload = JSON.parse(raw); } catch { return { ok: false, error: "payload inválido" }; }
+  const parsed = dedupeSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, error: firstZodError(parsed.error) };
+  const { userId, tourIds, stayIds, transferRouteIds } = parsed.data;
+  if (tourIds.length + stayIds.length + transferRouteIds.length === 0) {
+    return { ok: true, data: { matches: [] } };
+  }
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const supabase = await createClient();
+
+  // Buscamos invoices del user en últimos 30d con status draft/pending,
+  // que tengan al menos 1 item con FK match. Hacemos un SELECT con join.
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("id, number, status, total_cents, created_at, items:invoice_items(description, tour_id, stay_id, transfer_route_id)")
+    .eq("user_id", userId)
+    .in("status", ["draft", "pending"])
+    .gte("created_at", since)
+    .order("created_at", { ascending: false });
+
+  if (error) return { ok: false, error: `Búsqueda falló: ${error.message}` };
+
+  type ItemRow = { description: string; tour_id: string | null; stay_id: string | null; transfer_route_id: string | null };
+  const matches: DuplicateMatch[] = [];
+  for (const inv of data ?? []) {
+    const items = (inv.items as ItemRow[] | null) ?? [];
+    const matched: string[] = [];
+    for (const it of items) {
+      if (it.tour_id && tourIds.includes(it.tour_id)) matched.push(it.description);
+      else if (it.stay_id && stayIds.includes(it.stay_id)) matched.push(it.description);
+      else if (it.transfer_route_id && transferRouteIds.includes(it.transfer_route_id)) matched.push(it.description);
+    }
+    if (matched.length > 0) {
+      matches.push({
+        invoiceId: inv.id,
+        number: inv.number,
+        status: inv.status,
+        totalCents: inv.total_cents,
+        createdAt: inv.created_at,
+        matchedServices: matched,
+      });
+    }
+  }
+
+  return { ok: true, data: { matches } };
 }

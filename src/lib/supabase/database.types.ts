@@ -542,6 +542,9 @@ export type Database = {
           invoice_id: string
           line_total_cents: number
           quantity: number
+          stay_id: string | null
+          tour_id: string | null
+          transfer_route_id: string | null
           unit_cents: number
         }
         Insert: {
@@ -552,6 +555,9 @@ export type Database = {
           invoice_id: string
           line_total_cents: number
           quantity?: number
+          stay_id?: string | null
+          tour_id?: string | null
+          transfer_route_id?: string | null
           unit_cents: number
         }
         Update: {
@@ -562,6 +568,9 @@ export type Database = {
           invoice_id?: string
           line_total_cents?: number
           quantity?: number
+          stay_id?: string | null
+          tour_id?: string | null
+          transfer_route_id?: string | null
           unit_cents?: number
         }
         Relationships: [
@@ -577,6 +586,27 @@ export type Database = {
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_transfer_route_id_fkey"
+            columns: ["transfer_route_id"]
+            isOneToOne: false
+            referencedRelation: "transfer_routes"
             referencedColumns: ["id"]
           },
         ]

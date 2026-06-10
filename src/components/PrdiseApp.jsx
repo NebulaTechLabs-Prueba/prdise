@@ -52,7 +52,10 @@ import {
   deletePartner as sbDeletePartner,
   listPartnerReferralCounts as sbListPartnerReferralCounts,
 } from "@/lib/admin/partners";
-import { logReferral as sbLogReferral } from "@/lib/referrals/actions";
+// PM 2026-06-10: cero fuga. logReferral ya no se usa desde el cliente
+// porque eliminamos los botones que redirigían a aliados externos. El
+// Server Action sigue existiendo en src/lib/referrals/actions.ts por si
+// se restaura algún día, pero el catálogo público no lo invoca.
 import {
   listContactMessages as sbListContactMessages,
   updateContactStatus as sbUpdateContactStatus,
@@ -80,6 +83,9 @@ import {
   regenerateStripePaymentLink as sbRegenerateStripeLink,
   generateInvoicePdf as sbGenerateInvoicePdf,
   getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
+  searchProfiles as sbSearchProfiles,
+  createCustomerForInvoice as sbCreateCustomerForInvoice,
+  findRecentDuplicates as sbFindRecentDuplicates,
 } from "@/lib/admin/invoices";
 import { updateSiteSettingsBulk as sbUpdateSiteSettingsBulk } from "@/lib/admin/settings";
 import {
@@ -637,15 +643,8 @@ function useHashRoute() {
 }
 const nav = (p) => { window.location.hash = p.startsWith("#") ? p : "#" + p; };
 
-// Devuelve true si el partner tiene una web real (no es el fallback wa.me
-// que usamos cuando el partner no tiene sitio propio). El botón "Reservar
-// en partner" solo debe aparecer cuando hay un destino externo legítimo;
-// si no, el cliente solo ve el botón WhatsApp para consultarnos.
-function partnerHasRealWeb(item, partner) {
-  const url = String(item?.partnerUrl || partner?.base_url || "").trim();
-  if (!url) return false;
-  return !/^https?:\/\/wa\.me\//i.test(url);
-}
+// Helper partnerHasRealWeb eliminado (PM cero fuga 2026-06-10): ya no
+// hay botones que rediman a aliados; el helper no tiene callers.
 
 // WhatsApp helper: construye un enlace wa.me con un mensaje pre-llenado para
 // que el cliente contacte al responsable PRDISE por un servicio del catálogo.
@@ -1885,12 +1884,9 @@ function HotelsList() {
                         <p className="listing-meta"><MapPin style={{ width: 12, height: 12 }} />{h.zone} · Sleeps {h.sleeps}</p>
                         <p className="listing-desc">{L(h.desc, h.descES)}</p>
                         <div className="listing-chips">{(h.amenities || []).slice(0, 4).map((a) => <span key={a}>{a}</span>)}</div>
-                        {partner && (
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, padding: "4px 9px", borderRadius: 99, background: "rgba(41,171,226,.1)", border: "1px solid rgba(41,171,226,.25)", color: "#29ABE2", fontSize: 10.5, fontWeight: 700 }}>
-                            <ExternalLink style={{ width: 10, height: 10 }} />
-                            {lang === "es" ? "Reservas en" : "Booking via"} {partner.name}
-                          </div>
-                        )}
+                        {/* Badge "Booking via <partner>" removido (PM cero
+                            fuga 2026-06-10). No exponemos el nombre del
+                            aliado al cliente — todo se coordina por PRDISE. */}
                         <div className="listing-foot">
                           <div>
                             <span className="price">${h.price}</span>
@@ -1958,12 +1954,7 @@ function ToursList() {
                   <h3>{L(tr.name, tr.nameES)}</h3>
                   <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {tr.difficulty}</p>
                   <p className="listing-desc">{L(tr.desc, tr.descES)}</p>
-                  {partner && (
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, padding: "4px 9px", borderRadius: 99, background: "rgba(41,171,226,.1)", border: "1px solid rgba(41,171,226,.25)", color: "#29ABE2", fontSize: 10.5, fontWeight: 700 }}>
-                      <ExternalLink style={{ width: 10, height: 10 }} />
-                      {lang === "es" ? "Reservas en" : "Booking via"} {partner.name}
-                    </div>
-                  )}
+                  {/* Badge "Booking via <partner>" removido (PM cero fuga). */}
                   <div className="listing-foot">
                     <div>
                       {tr.price > 0 ? (
@@ -2043,26 +2034,13 @@ function HotelDetail({ params }) {
     );
   }
 
+  // partner se conserva solo para uso interno (admin podría ver a quién
+  // pertenece el item) pero ya no se expone al cliente. goToPartner +
+  // redirecting state se removieron (PM cero fuga 2026-06-10).
   const partner = useMemo(() => {
     if (!hotel?.partnerId) return null;
     return PARTNERS.find((p) => p.id === hotel.partnerId) || null;
   }, [hotel?.partnerId]);
-  const [redirecting, setRedirecting] = useState(false);
-  const goToPartner = async () => {
-    if (!hotel?.dbId) { alert(lang==="es"?"Item no disponible":"Item not available"); return; }
-    if (!partner) { alert(lang==="es"?"Este alojamiento aún no tiene partner asignado. Contacta al administrador.":"This stay has no partner assigned yet. Contact the admin."); return; }
-    setRedirecting(true);
-    try {
-      const fd = new FormData();
-      fd.append("partner_id", partner.id);
-      fd.append("item_type", "stay");
-      fd.append("item_id", hotel.dbId);
-      const res = await sbLogReferral(fd);
-      if (!res?.ok) { alert((lang==="es"?"No se pudo abrir el partner: ":"Could not open partner: ") + (res?.error || "error")); setRedirecting(false); return; }
-      window.open(res.redirect_url, "_blank", "noopener,noreferrer");
-    } catch (e) { alert("Error: " + (e?.message || e)); }
-    setRedirecting(false);
-  };
 
   return (
     <>
@@ -2205,17 +2183,11 @@ function HotelDetail({ params }) {
                     <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
                   </div>
                 )}
-                {/* Botón "Reservar en <partner>" solo si el partner tiene
-                    web real (no fallback wa.me). Si no, el cliente solo
-                    ve el WhatsApp abajo. */}
-                {partnerHasRealWeb(hotel, partner) && (
-                  <button type="button" onClick={goToPartner} disabled={redirecting} className="f-submit">
-                    <ExternalLink style={{ width: 16, height: 16 }} />
-                    {redirecting
-                      ? (lang==="es"?"Abriendo…":"Opening…")
-                      : (lang==="es"?`Reservar en ${partner.name}`:`Book on ${partner.name}`)}
-                  </button>
-                )}
+                {/* PM 2026-06-10: CERO FUGA. El botón "Reservar en <partner>"
+                    se eliminó. PRDISE concentra toda la conversión: cliente
+                    consulta por WhatsApp → admin gestiona y emite invoice
+                    Stripe desde la misma página. Las URLs de aliados no se
+                    exponen al cliente. */}
                 <a
                   href={buildWhatsAppHref({
                     user,
@@ -2237,9 +2209,7 @@ function HotelDetail({ params }) {
                   {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
                 </a>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {partnerHasRealWeb(hotel, partner)
-                    ? (lang==="es"?`Te redirigimos a nuestro aliado ${partner.name} para completar la reserva.`:`We'll redirect you to our partner ${partner.name} to complete the booking.`)
-                    : (lang==="es"?"Coordinamos tu reserva por WhatsApp.":"We coordinate your booking via WhatsApp.")}
+                  {lang==="es"?"Coordinamos tu reserva por WhatsApp y te enviamos el link de pago.":"We coordinate your booking via WhatsApp and send you the payment link."}
                 </p>
               </div>
             </aside>
@@ -2294,26 +2264,13 @@ function TourDetail({ params }) {
       </div>
     );
   }
+  // Partner solo se mantiene para uso interno (link en /admin si querés
+  // ver a qué aliado pertenece el tour). goToTourPartner + redirecting
+  // state removidos por la directiva "cero fuga" 2026-06-10.
   const tourPartner = useMemo(() => {
     if (!tour?.partnerId) return null;
     return PARTNERS.find((p) => p.id === tour.partnerId) || null;
   }, [tour?.partnerId]);
-  const [tourRedirecting, setTourRedirecting] = useState(false);
-  const goToTourPartner = async () => {
-    if (!tour?.dbId) { alert(lang==="es"?"Tour no disponible":"Tour not available"); return; }
-    if (!tourPartner) { alert(lang==="es"?"Este tour aún no tiene partner asignado. Contacta al administrador.":"This tour has no partner assigned yet. Contact the admin."); return; }
-    setTourRedirecting(true);
-    try {
-      const fd = new FormData();
-      fd.append("partner_id", tourPartner.id);
-      fd.append("item_type", "tour");
-      fd.append("item_id", tour.dbId);
-      const res = await sbLogReferral(fd);
-      if (!res?.ok) { alert((lang==="es"?"No se pudo abrir el partner: ":"Could not open partner: ") + (res?.error || "error")); setTourRedirecting(false); return; }
-      window.open(res.redirect_url, "_blank", "noopener,noreferrer");
-    } catch (e) { alert("Error: " + (e?.message || e)); }
-    setTourRedirecting(false);
-  };
 
   return (
     <>
@@ -2471,17 +2428,9 @@ function TourDetail({ params }) {
                       : "Price on request. Contact us via WhatsApp and we'll confirm availability and cost based on date and number of people."}
                   </div>
                 )}
-                {/* Botón "Reservar en <partner>" solo si el partner tiene
-                    web real. Si no la tiene, el cliente solo ve WhatsApp
-                    abajo (que igualmente nos llega para gestionar). */}
-                {partnerHasRealWeb(tour, tourPartner) && (
-                  <button type="button" onClick={goToTourPartner} disabled={tourRedirecting} className="f-submit">
-                    <ExternalLink style={{ width: 16, height: 16 }} />
-                    {tourRedirecting
-                      ? (lang==="es"?"Abriendo…":"Opening…")
-                      : (lang==="es"?`Reservar en ${tourPartner.name}`:`Book on ${tourPartner.name}`)}
-                  </button>
-                )}
+                {/* PM 2026-06-10: CERO FUGA. El botón "Reservar en <partner>"
+                    se eliminó. Toda conversión se concentra en PRDISE vía
+                    WhatsApp + invoice Stripe. */}
                 <a
                   href={buildWhatsAppHref({
                     user,
@@ -2503,9 +2452,7 @@ function TourDetail({ params }) {
                   {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
                 </a>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {partnerHasRealWeb(tour, tourPartner)
-                    ? (lang==="es"?`Te redirigimos a nuestro aliado ${tourPartner.name} para completar la reserva.`:`We'll redirect you to our partner ${tourPartner.name} to complete the booking.`)
-                    : (lang==="es"?"Coordinamos tu reserva por WhatsApp.":"We coordinate your booking via WhatsApp.")} {t("smallGroups")} · Max {tour.capacity} people
+                  {lang==="es"?"Coordinamos tu reserva por WhatsApp y te enviamos el link de pago.":"We coordinate your booking via WhatsApp and send you the payment link."} {t("smallGroups")} · Max {tour.capacity} people
                 </p>
               </div>
             </aside>
@@ -10735,17 +10682,106 @@ function CustomRoleEditModal({ role, lang, onClose, onSaved }) {
 
 /* ═══════════════ INVOICE CREATE MODAL (Fase 2 pivote 2026-06-04) ═══════════════ */
 function InvoiceCreateModal({ lang, onClose, onCreated }) {
+  // ── Customer state ──────────────────────────────────────────────────────
+  // Modo "buscar" arranca abierto. Al elegir un profile o crear uno nuevo,
+  // los datos quedan locked y se muestra un summary editable.
+  const [mode, setMode] = useState("search"); // "search" | "create" | "locked"
+  const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerWhatsapp, setCustomerWhatsapp] = useState("");
+  // Nuevo cliente: si el admin crea uno desde acá, mostramos password 1 vez.
+  const [newCustomerPwd, setNewCustomerPwd] = useState(null);
+
+  // ── Invoice state ────────────────────────────────────────────────────────
   const [notes, setNotes] = useState("");
   const [dueAt, setDueAt] = useState("");
+  // Cada item: { description, quantity, unitPrice, tourId?, stayId?, transferRouteId? }
   const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: "" }]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Dedupe state ─────────────────────────────────────────────────────────
+  const [duplicateMatches, setDuplicateMatches] = useState([]);
+  const [dedupeChecking, setDedupeChecking] = useState(false);
+
   const T = (es, en) => (lang === "es" ? es : en);
+
+  // ── Search profiles con debounce ─────────────────────────────────────────
+  useEffect(() => {
+    if (mode !== "search") return;
+    if (!search || search.trim().length < 2) { setSearchResults([]); return; }
+    const id = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const fd = new FormData();
+        fd.append("q", search.trim());
+        const res = await sbSearchProfiles(fd);
+        setSearchResults(res?.ok ? (res.data?.results ?? []) : []);
+      } catch { setSearchResults([]); }
+      finally { setSearching(false); }
+    }, 250);
+    return () => clearTimeout(id);
+  }, [search, mode]);
+
+  const pickProfile = (p) => {
+    setSelectedUserId(p.id);
+    setCustomerName([p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || "");
+    setCustomerEmail(p.email || "");
+    setCustomerPhone(p.phone || "");
+    setCustomerWhatsapp(p.phone || "");
+    setMode("locked");
+    setSearchResults([]);
+  };
+
+  const createNew = async () => {
+    setError("");
+    if (!customerName.trim()) { setError(T("Nombre requerido", "Name required")); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) { setError(T("Email inválido", "Invalid email")); return; }
+    const [firstName, ...rest] = customerName.trim().split(/\s+/);
+    const fd = new FormData();
+    fd.append("email", customerEmail.trim().toLowerCase());
+    if (firstName) fd.append("firstName", firstName);
+    if (rest.length) fd.append("lastName", rest.join(" "));
+    if (customerPhone.trim()) fd.append("phone", customerPhone.trim());
+    const res = await sbCreateCustomerForInvoice(fd);
+    if (!res?.ok) { setError(res.error || "Error"); return; }
+    setSelectedUserId(res.data.userId);
+    if (res.data.isNew) setNewCustomerPwd(res.data.password);
+    setMode("locked");
+  };
+
+  const resetCustomer = () => {
+    setMode("search");
+    setSelectedUserId(null);
+    setCustomerName("");
+    setCustomerEmail("");
+    setCustomerPhone("");
+    setCustomerWhatsapp("");
+    setNewCustomerPwd(null);
+    setSearch("");
+    setSearchResults([]);
+    setDuplicateMatches([]);
+  };
+
+  // ── Línea: import desde catálogo ─────────────────────────────────────────
+  // Listas combinadas con tipo para el dropdown. Filtramos a published/active.
+  const catalogOptions = useMemo(() => {
+    const tours = (TOURS || []).filter(t => !t.status || t.status === "published").map(t => ({
+      kind: "tour", id: t.dbId, label: `Tour · ${t.name}`, price: t.price, desc: t.desc,
+    }));
+    const stays = (HOTELS || []).filter(h => !h.status || h.status === "published").map(h => ({
+      kind: "stay", id: h.dbId, label: `Stay · ${h.name}`, price: h.price, desc: h.desc,
+    }));
+    const routes = (ROUTES || []).filter(r => r.active !== false).map(r => ({
+      kind: "transfer", id: r.id, label: `Transfer · ${r.from} → ${r.to}`, price: 0, desc: "",
+    }));
+    return [...tours, ...stays, ...routes];
+  }, []);
 
   const updateItem = (idx, patch) => {
     setItems((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -10753,11 +10789,51 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   const addItem = () => setItems((arr) => [...arr, { description: "", quantity: 1, unitPrice: "" }]);
   const removeItem = (idx) => setItems((arr) => (arr.length <= 1 ? arr : arr.filter((_, i) => i !== idx)));
 
+  const importFromCatalog = (idx, optKey) => {
+    if (!optKey) {
+      // Resetear FK pero conservar texto manual.
+      updateItem(idx, { tourId: null, stayId: null, transferRouteId: null });
+      return;
+    }
+    const [kind, id] = optKey.split(":");
+    const opt = catalogOptions.find(o => o.kind === kind && o.id === id);
+    if (!opt) return;
+    updateItem(idx, {
+      description: opt.label.replace(/^(Tour|Stay|Transfer) · /, "") + (opt.desc ? ` — ${opt.desc.slice(0, 80)}` : ""),
+      unitPrice: opt.price ? String(opt.price) : "",
+      tourId: kind === "tour" ? id : null,
+      stayId: kind === "stay" ? id : null,
+      transferRouteId: kind === "transfer" ? id : null,
+    });
+  };
+
   const subtotal = items.reduce((s, it) => {
     const q = Number(it.quantity) || 0;
     const u = Number(it.unitPrice) || 0;
     return s + q * u;
   }, 0);
+
+  // ── Dedupe check: corre cuando hay user seleccionado + items con FK ──────
+  useEffect(() => {
+    if (!selectedUserId) { setDuplicateMatches([]); return; }
+    const tourIds = items.map(i => i.tourId).filter(Boolean);
+    const stayIds = items.map(i => i.stayId).filter(Boolean);
+    const transferRouteIds = items.map(i => i.transferRouteId).filter(Boolean);
+    if (tourIds.length + stayIds.length + transferRouteIds.length === 0) {
+      setDuplicateMatches([]); return;
+    }
+    const id = setTimeout(async () => {
+      setDedupeChecking(true);
+      try {
+        const fd = new FormData();
+        fd.append("payload", JSON.stringify({ userId: selectedUserId, tourIds, stayIds, transferRouteIds }));
+        const res = await sbFindRecentDuplicates(fd);
+        setDuplicateMatches(res?.ok ? (res.data?.matches ?? []) : []);
+      } catch { setDuplicateMatches([]); }
+      finally { setDedupeChecking(false); }
+    }, 400);
+    return () => clearTimeout(id);
+  }, [selectedUserId, items]);
 
   const handleSubmit = async () => {
     setError("");
@@ -10776,13 +10852,16 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     const itemsPayload = items.map((it) => ({
       description: it.description.trim(),
       quantity: Number(it.quantity),
-      // USD → centavos. Math.round para evitar errores de coma flotante.
       unitCents: Math.round(Number(it.unitPrice) * 100),
+      tourId: it.tourId || null,
+      stayId: it.stayId || null,
+      transferRouteId: it.transferRouteId || null,
     }));
 
     setSubmitting(true);
     try {
       const fd = new FormData();
+      if (selectedUserId) fd.append("userId", selectedUserId);
       fd.append("customerName", customerName.trim());
       fd.append("customerEmail", customerEmail.trim());
       if (customerPhone.trim()) fd.append("customerPhone", customerPhone.trim());
@@ -10812,59 +10891,205 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
         <p className="adm-modal-sub">{T("Generamos el link de pago Stripe automáticamente y luego podés enviarlo por WhatsApp.", "We generate the Stripe payment link automatically; then you can send it via WhatsApp.")}</p>
 
         <div className="adm-modal-section">
-          <div className="adm-modal-section-h"><User />{T("Cliente", "Customer")}</div>
-          <div className="adm-fg-row">
-            <div className="adm-fg" style={{ flex: 1 }}>
-              <label className="adm-fl">{T("Nombre", "Name")} *</label>
-              <input className="adm-fi" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="John Smith" />
-            </div>
-            <div className="adm-fg" style={{ flex: 1 }}>
-              <label className="adm-fl">{T("Correo", "Email")} *</label>
-              <input type="email" className="adm-fi" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="client@email.com" />
-            </div>
+          <div className="adm-modal-section-h">
+            <User />{T("Cliente", "Customer")}
+            {mode === "locked" && (
+              <button type="button" onClick={resetCustomer} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, background: "transparent", border: "1px solid rgba(255,255,255,.15)", color: "rgba(255,255,255,.7)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                {T("Cambiar", "Change")}
+              </button>
+            )}
           </div>
-          <div className="adm-fg-row">
-            <div className="adm-fg" style={{ flex: 1 }}>
-              <label className="adm-fl">{T("Teléfono", "Phone")}</label>
-              <input className="adm-fi" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+1 787 555 0100" />
-            </div>
-            <div className="adm-fg" style={{ flex: 1 }}>
-              <label className="adm-fl">WhatsApp <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>({T("opcional, usa teléfono si vacío", "optional, falls back to phone")})</span></label>
-              <input className="adm-fi" value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} placeholder="+1 787 555 0100" />
-            </div>
-            <div className="adm-fg" style={{ flex: 1 }}>
-              <label className="adm-fl">{T("Vencimiento", "Due date")}</label>
-              <input type="date" className="adm-fi" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
-            </div>
-          </div>
+
+          {mode === "search" && (
+            <>
+              <div className="adm-fg">
+                <label className="adm-fl">{T("Buscar cliente existente (email / nombre / teléfono)", "Search existing customer (email / name / phone)")}</label>
+                <input className="adm-fi" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={T("Empezá a tipear…", "Start typing…")} autoFocus />
+              </div>
+              {(searching || searchResults.length > 0) && (
+                <div style={{ marginTop: -6, marginBottom: 10, borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", maxHeight: 200, overflowY: "auto", background: "rgba(0,0,0,.2)" }}>
+                  {searching && (
+                    <div style={{ padding: "10px 12px", color: "rgba(255,255,255,.5)", fontSize: 12 }}>{T("Buscando…", "Searching…")}</div>
+                  )}
+                  {!searching && searchResults.length === 0 && search.length >= 2 && (
+                    <div style={{ padding: "10px 12px", color: "rgba(255,255,255,.55)", fontSize: 12 }}>{T("Sin resultados", "No matches")}</div>
+                  )}
+                  {searchResults.map((p) => (
+                    <button key={p.id} type="button" onClick={() => pickProfile(p)}
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", background: "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,.05)", color: "#fff", cursor: "pointer", fontSize: 13 }}>
+                      <div style={{ fontWeight: 700 }}>{[p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || "(sin nombre)"}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                        {p.email}{p.phone ? ` · ${p.phone}` : ""}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button type="button" className="adm-btn adm-btn-ghost" onClick={() => setMode("create")} style={{ marginTop: 4 }}>
+                <Plus />{T("Crear cliente nuevo", "Create new customer")}
+              </button>
+            </>
+          )}
+
+          {mode === "create" && (
+            <>
+              <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", marginTop: -6, marginBottom: 10 }}>
+                {T("Creamos la cuenta con email confirmado. Te devolvemos un password aleatorio que podés enviarle por WhatsApp.", "We create the account with email confirmed. We return a random password you can send via WhatsApp.")}
+              </p>
+              <div className="adm-fg-row">
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{T("Nombre completo", "Full name")} *</label>
+                  <input className="adm-fi" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="John Smith" />
+                </div>
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{T("Email", "Email")} *</label>
+                  <input type="email" className="adm-fi" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="client@email.com" />
+                </div>
+              </div>
+              <div className="adm-fg">
+                <label className="adm-fl">{T("WhatsApp", "WhatsApp")}</label>
+                <input className="adm-fi" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+1 787 555 0100" />
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button type="button" className="adm-btn adm-btn-ghost" onClick={() => { setMode("search"); setError(""); }}>{T("Volver a buscar", "Back to search")}</button>
+                <button type="button" className="adm-btn adm-btn-primary" onClick={createNew}>
+                  <CheckCircle />{T("Crear y continuar", "Create and continue")}
+                </button>
+              </div>
+            </>
+          )}
+
+          {mode === "locked" && (
+            <>
+              {newCustomerPwd && (
+                <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.35)" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".12em", color: "#8DC63F", textTransform: "uppercase", marginBottom: 6 }}>
+                    {T("Cliente creado — password generado", "Customer created — password generated")}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <code style={{ fontFamily: "monospace", fontSize: 14, padding: "6px 10px", borderRadius: 8, background: "rgba(0,0,0,.4)", color: "#fff", letterSpacing: ".05em" }}>
+                      {newCustomerPwd}
+                    </code>
+                    <button type="button" onClick={() => { navigator.clipboard.writeText(newCustomerPwd); alert(T("Copiado", "Copied")); }}
+                      className="adm-btn adm-btn-ghost" style={{ padding: "6px 12px" }}>
+                      <Copy />{T("Copiar", "Copy")}
+                    </button>
+                    <a href={`https://wa.me/${(customerPhone || "").replace(/\D/g, "")}?text=${encodeURIComponent(T(`Hola ${customerName}, tu cuenta en PRDISE está lista. Email: ${customerEmail} · Password: ${newCustomerPwd} · Iniciá sesión en http://46.225.63.21/#/login y cambiá tu password.`, `Hi ${customerName}, your PRDISE account is ready. Email: ${customerEmail} · Password: ${newCustomerPwd} · Sign in at http://46.225.63.21/#/login and change your password.`))}`}
+                      target="_blank" rel="noopener noreferrer" className="adm-btn adm-btn-ghost" style={{ padding: "6px 12px", textDecoration: "none" }}>
+                      <MessageCircle />{T("Enviar por WhatsApp", "Send WhatsApp")}
+                    </a>
+                  </div>
+                  <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", marginTop: 8, lineHeight: 1.5 }}>
+                    {T("Esta es la única vez que verás este password — guardalo o envialo ahora.", "This is the only time you'll see this password — save or send it now.")}
+                  </p>
+                </div>
+              )}
+
+              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{customerName || "(sin nombre)"}</div>
+                <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", marginTop: 2 }}>
+                  {customerEmail}{customerPhone ? ` · ${customerPhone}` : ""}
+                </div>
+              </div>
+
+              <div className="adm-fg-row">
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{T("Nombre (mostrado en factura)", "Name (shown on invoice)")} *</label>
+                  <input className="adm-fi" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                </div>
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{T("Email (factura)", "Email (invoice)")} *</label>
+                  <input type="email" className="adm-fi" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+                </div>
+              </div>
+              <div className="adm-fg-row">
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{T("Teléfono", "Phone")}</label>
+                  <input className="adm-fi" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                </div>
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">WhatsApp</label>
+                  <input className="adm-fi" value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} placeholder={customerPhone || "+1 787 555 0100"} />
+                </div>
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{T("Vencimiento", "Due date")}</label>
+                  <input type="date" className="adm-fi" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+                </div>
+              </div>
+            </>
+          )}
         </div>
+
+        {/* Dedupe banner */}
+        {duplicateMatches.length > 0 && (
+          <div style={{ margin: "10px 0", padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.35)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <AlertTriangle style={{ width: 14, height: 14, color: "var(--gold)" }} />
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--gold)" }}>
+                {T(`Atención: ${duplicateMatches.length} factura(s) pendiente(s) con servicios en común.`, `Warning: ${duplicateMatches.length} pending invoice(s) with overlapping services.`)}
+              </span>
+            </div>
+            {duplicateMatches.map((m) => (
+              <div key={m.invoiceId} style={{ fontSize: 11.5, color: "rgba(255,255,255,.75)", marginTop: 4 }}>
+                <strong>{m.number}</strong> · <span style={{ color: "rgba(255,255,255,.55)" }}>{m.status}</span> · ${(m.totalCents / 100).toFixed(2)} · {new Date(m.createdAt).toLocaleDateString()} — {m.matchedServices.slice(0, 2).join(", ")}{m.matchedServices.length > 2 ? "…" : ""}
+              </div>
+            ))}
+            <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", marginTop: 8, lineHeight: 1.5 }}>
+              {T("Confirmá con el cliente si quiere una factura nueva o pagar la pendiente.", "Confirm with the customer if they want a new invoice or pay the pending one.")}
+            </p>
+          </div>
+        )}
 
         <div className="adm-modal-section">
           <div className="adm-modal-section-h"><FileText />{T("Líneas", "Line items")}<span style={{ marginLeft: "auto", color: "rgba(255,255,255,.4)", fontWeight: 600, letterSpacing: 0, textTransform: "none" }}>{items.length} {items.length === 1 ? T("ítem", "item") : T("ítems", "items")}</span></div>
-          {items.map((it, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 0", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,.06)" : "none" }}>
-              <div className="adm-fg" style={{ flex: 3, marginBottom: 0 }}>
-                <label className="adm-fl">{T("Descripción", "Description")} *</label>
-                <input className="adm-fi" value={it.description} onChange={(e) => updateItem(i, { description: e.target.value })} placeholder={T("Estadía Cabo Rojo · 2 noches", "Stay Cabo Rojo · 2 nights")} />
+          {items.map((it, i) => {
+            const linkedKey = it.tourId ? `tour:${it.tourId}` : it.stayId ? `stay:${it.stayId}` : it.transferRouteId ? `transfer:${it.transferRouteId}` : "";
+            return (
+            <div key={i} style={{ padding: "10px 0", borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,.06)" : "none" }}>
+              {/* Selector de catálogo: pre-puebla descripción y precio si elegís. */}
+              <div className="adm-fg" style={{ marginBottom: 8 }}>
+                <label className="adm-fl">
+                  {T("Importar de catálogo", "Import from catalog")}
+                  {linkedKey && (
+                    <span style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", color: "#8DC63F" }}>
+                      ✓ {T("VINCULADO", "LINKED")}
+                    </span>
+                  )}
+                </label>
+                <select className="adm-fi" value={linkedKey} onChange={(e) => importFromCatalog(i, e.target.value)}>
+                  <option value="">{T("— línea custom (sin vínculo) —", "— custom line (unlinked) —")}</option>
+                  {catalogOptions.map((opt) => (
+                    <option key={`${opt.kind}:${opt.id}`} value={`${opt.kind}:${opt.id}`}>
+                      {opt.label}{opt.price ? ` · $${opt.price}` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
-                <label className="adm-fl">{T("Cant.", "Qty")} *</label>
-                <input type="number" min="1" step="1" className="adm-fi" value={it.quantity} onChange={(e) => updateItem(i, { quantity: e.target.value })} />
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+                <div className="adm-fg" style={{ flex: 3, marginBottom: 0 }}>
+                  <label className="adm-fl">{T("Descripción", "Description")} *</label>
+                  <input className="adm-fi" value={it.description} onChange={(e) => updateItem(i, { description: e.target.value })} placeholder={T("Estadía Cabo Rojo · 2 noches", "Stay Cabo Rojo · 2 nights")} />
+                </div>
+                <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
+                  <label className="adm-fl">{T("Cant.", "Qty")} *</label>
+                  <input type="number" min="1" step="1" className="adm-fi" value={it.quantity} onChange={(e) => updateItem(i, { quantity: e.target.value })} />
+                </div>
+                <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
+                  <label className="adm-fl">{T("Precio (USD)", "Price (USD)")} *</label>
+                  <input type="number" min="0" step="0.01" className="adm-fi" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: e.target.value })} placeholder="0.00" />
+                </div>
+                <button
+                  type="button"
+                  className="adm-icon-btn"
+                  title={T("Quitar", "Remove")}
+                  onClick={() => removeItem(i)}
+                  disabled={items.length <= 1}
+                  style={{ opacity: items.length <= 1 ? 0.3 : 1, marginBottom: 4 }}
+                ><Trash2 /></button>
               </div>
-              <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
-                <label className="adm-fl">{T("Precio (USD)", "Price (USD)")} *</label>
-                <input type="number" min="0" step="0.01" className="adm-fi" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: e.target.value })} placeholder="0.00" />
-              </div>
-              <button
-                type="button"
-                className="adm-icon-btn"
-                title={T("Quitar", "Remove")}
-                onClick={() => removeItem(i)}
-                disabled={items.length <= 1}
-                style={{ opacity: items.length <= 1 ? 0.3 : 1, marginBottom: 4 }}
-              ><Trash2 /></button>
             </div>
-          ))}
+            );
+          })}
           <button type="button" className="adm-btn adm-btn-ghost" onClick={addItem} style={{ marginTop: 10 }}>
             <Plus />{T("Agregar línea", "Add line")}
           </button>
