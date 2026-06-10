@@ -1087,10 +1087,29 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .gallery-hero{padding-top:100px;background:var(--ink)}
 .gallery-hero .inner{max-width:1240px;margin:0 auto;padding:30px 28px}
 .gallery-grid{display:grid;grid-template-columns:1fr;gap:6px;border-radius:18px;overflow:hidden;margin-top:20px}
-@media(min-width:768px){.gallery-grid{grid-template-columns:2fr 1fr 1fr;grid-template-rows:1fr 1fr;height:420px}
-.gallery-grid img{height:100% !important}.gallery-grid img:first-child{grid-row:span 2}}
 .gallery-grid img{width:100%;height:200px;object-fit:cover}
-@media(max-width:767px){.gallery-grid img:nth-child(n+3){display:none}}
+/* Adaptación según cantidad de imágenes — clases por count permiten que el
+   grid llene el ancho disponible sin huecos visuales cuando hay 1-2 fotos. */
+@media(min-width:768px){
+  .gallery-grid.gallery-grid--1{grid-template-columns:1fr;height:420px}
+  .gallery-grid.gallery-grid--1 img{height:100% !important}
+  .gallery-grid.gallery-grid--2{grid-template-columns:1fr 1fr;height:420px}
+  .gallery-grid.gallery-grid--2 img{height:100% !important}
+  .gallery-grid.gallery-grid--3{grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr;height:420px}
+  .gallery-grid.gallery-grid--3 img{height:100% !important}
+  .gallery-grid.gallery-grid--3 img:first-child{grid-row:span 2}
+  .gallery-grid.gallery-grid--4,
+  .gallery-grid.gallery-grid--5{grid-template-columns:2fr 1fr 1fr;grid-template-rows:1fr 1fr;height:420px}
+  .gallery-grid.gallery-grid--4 img,
+  .gallery-grid.gallery-grid--5 img{height:100% !important}
+  .gallery-grid.gallery-grid--4 img:first-child,
+  .gallery-grid.gallery-grid--5 img:first-child{grid-row:span 2}
+}
+@media(max-width:767px){
+  .gallery-grid.gallery-grid--1 img,
+  .gallery-grid.gallery-grid--2 img{height:auto;max-height:380px}
+  .gallery-grid img:nth-child(n+3){display:none}
+}
 
 .booking-box{position:sticky;top:90px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:24px;overflow:visible;position:relative}
 .booking-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--orange),var(--green),var(--sky));border-radius:20px 20px 0 0}
@@ -2047,14 +2066,22 @@ function HotelDetail({ params }) {
 
   return (
     <>
+      {/* Galería adaptativa según cantidad de imágenes (1=full, 2=split,
+          3-5=grid). Si no hay imágenes, la sección se oculta entera. */}
+      {(() => {
+        const imgs = (hotel.gallery || (hotel.img ? [hotel.img] : [])).slice(0, 5);
+        if (imgs.length === 0) return null;
+        return (
       <section className="gallery-hero">
         <div className="inner">
 
-          <div className="gallery-grid">
-            {(hotel.gallery || (hotel.img ? [hotel.img] : [])).slice(0, 5).map((src, i) => <img key={i} src={src} alt={hotel.name} />)}
+          <div className={`gallery-grid gallery-grid--${imgs.length}`}>
+            {imgs.map((src, i) => <img key={i} src={src} alt={hotel.name} />)}
           </div>
         </div>
       </section>
+        );
+      })()}
       <div className="inner-page">
         <div className="inner-wrap">
           <div className="layout-detail">
@@ -2290,14 +2317,21 @@ function TourDetail({ params }) {
 
   return (
     <>
+      {/* Galería adaptativa según cantidad de imágenes — si no hay, oculta. */}
+      {(() => {
+        const imgs = (tour.gallery || (tour.img ? [tour.img] : [])).slice(0, 5);
+        if (imgs.length === 0) return null;
+        return (
       <section className="gallery-hero">
         <div className="inner">
 
-          <div className="gallery-grid">
-            {(tour.gallery || (tour.img ? [tour.img] : [])).slice(0, 5).map((src, i) => <img key={i} src={src} alt={tour.name} />)}
+          <div className={`gallery-grid gallery-grid--${imgs.length}`}>
+            {imgs.map((src, i) => <img key={i} src={src} alt={tour.name} />)}
           </div>
         </div>
       </section>
+        );
+      })()}
       <div className="inner-page">
         <div className="inner-wrap">
           <div className="layout-detail">
