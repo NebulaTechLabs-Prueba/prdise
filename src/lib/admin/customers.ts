@@ -94,11 +94,33 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
     // best-effort
   }
 
+  // 4) Fallback (PM 2026-06-11): facturas legacy/manuales pueden tener
+  //    `user_id` NULL pero el admin tipeó el `customer_email` correcto.
+  //    Las atribuimos al perfil que tenga ese email. Sin esto la columna
+  //    "Invertido" se quedaba en $0 aunque la factura estaba pagada.
+  type OrphanInvoice = { id: string; total_cents: number; customer_email: string | null };
+  const { data: orphanInvs } = await supabase
+    .from("invoices")
+    .select("id, total_cents, customer_email")
+    .eq("status", "paid")
+    .is("user_id", null);
+  const orphanByEmail = new Map<string, { totalCents: number; count: number }>();
+  for (const o of (orphanInvs ?? []) as OrphanInvoice[]) {
+    const k = (o.customer_email || "").toLowerCase().trim();
+    if (!k) continue;
+    const prev = orphanByEmail.get(k) ?? { totalCents: 0, count: 0 };
+    prev.totalCents += Number(o.total_cents ?? 0);
+    prev.count += 1;
+    orphanByEmail.set(k, prev);
+  }
+
   const items: CustomerRow[] = profiles.map((p) => {
     const s = statsMap.get(p.id);
+    const email = emailMap.get(p.id) ?? null;
+    const orphan = email ? orphanByEmail.get(email.toLowerCase().trim()) : undefined;
     return {
       id: p.id,
-      email: emailMap.get(p.id) ?? null,
+      email,
       firstName: p.first_name,
       lastName: p.last_name,
       phone: p.phone,
@@ -107,8 +129,8 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
       role: p.role,
       status: p.status,
       joinedAt: p.created_at ?? "",
-      totalInvestedCents: s?.total_invested_cents ?? 0,
-      invoicesPaid: s?.invoices_paid ?? 0,
+      totalInvestedCents: (s?.total_invested_cents ?? 0) + (orphan?.totalCents ?? 0),
+      invoicesPaid: (s?.invoices_paid ?? 0) + (orphan?.count ?? 0),
       serviceCount: s?.service_count ?? 0,
       mostFrequentServiceType: s?.most_frequent_service_type ?? null,
     };
@@ -161,12 +183,39 @@ export async function getCustomerDetail(
     .eq("user_id", userId)
     .single();
 
-  const { data: invs } = await supabase
+  let email: string | null = null;
+  try {
+    const admin = createAdminClient();
+    const { data: authData } = await admin.auth.admin.getUserById(userId);
+    email = authData?.user?.email ?? null;
+  } catch { /* best-effort */ }
+
+  // Buscar facturas: por user_id Y por customer_email (fallback para
+  // legacy / facturas manuales). Dedupea por id.
+  const { data: invsByUser } = await supabase
     .from("invoices")
-    .select("id, number, status, total_cents, created_at")
+    .select("id, number, status, total_cents, created_at, customer_email, user_id")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(10);
+    .limit(20);
+  let invsByEmail: typeof invsByUser = null;
+  if (email) {
+    const { data } = await supabase
+      .from("invoices")
+      .select("id, number, status, total_cents, created_at, customer_email, user_id")
+      .ilike("customer_email", email)
+      .is("user_id", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    invsByEmail = data;
+  }
+  const allInvs = [...(invsByUser ?? []), ...(invsByEmail ?? [])];
+  const seen = new Set<string>();
+  const invs = allInvs.filter((i) => {
+    if (seen.has(i.id)) return false;
+    seen.add(i.id);
+    return true;
+  });
 
   const { data: bks } = await supabase
     .from("bookings")
@@ -175,12 +224,15 @@ export async function getCustomerDetail(
     .order("created_at", { ascending: false })
     .limit(10);
 
-  let email: string | null = null;
-  try {
-    const admin = createAdminClient();
-    const { data: authData } = await admin.auth.admin.getUserById(userId);
-    email = authData?.user?.email ?? null;
-  } catch { /* best-effort */ }
+  // Recalcular stats con el fallback de email aplicado.
+  let totalInvested = Number(stats?.total_invested_cents ?? 0);
+  let invoicesPaidCount = Number(stats?.invoices_paid ?? 0);
+  for (const i of invsByEmail ?? []) {
+    if (i.status === "paid") {
+      totalInvested += Number(i.total_cents ?? 0);
+      invoicesPaidCount += 1;
+    }
+  }
 
   const detail: CustomerDetail = {
     id: prof.id,
@@ -193,11 +245,11 @@ export async function getCustomerDetail(
     role: prof.role,
     status: prof.status,
     joinedAt: prof.created_at ?? "",
-    totalInvestedCents: Number(stats?.total_invested_cents ?? 0),
-    invoicesPaid: Number(stats?.invoices_paid ?? 0),
+    totalInvestedCents: totalInvested,
+    invoicesPaid: invoicesPaidCount,
     serviceCount: Number(stats?.service_count ?? 0),
     mostFrequentServiceType: stats?.most_frequent_service_type ?? null,
-    recentInvoices: (invs ?? []).map((i) => ({
+    recentInvoices: invs.slice(0, 10).map((i) => ({
       id: i.id,
       number: i.number,
       status: i.status,

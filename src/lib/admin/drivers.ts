@@ -81,7 +81,7 @@ export async function listDrivers(): Promise<DriverRow[]> {
 // SERVER ACTIONS
 // ===========================================================================
 
-export async function createDriver(formData: FormData): Promise<ActionResult> {
+export async function createDriver(formData: FormData): Promise<ActionResult<{ id: string }>> {
   const guard = await getStaffWithPermissionOrError("transfers:write");
   if (!guard.ok) return guard;
 
@@ -126,7 +126,7 @@ export async function createDriver(formData: FormData): Promise<ActionResult> {
   await writeAuditLog(actorId, "driver.create", "driver", data?.id ?? null, {
     name: d.name,
   });
-  return { ok: true };
+  return { ok: true, data: { id: String(data?.id ?? "") } };
 }
 
 export async function updateDriver(formData: FormData): Promise<ActionResult> {

@@ -264,7 +264,7 @@ function mapTourToTour(t) {
     location: t.location || "",
     lat: Number(t.lat) || 0,
     lng: Number(t.lng) || 0,
-    status: t.active ? "published" : "draft",
+    status: t.active ? "published" : "hidden",
     bookings: 0,
     partnerId: t.partner_id || null,
     partnerUrl: t.partner_url || "",
@@ -7177,7 +7177,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td><span className={`adm-pill ${d.status === "available" ? "available" : d.status === "in_trip" ? "in_use" : "hidden"}`}>{d.status.replace("_", " ")}</span></td>
                           <td>
                             <div className="adm-row-actions">
-                              <button className="adm-icon-btn" title="Call" onClick={() => window.open(`tel:${d.phone}`)}><Phone /></button>
+                              <button
+                                className="adm-icon-btn"
+                                title={lang === "es" ? "Abrir WhatsApp" : "Open WhatsApp"}
+                                style={{ color: "#25D366" }}
+                                onClick={() => {
+                                  const digits = (d.phone || "").replace(/\D/g, "");
+                                  if (!digits) { alert(lang === "es" ? "Este conductor no tiene teléfono cargado." : "No phone on file for this driver."); return; }
+                                  window.open(`https://wa.me/${digits}`, "_blank", "noopener,noreferrer");
+                                }}
+                              ><MessageCircle /></button>
                               <button className="adm-icon-btn" title="Edit" onClick={() => setEditingDriver(d)}><Pencil /></button>
                             </div>
                           </td>
@@ -7273,8 +7282,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         alert("No se pudo guardar el conductor: " + (res?.error || "error desconocido"));
                         return;
                       }
-                      if (isNew) setDrivers([...drivers, { ...editingDriver, id: "d" + Date.now() }]);
-                      else setDrivers(drivers.map(x => x.id === editingDriver.id ? editingDriver : x));
+                      if (isNew) {
+                        // Usar el UUID real devuelto por sbCreateDriver. Antes
+                        // se ponía "d" + Date.now() (local) y al togglear
+                        // visibilidad el server tiraba "Identificador inválido".
+                        const newId = res?.data?.id || ("d" + Date.now());
+                        setDrivers([...drivers, { ...editingDriver, id: newId }]);
+                      } else {
+                        setDrivers(drivers.map(x => x.id === editingDriver.id ? editingDriver : x));
+                      }
                       setEditingDriver(null);
                     }}><Check />{editingDriver.id === "new" ? (lang === "es" ? "Agregar Conductor" : "Add Driver") : (lang === "es" ? "Guardar Cambios" : "Save Changes")}</button>
                   </div>
@@ -9055,19 +9071,26 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                   <div className="adm-fg"><label className="adm-fl">Joined Date</label><input type="date" className="adm-fi" value={editingUser.joined} onChange={(e) => setEditingUser({ ...editingUser, joined: e.target.value })} /></div>
 
-                  {/* TRANSFER / DRIVER FIELDS — only show when department is Transfers */}
+                  {/* TRANSFER / DRIVER FIELDS — solo Licencia de conducir.
+                      PM 2026-06-11: vehículo y placa NO se piden acá porque el
+                      vehículo se asigna desde Traslados → Vehículos cuando se
+                      crea/edita el vehículo. El conductor solo carga su número
+                      de licencia profesional. */}
                   {editingUser.department === "Transfers" && (
                     <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(141,198,63,.04)", border: "1px solid rgba(141,198,63,.15)", marginTop: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#8DC63F", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
                         <Car style={{ width: 12, height: 12 }} />
-                        Driver Information — appears in Transfers → Drivers
+                        {lang === "es" ? "Información del Conductor" : "Driver Information"}
                       </div>
-                      <div className="adm-fg-row">
-                        <div className="adm-fg"><label className="adm-fl">Vehicle</label><input className="adm-fi" value={editingUser.vehicle || ""} onChange={(e) => setEditingUser({ ...editingUser, vehicle: e.target.value })} placeholder="e.g. Toyota HiAce 2024" /></div>
-                        <div className="adm-fg"><label className="adm-fl">License Plate</label><input className="adm-fi" value={editingUser.plate || ""} onChange={(e) => setEditingUser({ ...editingUser, plate: e.target.value })} placeholder="ABC-1234" /></div>
+                      <div className="adm-fg">
+                        <label className="adm-fl">{lang === "es" ? "Número de licencia de conducir" : "Driver license number"}</label>
+                        <input className="adm-fi" value={editingUser.license || ""} onChange={(e) => setEditingUser({ ...editingUser, license: e.target.value })} placeholder={lang === "es" ? "Número de licencia profesional" : "Professional license #"} />
                       </div>
-                      <div className="adm-fg"><label className="adm-fl">License Number</label><input className="adm-fi" value={editingUser.license || ""} onChange={(e) => setEditingUser({ ...editingUser, license: e.target.value })} placeholder="Driver's license #" /></div>
-                      <p style={{ fontSize: 10, color: "rgba(141,198,63,.6)", marginTop: 6 }}>When this employee is active and in the Transfers department, they automatically appear as a driver in Transfers → Drivers.</p>
+                      <p style={{ fontSize: 10, color: "rgba(141,198,63,.65)", marginTop: 6, lineHeight: 1.55 }}>
+                        {lang === "es"
+                          ? "El vehículo y la placa se asignan al conductor desde Traslados → Vehículos al editar el vehículo correspondiente. Acá solo registramos la licencia profesional."
+                          : "Vehicle and plate are assigned to the driver from Transfers → Vehicles when editing the vehicle. Only the professional license is captured here."}
+                      </p>
                     </div>
                   )}
 
@@ -9768,12 +9791,38 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Email" : "Email"}</div><div className="adm-info-val" style={{ wordBreak: "break-all", fontSize: 12 }}>{d.email || "—"}</div></div>
+                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Teléfono" : "Phone"}</div><div className="adm-info-val">{d.phone || "—"}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "País" : "Country"}</div><div className="adm-info-val">{d.country || "—"}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Cumpleaños" : "Birthday"}</div><div className="adm-info-val">{d.birthDate || "—"}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Registrado" : "Joined"}</div><div className="adm-info-val">{(d.joinedAt || "").slice(0, 10) || "—"}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Status" : "Status"}</div><div className="adm-info-val">{d.status || "—"}</div></div>
                   </div>
+
+                  {(d.recentBookings?.length > 0) && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 10 }}>
+                        {lang === "es" ? "Reservas recientes" : "Recent bookings"}
+                      </div>
+                      <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)" }}>
+                        {d.recentBookings.slice(0, 5).map((bk) => (
+                          <div key={bk.id} style={{ padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,.05)", background: "rgba(255,255,255,.02)" }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>
+                                {bk.itemType === "tour" ? (lang === "es" ? "Tour" : "Tour") : bk.itemType === "stay" ? (lang === "es" ? "Estadía" : "Stay") : bk.itemType === "transfer" ? (lang === "es" ? "Traslado" : "Transfer") : bk.itemType}
+                              </div>
+                              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)" }}>{new Date(bk.createdAt).toLocaleDateString(lang === "es" ? "es-PR" : "en-US")}</div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span className={`adm-pill ${bk.status}`} style={{ fontSize: 10 }}>{bk.status}</span>
+                              <span style={{ fontSize: 13, fontFamily: "monospace", color: "#F5A623", fontWeight: 700 }}>${((bk.totalCents || 0) / 100).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {(d.recentInvoices?.length > 0) && (
                     <div style={{ marginBottom: 14 }}>
@@ -10366,7 +10415,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [svcInput, setSvcInput] = useState("");
   const [included, setIncluded] = useState(it.includes ? (Array.isArray(it.includes) ? it.includes : []) : it.included ? (Array.isArray(it.included) ? it.included : []) : []);
   const [inclInput, setInclInput] = useState("");
-  const [status, setStatus] = useState(it.status || (isNew ? "published" : "draft"));
+  // PM 2026-06-11: para routes, derivamos el estado del flag `active` ya que
+  // mapRouteToRoute no expone un `status` string. Para los demás tipos, el
+  // valor viene del item directo y default a 'draft' al editar (legacy).
+  const [status, setStatus] = useState(
+    editing.type === "route"
+      ? (it.active === false ? "hidden" : "published")
+      : (it.status || (isNew ? "published" : "draft"))
+  );
   const [saved, setSaved] = useState(false);
   const [imageUrl, setImageUrl] = useState(it.img || "");
   const [imageList, setImageList] = useState(it.gallery || it.images || []);
@@ -10725,6 +10781,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.featured = !!routeFeatured;
       updated.pricingUnit = routePricingUnit || "per_unit";
       updated.vehicleId = routeVehicleId || null;
+      // Estado activa/inactiva derivado del toggle del form de ruta.
+      updated.active = status === "published" || status === "active";
+      // Mantenemos `status` consistente para que la tabla refleje el cambio
+      // sin esperar a recargar desde DB.
+      updated.status = updated.active ? "active" : "inactive";
       // Validación cliente: el server también valida pero acá damos feedback
       // inmediato sin un round-trip.
       if (!updated.from) { alert(lang === "es" ? "El campo 'Desde' es obligatorio." : "'From' is required."); return; }
@@ -11107,6 +11168,23 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 </div>
               </div>
             </label>
+
+            {/* PM 2026-06-11: estado activa/inactiva propio de rutas. Antes
+                el modal heredaba el `status` genérico (published/draft/hidden)
+                lo que provocaba el aviso "BORRADOR" incluso en rutas activas. */}
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: status === "published" || status === "active" ? "rgba(141,198,63,.08)" : "rgba(239,108,43,.08)", border: `1px solid ${status === "published" || status === "active" ? "rgba(141,198,63,.3)" : "rgba(239,108,43,.3)"}`, cursor: "pointer", marginTop: 10 }}>
+              <input type="checkbox" checked={status === "published" || status === "active"} onChange={(e) => setStatus(e.target.checked ? "published" : "hidden")} style={{ accentColor: "#8DC63F", width: 16, height: 16 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }}>
+                  {lang === "es" ? "Ruta activa" : "Active route"}
+                </div>
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                  {lang === "es"
+                    ? "Si está apagado, la ruta queda oculta del buscador público."
+                    : "If off, the route is hidden from the public search."}
+                </div>
+              </div>
+            </label>
           </>
         )}
 
@@ -11206,7 +11284,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           </>
         )}
 
-        {(status === "draft" || status === "hidden") && (
+        {/* PM 2026-06-11: el aviso de BORRADOR/OCULTO solo aplica a hotels,
+            tours y posts (los que tienen ciclo published/draft/hidden). Las
+            rutas usan un toggle activa/inactiva propio (más abajo) y no
+            entran en esta categoría. */}
+        {(status === "draft" || status === "hidden") && type !== "route" && (
           <div style={{ padding: "10px 14px", borderRadius: 10, marginTop: 12, background: status === "draft" ? "rgba(245,166,35,.08)" : "rgba(255,255,255,.04)", border: `1px solid ${status === "draft" ? "rgba(245,166,35,.25)" : "rgba(255,255,255,.1)"}`, display: "flex", gap: 10, alignItems: "flex-start" }}>
             <Info style={{ width: 14, height: 14, color: status === "draft" ? "#F5A623" : "rgba(255,255,255,.5)", flexShrink: 0, marginTop: 2 }} />
             <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>
