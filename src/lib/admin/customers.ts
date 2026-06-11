@@ -136,6 +136,68 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
     };
   });
 
+  // 5) Clientes "fantasma" (PM 2026-06-12): facturas manuales donde el admin
+  //    tipeó nombre/email sin que el cliente tenga perfil registrado. El
+  //    usuario quiere verlos en la lista también — pueden representar a un
+  //    cliente real que aún no se registró por /register. Los agregamos como
+  //    filas adicionales con datos derivados solo de las facturas.
+  const profileEmails = new Set(items.map((c) => (c.email || "").toLowerCase().trim()).filter(Boolean));
+  type GhostInvoice = { id: string; customer_name: string | null; customer_email: string | null; customer_phone: string | null; total_cents: number; status: string; created_at: string | null };
+  const { data: ghostInvs } = await supabase
+    .from("invoices")
+    .select("id, customer_name, customer_email, customer_phone, total_cents, status, created_at")
+    .is("user_id", null);
+  const ghostsByEmail = new Map<string, {
+    customer_name: string;
+    phone: string | null;
+    totalPaid: number;
+    invoicesPaid: number;
+    serviceCount: number;
+    firstSeen: string;
+  }>();
+  for (const inv of (ghostInvs ?? []) as GhostInvoice[]) {
+    const email = (inv.customer_email || "").toLowerCase().trim();
+    if (!email || profileEmails.has(email)) continue;
+    const prev = ghostsByEmail.get(email) ?? {
+      customer_name: inv.customer_name || email,
+      phone: inv.customer_phone,
+      totalPaid: 0,
+      invoicesPaid: 0,
+      serviceCount: 0,
+      firstSeen: inv.created_at ?? "",
+    };
+    if (inv.status === "paid") {
+      prev.totalPaid += Number(inv.total_cents ?? 0);
+      prev.invoicesPaid += 1;
+    }
+    prev.serviceCount += 1;
+    // Conservamos el firstSeen más antiguo.
+    if ((inv.created_at ?? "") && (!prev.firstSeen || (inv.created_at ?? "") < prev.firstSeen)) {
+      prev.firstSeen = inv.created_at ?? "";
+    }
+    if (!prev.phone && inv.customer_phone) prev.phone = inv.customer_phone;
+    ghostsByEmail.set(email, prev);
+  }
+  for (const [email, g] of ghostsByEmail) {
+    const [firstName, ...rest] = g.customer_name.split(/\s+/);
+    items.push({
+      id: "ghost-" + email,
+      email,
+      firstName: firstName || null,
+      lastName: rest.length ? rest.join(" ") : null,
+      phone: g.phone,
+      country: null,
+      birthDate: null,
+      role: "ghost",
+      status: "unregistered",
+      joinedAt: g.firstSeen,
+      totalInvestedCents: g.totalPaid,
+      invoicesPaid: g.invoicesPaid,
+      serviceCount: g.serviceCount,
+      mostFrequentServiceType: null,
+    });
+  }
+
   return { ok: true, data: { items } };
 }
 

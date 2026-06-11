@@ -113,6 +113,43 @@ export async function listInvoices(): Promise<InvoiceRow[]> {
 // `markInvoicesPaidForBooking` se mantienen para soporte manual del admin.
 
 /**
+ * Cambia el status de una factura a un valor arbitrario válido. Útil para
+ * transiciones manuales del admin (ej. draft → sent al enviar por WhatsApp
+ * sin pasar por el cron de "sent" automático). PM 2026-06-12.
+ */
+export async function updateInvoiceStatus(
+  formData: FormData
+): Promise<ActionResult> {
+  const guard = await getStaffWithPermissionOrError("invoices:write");
+  if (!guard.ok) return guard;
+
+  const id = String(formData.get("id") ?? "").trim();
+  const newStatus = String(formData.get("status") ?? "").trim();
+  if (!id) return { ok: false, error: "ID requerido" };
+  const ALLOWED = ["draft", "pending", "sent", "overdue", "paid", "cancelled"] as const;
+  if (!ALLOWED.includes(newStatus as typeof ALLOWED[number])) {
+    return { ok: false, error: `Status inválido: ${newStatus}` };
+  }
+
+  const supabase = await createClient();
+  const actorId = guard.current.user.id;
+
+  const patch: { status: string; paid_at?: string } = { status: newStatus };
+  if (newStatus === "paid") patch.paid_at = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("invoices")
+    .update(patch)
+    .eq("id", id);
+  if (error) {
+    return { ok: false, error: `No se pudo cambiar status: ${error.message}` };
+  }
+
+  await writeAuditLog(actorId, "invoice.status", "invoice", id, { status: newStatus });
+  return { ok: true };
+}
+
+/**
  * Marca una factura como pagada. Solo staff. Usado tras confirmPayment para
  * cerrar el ciclo Service → Payment → Invoice.
  */

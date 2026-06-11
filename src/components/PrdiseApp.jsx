@@ -107,6 +107,7 @@ import {
 import {
   listInvoices as sbListInvoices,
   markInvoicePaid as sbMarkInvoicePaid,
+  updateInvoiceStatus as sbUpdateInvoiceStatus,
   createInvoiceManual as sbCreateInvoiceManual,
   regenerateStripePaymentLink as sbRegenerateStripeLink,
   generateInvoicePdf as sbGenerateInvoicePdf,
@@ -7761,10 +7762,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       if (res?.ok && res.data?.url) {
                                         window.open(res.data.url, "_blank");
                                         if (isDraft) {
-                                          // Marcar como sent localmente; el
-                                          // status final en DB lo persiste el
-                                          // próximo step (mark paid o webhook).
-                                          setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent" } : i));
+                                          // PM 2026-06-12: persistir el cambio en DB.
+                                          // Antes solo se actualizaba estado local y
+                                          // al refrescar volvía a BORRADOR.
+                                          const fdSt = new FormData();
+                                          fdSt.append("id", inv.sbId);
+                                          fdSt.append("status", "sent");
+                                          const stRes = await sbUpdateInvoiceStatus(fdSt);
+                                          if (stRes?.ok) {
+                                            setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent" } : i));
+                                          } else {
+                                            alert((lang==="es"?"WhatsApp abierto, pero no se pudo marcar como enviada: ":"WhatsApp opened, but could not mark as sent: ") + (stRes?.error || "unknown"));
+                                          }
                                         }
                                       } else {
                                         alert((lang==="es"?"No se pudo abrir WhatsApp: ":"Could not open WhatsApp: ") + (res?.error || "unknown"));
@@ -7777,16 +7786,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               );
                             })()}
                             {(() => {
-                              const canMarkPaid = canEditInvoices() && (inv.status === "pending" || inv.status === "sent" || inv.status === "overdue");
+                              // PM 2026-06-12: permitir también marcar como
+                              // pagadas las facturas en BORRADOR. Caso de uso
+                              // real: cliente pagó por fuera del sistema
+                              // (efectivo, ATH) antes de que se enviara el PDF.
+                              const canMarkPaid = canEditInvoices() && inv.status !== "paid" && inv.status !== "cancelled";
                               const tooltip = !canEditInvoices()
                                 ? (lang === "es" ? "Sin permiso" : "No permission")
                                 : canMarkPaid
                                   ? (lang === "es" ? "Marcar como pagada" : "Mark as paid")
                                   : inv.status === "paid"
                                     ? (lang === "es" ? "Ya está pagada" : "Already paid")
-                                    : inv.status === "draft"
-                                      ? (lang === "es" ? "Envía la factura primero" : "Send the invoice first")
-                                      : (lang === "es" ? "No aplica" : "Not applicable");
+                                    : (lang === "es" ? "No aplica" : "Not applicable");
                               return (
                                 <button
                                   className="adm-icon-btn"
