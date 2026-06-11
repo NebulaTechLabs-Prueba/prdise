@@ -5944,6 +5944,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         { label: lang === "es" ? "Nueva estadía" : "New stay", icon: Home, action: () => { setSection("hotels"); setEditing({ type: "hotel", isNew: true }); } },
                         { label: lang === "es" ? "Nuevo tour" : "New tour", icon: Compass, action: () => { setSection("tours"); setEditing({ type: "tour", isNew: true }); } },
                         { label: lang === "es" ? "Nueva ruta" : "New route", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("routes"); setEditing({ type: "route", isNew: true }); } },
+                        { label: lang === "es" ? "Nuevo destino" : "New location", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); } },
                         { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" }); } },
                         { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true }); } },
                         { label: lang === "es" ? "Nuevo post" : "New post", icon: Edit, action: () => { setSection("posts"); setEditing({ type: "post", isNew: true }); } },
@@ -6515,9 +6516,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <h1>{lang === "es" ? "OPERACIONES DE" : "TRANSFERS"} <em>{lang === "es" ? "TRASLADOS" : "OPERATIONS"}</em></h1>
                 <p className="sub">{lang==="es"?"Rutas, vehículos, conductores y reservas — gestión completa de flota":"Routes, vehicles, drivers and bookings — full fleet management"}</p>
               </div>
-              <div className="adm-ph-actions">
+              <div className="adm-ph-actions" style={{ flexWrap: "wrap" }}>
                 <button className="adm-btn adm-btn-ghost"><Database />{t("adm_export")}</button>
-                <button className="adm-btn adm-btn-primary" onClick={() => setEditing({ type: transferTab === "routes" ? "route" : transferTab === "vehicles" ? "transfer" : transferTab === "drivers" ? "driver" : "booking", isNew: true })}><Plus />Add new</button>
+                {/* PM 2026-06-11: shortcuts CRUD siempre visibles. No es
+                    intuitivo que el botón "Add new" cambie según la pestaña
+                    activa, así que cada acción tiene su propio botón. */}
+                <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); }}>
+                  <MapPin />{lang === "es" ? "Nuevo destino" : "New location"}
+                </button>
+                <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" }); }}>
+                  <Car />{lang === "es" ? "Nuevo vehículo" : "New vehicle"}
+                </button>
+                <button className="adm-btn adm-btn-primary" onClick={() => { setTransferTab("routes"); setEditing({ type: "route", isNew: true }); }}>
+                  <Plus />{lang === "es" ? "Nueva ruta" : "New route"}
+                </button>
               </div>
             </div>
             {(() => {
