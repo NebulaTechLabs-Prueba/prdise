@@ -318,7 +318,13 @@ function mapRouteToRoute(r) {
 
 function mapPostToAdminPost(p) {
   return {
+    // PM 2026-06-11: el id "lógico" es el slug (lo usa el front para
+    // routing /post?slug=...). Pero las server actions de admin (toggle
+    // featured/publish/delete) esperan el UUID real → lo exponemos como
+    // dbId. Antes mandábamos el slug como id y el server respondía
+    // "Identificador inválido".
     id: p.slug,
+    dbId: p.id,
     title: p.title_es || p.title_en || p.slug,
     slug: p.slug,
     category: p.category || "",
@@ -421,6 +427,36 @@ const PRDISE = {
   genRef: (p) => p + "-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2, 4).toUpperCase(),
 };
 const fmt = (n) => "$" + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+// CSV export utility (PM 2026-06-11). Cualquier sección del admin que tenga
+// botón "Exportar" puede invocarlo con un array de objetos plano. Genera un
+// CSV con BOM UTF-8 (para que Excel respete acentos), encabezados derivados
+// de las keys del primer objeto y disparado vía link de descarga temporal.
+function downloadCsv(filename, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    alert("No hay datos para exportar.");
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const escape = (v) => {
+    if (v == null) return "";
+    const s = String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => escape(r[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /* ═══════════════ i18n / TRANSLATIONS ═══════════════ */
@@ -6071,7 +6107,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <button className={dateRange === "7d" ? "active" : ""} onClick={() => setDateRange("7d")}>{lang === "es" ? "1 semana" : "1 week"}</button>
                   <button className={dateRange === "30d" ? "active" : ""} onClick={() => setDateRange("30d")}>{lang === "es" ? "30 días" : "30 days"}</button>
                 </div>
-                <button className="adm-btn adm-btn-ghost"><Database />{t("adm_export")}</button>
+                <button className="adm-btn adm-btn-ghost" onClick={() => {
+                  // Exporta el snapshot de analíticas que se ve en pantalla.
+                  const rows = [
+                    { metric: "Total revenue (range)", value: rangeMetrics.revenue },
+                    { metric: "Bookings (range)", value: rangeMetrics.bookings + allBookings.length },
+                    { metric: "Active stays", value: hotels.filter(h => h.status === "published").length },
+                    { metric: "Active tours", value: tours.filter(t => t.status === "published").length },
+                    { metric: "Active vehicles", value: vehicles.filter(v => v.status === "available").length },
+                    { metric: "Active drivers", value: drivers.filter(d => d.status === "available").length },
+                  ];
+                  downloadCsv(`prdise-analytics-${new Date().toISOString().slice(0,10)}.csv`, rows);
+                }}><Database />{t("adm_export")}</button>
               </div>
             </div>
             <div className="adm-stats">
@@ -6096,25 +6143,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-stat-trend up"><TrendingDown />{rangeMetrics.analytics.cancelDelta}</div>
               </div>
             </div>
+            {/* PM 2026-06-11: Estadías Top arriba (orden natural por flujo
+                de PRDISE: alojamiento es ancla, tours son add-on). Ambas
+                limitadas al Top 5 para que las tablas sean digeribles. */}
             <div className="adm-grid-2">
-              <div className="adm-card">
-                <div className="adm-card-head"><div className="adm-card-title"><BarChart3 />{lang === "es" ? "Tours Más Populares" : "Top Performing Tours"}</div></div>
-                <div className="adm-tbl-wrap">
-                  <table className="adm-tbl">
-                    <thead><tr><th>Tour</th><th>{lang === "es" ? "Reservas" : "Bookings"}</th><th>{lang === "es" ? "Ingresos" : "Revenue"}</th><th>{lang === "es" ? "Calificación" : "Rating"}</th></tr></thead>
-                    <tbody>
-                      {[...tours].sort((a, b) => b.bookings - a.bookings).map((t) => (
-                        <tr key={t.id}>
-                          <td style={{ fontWeight: 600 }}>{t.name}</td>
-                          <td>{t.bookings}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t.bookings * t.price)}</td>
-                          <td><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
               <div className="adm-card">
                 <div className="adm-card-head"><div className="adm-card-title"><Home />{lang === "es" ? "Estadías Top" : "Top Stays"}</div></div>
                 <div className="adm-tbl-wrap">
@@ -6129,6 +6161,30 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{h.rating}</td>
                         </tr>
                       ))}
+                      {hotels.length === 0 && (
+                        <tr><td colSpan={4} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 24 }}>{lang === "es" ? "Sin estadías cargadas" : "No stays yet"}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="adm-card">
+                <div className="adm-card-head"><div className="adm-card-title"><BarChart3 />{lang === "es" ? "Tours Más Populares" : "Top Performing Tours"}</div></div>
+                <div className="adm-tbl-wrap">
+                  <table className="adm-tbl">
+                    <thead><tr><th>Tour</th><th>{lang === "es" ? "Reservas" : "Bookings"}</th><th>{lang === "es" ? "Ingresos" : "Revenue"}</th><th>{lang === "es" ? "Calificación" : "Rating"}</th></tr></thead>
+                    <tbody>
+                      {[...tours].sort((a, b) => b.bookings - a.bookings).slice(0, 5).map((t) => (
+                        <tr key={t.id}>
+                          <td style={{ fontWeight: 600 }}>{t.name}</td>
+                          <td>{t.bookings}</td>
+                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t.bookings * t.price)}</td>
+                          <td><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</td>
+                        </tr>
+                      ))}
+                      {tours.length === 0 && (
+                        <tr><td colSpan={4} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 24 }}>{lang === "es" ? "Sin tours cargados" : "No tours yet"}</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -6374,7 +6430,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <p className="sub">{lang==="es"?"Publica y gestiona noticias, guías y artículos de viaje. Los destacados aparecen en la página de Servicios.":"Publish and manage your news, guides, and travel articles. Featured posts appear on the Services page."}</p>
               </div>
               <div className="adm-ph-actions">
-                <button className="adm-btn adm-btn-ghost"><Database />{t("adm_export")}</button>
+                <button className="adm-btn adm-btn-ghost" onClick={() => downloadCsv(`prdise-posts-${new Date().toISOString().slice(0,10)}.csv`, posts.map((p) => ({
+                  title: p.title, slug: p.slug, category: p.category, status: p.status, featured: p.featured ? "yes" : "no", views: p.views, date: p.date,
+                })))}><Database />{t("adm_export")}</button>
                 <button className="adm-btn adm-btn-primary" onClick={() => setEditing({ type: "post", isNew: true })}><Plus />{lang==="es"?"Nueva Publicación":"New Post"}</button>
               </div>
             </div>
@@ -6466,7 +6524,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 const prev = posts;
                                 setPosts(posts.map(x => x.id === p.id ? { ...x, featured: !x.featured } : x));
                                 try {
-                                  const fd = new FormData(); fd.append("id", p.id);
+                                  const fd = new FormData(); fd.append("id", p.dbId || p.id);
                                   const res = await sbTogglePostFeatured(fd);
                                   if (!res?.ok) { setPosts(prev); alert("No se pudo cambiar destacado: " + (res?.error || "error")); }
                                 } catch (e) { setPosts(prev); alert("Error: " + e.message); }
@@ -6479,7 +6537,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 const newStatus = p.status === "published" ? "draft" : "published";
                                 setPosts(posts.map(x => x.id === p.id ? { ...x, status: newStatus } : x));
                                 try {
-                                  const fd = new FormData(); fd.append("id", p.id);
+                                  const fd = new FormData(); fd.append("id", p.dbId || p.id);
                                   const res = await sbTogglePostPublish(fd);
                                   if (!res?.ok) { setPosts(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
                                 } catch (e) { setPosts(prev); alert("Error: " + e.message); }
@@ -6491,7 +6549,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 const prev = posts;
                                 setPosts(posts.filter(x => x.id !== p.id));
                                 try {
-                                  const fd = new FormData(); fd.append("id", p.id);
+                                  const fd = new FormData(); fd.append("id", p.dbId || p.id);
                                   const res = await sbDeletePost(fd);
                                   if (!res?.ok) { setPosts(prev); alert("No se pudo archivar: " + (res?.error || "error")); }
                                 } catch (e) { setPosts(prev); alert("Error: " + e.message); }
@@ -6517,7 +6575,22 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <p className="sub">{lang==="es"?"Rutas, vehículos, conductores y reservas — gestión completa de flota":"Routes, vehicles, drivers and bookings — full fleet management"}</p>
               </div>
               <div className="adm-ph-actions" style={{ flexWrap: "wrap" }}>
-                <button className="adm-btn adm-btn-ghost"><Database />{t("adm_export")}</button>
+                <button className="adm-btn adm-btn-ghost" onClick={() => {
+                  // Exporta el contenido de la sub-pestaña activa para evitar
+                  // confundir al admin con un dump enorme de todo.
+                  const ts = new Date().toISOString().slice(0,10);
+                  if (transferTab === "routes") {
+                    downloadCsv(`prdise-routes-${ts}.csv`, routes.map(r => ({ from: r.from, to: r.to, price_usd: r.price, max_pax: r.maxPax, vehicle_id: r.vehicleId, distance_km: r.distanceKm, duration_min: r.durationMinutes, featured: r.featured ? "yes" : "no", active: r.active !== false ? "yes" : "no" })));
+                  } else if (transferTab === "locations") {
+                    downloadCsv(`prdise-locations-${ts}.csv`, transferLocations.map(l => ({ name: l.name, label_es: l.label_es, label_en: l.label_en, sort_order: l.sort_order, active: l.active ? "yes" : "no" })));
+                  } else if (transferTab === "vehicles") {
+                    downloadCsv(`prdise-vehicles-${ts}.csv`, vehicles.map(v => ({ name: v.name, type: v.type, plate: v.plate, seats: v.seats, bags: v.bags, base_price_usd: v.base, status: v.status })));
+                  } else if (transferTab === "drivers") {
+                    downloadCsv(`prdise-drivers-${ts}.csv`, drivers.map(d => ({ name: d.name, phone: d.phone, email: d.email, license: d.license, status: d.status, trips: d.trips })));
+                  } else {
+                    downloadCsv(`prdise-bookings-${ts}.csv`, transferBookings.map(b => ({ ref: b.ref, customer: b.customer, route: b.route, date: b.date, time: b.time, pax: b.pax, total_usd: b.total, status: b.status })));
+                  }
+                }}><Database />{t("adm_export")}</button>
                 {/* PM 2026-06-11: shortcuts CRUD siempre visibles. No es
                     intuitivo que el botón "Add new" cambie según la pestaña
                     activa, así que cada acción tiene su propio botón. */}
@@ -8432,7 +8505,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             <div className="adm-ph">
               <div>
                 <h1>{lang==="es"?"GESTIÓN DE":"PARTNER"} <em>{lang==="es"?"ALIANZAS":"MANAGEMENT"}</em></h1>
-                <p className="sub">{lang==="es"?"Páginas aliadas a las que se redirigen los usuarios para reservar stays y tours.":"Partner sites to which users are redirected to book stays and tours."}</p>
+                <p className="sub">{lang==="es"?"Empresas aliadas que proveen servicios bajo la marca PRDISE. Se usan internamente para reportes de comisión y splits de revenue — el cliente nunca ve estos enlaces.":"Partner companies providing services under the PRDISE brand. Used internally for commission reports and revenue splits — never shown to customers."}</p>
               </div>
               <button className="adm-btn adm-btn-primary" onClick={() => setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true })}><Plus />{lang==="es"?"Nueva alianza":"New partner"}</button>
             </div>
@@ -8506,7 +8579,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
                         <input type="checkbox" checked={editingPartner.active} onChange={() => setEditingPartner({ ...editingPartner, active: !editingPartner.active })} style={{ accentColor: "#8DC63F", width: 16, height: 16 }} />
-                        {lang==="es"?"Activo (visible en catálogo y disponible para redirigir)":"Active (visible in catalog and available to redirect)"}
+                        {lang==="es"?"Activo (visible para reportes internos y splits de comisión)":"Active (visible for internal reports and commission splits)"}
                       </label>
                     </div>
                   </div>
@@ -9540,10 +9613,23 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 ? "Punto de recogida o destino para los dropdowns 'Desde' y 'Hasta'."
                 : "Pickup or drop-off point for the 'From' and 'To' dropdowns."}
             </p>
+            {/* PM 2026-06-11: clave técnica se auto-deriva del label ES
+                (slugify) al crear. Solo se muestra al editar (read-only),
+                porque al admin no le suma decidirlo. El orden también se
+                explica como "posición en la lista". */}
             <div className="adm-fg-row">
               <div className="adm-fg" style={{ flex: 1 }}>
                 <label className="adm-fl">{lang === "es" ? "Etiqueta (ES)" : "Label (ES)"} *</label>
-                <input className="adm-fi" value={editingLocation.label_es} onChange={(e) => setEditingLocation({ ...editingLocation, label_es: e.target.value })} placeholder="SJU Airport" />
+                <input
+                  className="adm-fi"
+                  value={editingLocation.label_es}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const auto = editingLocation.id === "new" ? v.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) : editingLocation.name;
+                    setEditingLocation({ ...editingLocation, label_es: v, name: auto });
+                  }}
+                  placeholder="SJU Airport"
+                />
               </div>
               <div className="adm-fg" style={{ flex: 1 }}>
                 <label className="adm-fl">{lang === "es" ? "Etiqueta (EN)" : "Label (EN)"} *</label>
@@ -9551,18 +9637,31 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
             </div>
             <div className="adm-fg-row">
-              <div className="adm-fg" style={{ flex: 2 }}>
-                <label className="adm-fl">{lang === "es" ? "Clave técnica" : "Tech key"} *</label>
-                <input className="adm-fi" value={editingLocation.name} onChange={(e) => setEditingLocation({ ...editingLocation, name: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} placeholder="sju_airport" />
-              </div>
               <div className="adm-fg" style={{ flex: 1 }}>
-                <label className="adm-fl">{lang === "es" ? "Orden" : "Order"}</label>
-                <input type="number" min="0" max="9999" className="adm-fi" value={editingLocation.sort_order} onChange={(e) => setEditingLocation({ ...editingLocation, sort_order: parseInt(e.target.value, 10) || 100 })} />
+                <label className="adm-fl">
+                  {lang === "es" ? "Posición en la lista" : "Position in the list"}
+                </label>
+                <input
+                  type="number" min="0" max="9999" className="adm-fi"
+                  value={editingLocation.sort_order}
+                  onChange={(e) => setEditingLocation({ ...editingLocation, sort_order: parseInt(e.target.value, 10) || 100 })}
+                />
+                <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginTop: 4, lineHeight: 1.45 }}>
+                  {lang === "es"
+                    ? "Número que controla el orden en los dropdowns. Menor = aparece primero."
+                    : "Number controlling order in the dropdowns. Lower = appears first."}
+                </p>
               </div>
+              {editingLocation.id !== "new" && (
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{lang === "es" ? "Clave técnica" : "Tech key"}</label>
+                  <input className="adm-fi" value={editingLocation.name || ""} readOnly style={{ opacity: 0.6, cursor: "not-allowed", fontFamily: "monospace" }} />
+                  <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginTop: 4 }}>
+                    {lang === "es" ? "Identificador interno. No se cambia." : "Internal identifier. Read-only."}
+                  </p>
+                </div>
+              )}
             </div>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: -6, marginBottom: 12 }}>
-              {lang === "es" ? "Clave única: solo minúsculas, números, '_' o '-'. No se cambia una vez creado el destino." : "Unique key: lowercase, digits, '_' or '-'. Don't change after creation."}
-            </p>
             <label className="adm-fg" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <input type="checkbox" checked={!!editingLocation.active} onChange={(e) => setEditingLocation({ ...editingLocation, active: e.target.checked })} />
               <span className="adm-fl" style={{ margin: 0 }}>{lang === "es" ? "Activo (aparece en dropdowns públicos)" : "Active (appears in public dropdowns)"}</span>
@@ -10406,6 +10505,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.excerptES = excerptES;
       updated.body = bodyEN || it.body;
       updated.bodyES = bodyES;
+      // PM 2026-06-11: categoría se persiste desde el select uncontrolled del
+      // form (handleSave scrapes via querySelectorAll y normaliza el label).
+      if (vals.category) updated.category = vals.category;
+      if (vals.author) updated.author = vals.author;
+      if (vals.publish_date) updated.date = vals.publish_date;
+      if (vals.slug__url_) updated.slug = vals.slug__url_;
+      if (vals.cover_image__preset_) updated.img = vals.cover_image__preset_;
     }
     // Route-specific: leemos del estado controlado en vez de mutar `it`.
     if (type === "route") {
