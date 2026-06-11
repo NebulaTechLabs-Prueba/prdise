@@ -173,6 +173,28 @@ const partnerLinkSchema = z.object({
     .transform((v) => (v ? v : null)),
 });
 
+// ─── Pricing extras shared ─────────────────────────────────────────────────
+// Extras: cada add-on tiene labels bilingües, precio en cents y su unidad
+// (por persona, por hora, etc.). Habilita pricing mixto del PM 2026-06-10.
+const pricingExtraSchema = z.object({
+  label_es: optionalText(120, "Etiqueta (ES)"),
+  label_en: optionalText(120, "Etiqueta (EN)"),
+  price_cents: priceCentsSchema,
+  unit: z.enum(["per_person", "per_hour", "per_unit", "per_attraction", "per_night"]).default("per_unit"),
+});
+const pricingExtrasArraySchema = z
+  .array(pricingExtraSchema)
+  .max(20, "Máximo 20 extras")
+  .default([]);
+
+const stayPricingUnitSchema = z
+  .enum(["per_night", "per_person", "per_hour", "per_unit", "per_attraction"])
+  .default("per_night");
+
+const tourPricingUnitSchema = z
+  .enum(["per_person", "per_hour", "per_unit", "per_attraction", "per_night"])
+  .default("per_person");
+
 const stayBaseSchema = z.object({
   slug: slugSchema,
   title_es: optionalNonEmptyText(160, "Título (ES)"),
@@ -192,6 +214,10 @@ const stayBaseSchema = z.object({
   lng: lngSchema,
   featured: booleanFlagSchema.default(false),
   active: booleanFlagSchema.default(true),
+  // Pricing mixto + categoría (PM 2026-06-10).
+  pricing_unit: stayPricingUnitSchema,
+  pricing_extras: pricingExtrasArraySchema,
+  category: optionalText(120, "Categoría"),
 }).merge(partnerLinkSchema);
 
 export const createStaySchema = stayBaseSchema;
@@ -224,6 +250,10 @@ const tourBaseSchema = z.object({
   lng: lngSchema,
   featured: booleanFlagSchema.default(false),
   active: booleanFlagSchema.default(true),
+  // Pricing mixto + categoría (PM 2026-06-10).
+  pricing_unit: tourPricingUnitSchema,
+  pricing_extras: pricingExtrasArraySchema,
+  category: optionalText(120, "Categoría"),
 }).merge(partnerLinkSchema);
 
 export const createTourSchema = tourBaseSchema;
@@ -236,6 +266,8 @@ const transferRouteBaseSchema = z.object({
   from_location: optionalNonEmptyText(160, "Origen"),
   to_location: optionalNonEmptyText(160, "Destino"),
   base_price_cents: priceCentsSchema,
+  // Default per_unit: precio fijo por viaje (no por pasajero).
+  pricing_unit: z.enum(["per_unit", "per_person", "per_hour"]).default("per_unit"),
   distance_km: z.coerce
     .number({ invalid_type_error: "Distancia inválida" })
     .min(0, "Distancia inválida")

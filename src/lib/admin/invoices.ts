@@ -70,9 +70,10 @@ const createInvoiceManualSchema = z.object({
     .optional()
     .or(z.literal("")),
   items: z.array(lineItemSchema).min(1, "Agregá al menos un ítem a la factura"),
-  // Si está poblado, asociamos la invoice a ese profile. Si está vacío, la
-  // invoice queda atada al admin actor (customer info por campos sueltos).
-  userId: uuidNullable,
+  // Customer obligatorio (PM 2026-06-10: sin cliente y servicio no hay
+  // factura). El modal de UI fuerza al admin a elegir un perfil existente o
+  // crear uno nuevo antes de submit.
+  userId: z.string().uuid("Cliente requerido"),
 });
 
 function firstZodError(err: { errors: { message: string }[] }): string {
@@ -244,6 +245,7 @@ export async function createInvoiceManual(
     notes: formData.get("notes") ?? "",
     dueAt: formData.get("dueAt") ?? "",
     items: itemsInput,
+    userId: formData.get("userId") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -271,12 +273,9 @@ export async function createInvoiceManual(
   );
   const totalCents = subtotalCents; // sin tax/discount por ahora
 
-  // Insert invoice — user_id apunta al admin que crea (el cliente puede no
-  // tener perfil en profiles). RLS permite a staff insertar.
-  // user_id: el del cliente si está poblado; sino el actor (admin) como
-  // fallback para que la invoice tenga FK válida. Esto permite que el
-  // cliente vea sus invoices en /account → Mis Facturas vía RLS.
-  const invoiceUserId = (d.userId && d.userId.length > 0) ? d.userId : actorId;
+  // user_id: el del cliente (obligatorio post 2026-06-10). El cliente ve sus
+  // invoices en /account → Mis Facturas vía RLS.
+  const invoiceUserId = d.userId;
   const { data: invoice, error: invErr } = await supabase
     .from("invoices")
     .insert({

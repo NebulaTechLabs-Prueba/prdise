@@ -203,6 +203,10 @@ function mapStayToHotel(s) {
     checkOut: "11:00",
     partnerId: s.partner_id || null,
     partnerUrl: s.partner_url || "",
+    // Pricing mixto + categoría (PM 2026-06-10).
+    pricingUnit: s.pricing_unit || "per_night",
+    pricingExtras: Array.isArray(s.pricing_extras) ? s.pricing_extras : [],
+    category: s.category || "",
   };
 }
 
@@ -234,6 +238,10 @@ function mapTourToTour(t) {
     bookings: 0,
     partnerId: t.partner_id || null,
     partnerUrl: t.partner_url || "",
+    // Pricing mixto + categoría (PM 2026-06-10).
+    pricingUnit: t.pricing_unit || "per_person",
+    pricingExtras: Array.isArray(t.pricing_extras) ? t.pricing_extras : [],
+    category: t.category || "",
   };
 }
 
@@ -266,12 +274,17 @@ function mapRouteToRoute(r) {
     id: r.id,
     from: r.from_location,
     to: r.to_location,
+    price: Math.round((r.base_price_cents || 0) / 100),
+    maxPax: r.max_pax || 4,
+    distanceKm: r.distance_km == null ? null : Number(r.distance_km),
+    durationMinutes: r.duration_minutes ?? null,
     km: Number(r.distance_km) || 0,
     time: r.duration_minutes ? `${Math.floor(r.duration_minutes / 60)}h ${r.duration_minutes % 60}min` : "",
     // `featured`: el admin marca una ruta como "popular" (promoción).
     // La sección Popular Routes del público filtra por este flag.
     featured: r.featured === true,
     active: r.active !== false,
+    pricingUnit: r.pricing_unit || "per_unit",
   };
 }
 
@@ -4571,11 +4584,15 @@ function AdminPanel({ onClose }) {
             link: !!i.stripe_payment_link_url,
             source: "supabase",
             paymentRef: i.payment_ref || "",
+            // Shape requerida por el modal "Ver" + tabla draft-edit: usamos
+            // {type, name, price, qty} para evitar .toFixed crash. El type se
+            // deriva de qué FK está set (tour / stay / transfer / custom).
             lineItems: (i.items || []).map((it) => ({
-              description: it.description,
-              quantity: it.quantity,
-              unit: (it.unit_cents || 0) / 100,
-              total: (it.line_total_cents || 0) / 100,
+              type: it.tour_id ? "tour" : it.stay_id ? "stay" : it.transfer_route_id ? "transfer" : "custom",
+              name: it.description || "",
+              price: (it.unit_cents || 0) / 100,
+              qty: it.quantity || 1,
+              lineTotal: (it.line_total_cents || 0) / 100,
             })),
           }));
           // Pivote 2026-06-04: invoices vienen 100% de Supabase. Reemplazamos
@@ -4690,15 +4707,46 @@ function AdminPanel({ onClose }) {
         source: "supabase",
         paymentRef: i.payment_ref || "",
         lineItems: (i.items || []).map((it) => ({
-          description: it.description,
-          quantity: it.quantity,
-          unit: (it.unit_cents || 0) / 100,
-          total: (it.line_total_cents || 0) / 100,
+          type: it.tour_id ? "tour" : it.stay_id ? "stay" : it.transfer_route_id ? "transfer" : "custom",
+          name: it.description || "",
+          price: (it.unit_cents || 0) / 100,
+          qty: it.quantity || 1,
+          lineTotal: (it.line_total_cents || 0) / 100,
         })),
       }));
       setInvoices(mapped);
     } catch (e) {
       console.warn("[admin] reloadInvoices:", e);
+    }
+  };
+
+  // Refetch helper para usuarios. Necesario tras crear un cliente desde el
+  // InvoiceCreateModal: antes el cliente nuevo no aparecía hasta refresh
+  // manual de la pestaña Users.
+  const reloadUsers = async () => {
+    try {
+      const usrs = await sbListAllUsers({ pageSize: 200 });
+      if (!usrs?.ok || !Array.isArray(usrs.data?.items)) return;
+      setUsers(usrs.data.items.map((u) => ({
+        id: u.id,
+        email: u.email || "",
+        name: [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.email || "—",
+        role: u.role === "admin"
+          ? (lang === "es" ? "Administrador" : "Administrator")
+          : (lang === "es" ? "Cliente" : "Customer"),
+        roleRaw: u.role,
+        customRoleId: u.custom_role_id || null,
+        status: u.status || "active",
+        department: u.department || "",
+        position: u.position || "",
+        phone: u.phone || "",
+        country: u.country || "",
+        points: u.points_balance || 0,
+        tier: u.tier || "bronze",
+        joinedAt: (u.created_at || "").slice(0, 10),
+      })));
+    } catch (e) {
+      console.warn("[admin] reloadUsers:", e);
     }
   };
 
@@ -6500,9 +6548,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             )}
             <div className="adm-stats">
               <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Total facturado":"Total billed"}<InfoTip text="Sum of all invoice amounts regardless of payment status. Source: Invoices module → all invoices total column." /></span><div className="adm-stat-ico"><CreditCard /></div></div>
-                <div className="adm-stat-val">{fmt(visibleInvoices.reduce((s, i) => s + i.total, 0))}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{visibleInvoices.length} {lang==="es"?"facturas":"invoices"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Total facturado":"Total billed"}<InfoTip text={lang==="es"?"Suma de facturas emitidas (excluye borradores y canceladas). Fuente: Facturas con status pending/sent/overdue/paid.":"Sum of issued invoices (excludes drafts and cancelled). Source: Invoices with status pending/sent/overdue/paid."} /></span><div className="adm-stat-ico"><CreditCard /></div></div>
+                {(() => {
+                  const billed = visibleInvoices.filter(i => i.status !== "draft" && i.status !== "cancelled");
+                  return (
+                    <>
+                      <div className="adm-stat-val">{fmt(billed.reduce((s, i) => s + i.total, 0))}</div>
+                      <div className="adm-stat-trend up"><TrendingUp />{billed.length} {lang==="es"?"facturas":"invoices"}</div>
+                    </>
+                  );
+                })()}
               </div>
               <div className="adm-stat green">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pagado":"Paid"}<InfoTip text="Invoices marked as paid by the client. Source: Invoices → status = 'paid'." /></span><div className="adm-stat-ico"><CheckCircle /></div></div>
@@ -6721,29 +6776,59 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 ><Trash2 /></button>
                               );
                             })()}
-                            <button
-                              className="adm-icon-btn"
-                              title={!canEditInvoices() ? (lang==="es"?"Sin permiso":"No permission") : inv.status === "draft" ? (lang==="es"?"Enviar":"Send") : (lang==="es"?"Reenviar":"Resend")}
-                              disabled={!canEditInvoices()}
-                              style={{ opacity: canEditInvoices() ? 1 : 0.3, cursor: canEditInvoices() ? "pointer" : "not-allowed" }}
-                              onClick={() => {
-                              if (!canEditInvoices()) return;
-                              if (!inv.email) { alert(lang==="es"?"Sin correo del cliente":"No client email"); return; }
-                              if (!inv.lineItems || inv.lineItems.length === 0) {
-                                if (!inv.total || inv.total === 0) { alert(lang==="es"?"Agrega al menos un servicio antes de enviar":"Add at least one service before sending"); return; }
-                              }
-                              if (inv.status === "draft") {
-                                const dueDate = inv.due || (() => {
-                                  const d = inv.issued ? new Date(inv.issued) : new Date();
-                                  d.setDate(d.getDate() + 15);
-                                  return d.toISOString().split("T")[0];
-                                })();
-                                setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent", link: true, due: dueDate } : i));
-                                alert(lang==="es"?`Factura ${inv.num} enviada a ${inv.email}. Vence el ${dueDate}.`:`Invoice ${inv.num} sent to ${inv.email}. Due ${dueDate}.`);
-                              } else {
-                                alert(lang==="es"?`Factura ${inv.num} reenviada a ${inv.email}`:`Invoice ${inv.num} resent to ${inv.email}`);
-                              }
-                            }}><Send /></button>
+                            {(() => {
+                              // Send sólo si la factura tiene email, items, y
+                              // (cuando es draft) link de pago Stripe listo.
+                              // Un draft sin link es trabajo en curso, no se
+                              // puede mandar al cliente todavía.
+                              const hasItems = (inv.lineItems && inv.lineItems.length > 0) || (inv.items && inv.items > 0);
+                              const isDraft = inv.status === "draft";
+                              const draftReady = !isDraft || !!inv.stripePaymentLinkUrl;
+                              const canSend = canEditInvoices() && !!inv.email && hasItems && draftReady && inv.status !== "cancelled";
+                              const tooltip = !canEditInvoices()
+                                ? (lang === "es" ? "Sin permiso" : "No permission")
+                                : !inv.email
+                                  ? (lang === "es" ? "Sin correo del cliente" : "No client email")
+                                  : !hasItems
+                                    ? (lang === "es" ? "Agregá al menos un servicio" : "Add at least one service")
+                                    : isDraft && !inv.stripePaymentLinkUrl
+                                      ? (lang === "es" ? "Generá el link de pago Stripe primero" : "Generate the Stripe payment link first")
+                                      : inv.status === "cancelled"
+                                        ? (lang === "es" ? "Factura cancelada" : "Cancelled invoice")
+                                        : isDraft ? (lang === "es" ? "Enviar" : "Send") : (lang === "es" ? "Reenviar" : "Resend");
+                              return (
+                                <button
+                                  className="adm-icon-btn"
+                                  title={tooltip}
+                                  disabled={!canSend}
+                                  style={{ opacity: canSend ? 1 : 0.3, cursor: canSend ? "pointer" : "not-allowed" }}
+                                  onClick={async () => {
+                                    if (!canSend) return;
+                                    if (inv.source === "supabase" && inv.sbId) {
+                                      // Abrimos WhatsApp con el link de pago
+                                      // — es el canal real de envío hoy
+                                      // (Brevo bloqueado a nivel cuenta).
+                                      const fd = new FormData();
+                                      fd.append("id", inv.sbId);
+                                      const res = await sbGetInvoiceWhatsAppLink(fd);
+                                      if (res?.ok && res.data?.url) {
+                                        window.open(res.data.url, "_blank");
+                                        if (isDraft) {
+                                          // Marcar como sent localmente; el
+                                          // status final en DB lo persiste el
+                                          // próximo step (mark paid o webhook).
+                                          setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent" } : i));
+                                        }
+                                      } else {
+                                        alert((lang==="es"?"No se pudo abrir WhatsApp: ":"Could not open WhatsApp: ") + (res?.error || "unknown"));
+                                      }
+                                    } else {
+                                      alert(lang === "es" ? "Factura legacy sin link Supabase" : "Legacy invoice without Supabase link");
+                                    }
+                                  }}
+                                ><Send /></button>
+                              );
+                            })()}
                             {(() => {
                               const canMarkPaid = canEditInvoices() && (inv.status === "pending" || inv.status === "sent" || inv.status === "overdue");
                               const tooltip = !canEditInvoices()
@@ -6785,7 +6870,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             lang={lang}
             onClose={() => setInvoiceCreateOpen(false)}
             onCreated={async ({ number, stripePaymentLinkUrl, stripeError }) => {
-              await reloadInvoices();
+              // Refrescamos invoices Y usuarios — cuando el admin creó un
+              // cliente nuevo desde el modal, este debe aparecer en la lista
+              // de Usuarios inmediatamente sin tener que refrescar la página.
+              await Promise.all([reloadInvoices(), reloadUsers()]);
               setInvoiceCreateOpen(false);
               const baseMsg = lang === "es"
                 ? `Factura ${number} creada.`
@@ -6877,30 +6965,34 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                 ) : (
                   <div style={{ marginTop: 12 }}>
-                    {editingInvoice.lineItems.map((li, i) => (
+                    {editingInvoice.lineItems.map((li, i) => {
+                      const price = Number(li.price ?? li.unit ?? 0);
+                      const qty = Number(li.qty ?? li.quantity ?? 1);
+                      return (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 4px", borderBottom: i < editingInvoice.lineItems.length - 1 ? "1px solid rgba(255,255,255,.06)" : "none" }}>
                         <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 4, background: li.type === "stay" ? "rgba(41,171,226,.15)" : li.type === "tour" ? "rgba(141,198,63,.15)" : "rgba(245,166,35,.15)", color: li.type === "stay" ? "#29ABE2" : li.type === "tour" ? "#8DC63F" : "#F5A623", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em", flexShrink: 0 }}>{li.type === "stay" ? (lang === "es" ? "Estadía" : "Stay") : li.type === "tour" ? "Tour" : (lang === "es" ? "Traslado" : "Transfer")}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.9)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{li.name}</div>
-                          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", fontFamily: "monospace" }}>${li.price.toFixed(2)} × {li.qty}</div>
+                          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.9)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{li.name || li.description || "—"}</div>
+                          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", fontFamily: "monospace" }}>${price.toFixed(2)} × {qty}</div>
                         </div>
-                        <input type="number" min={1} value={li.qty} onChange={(e) => {
+                        <input type="number" min={1} value={qty} onChange={(e) => {
                           const newItems = [...editingInvoice.lineItems];
                           newItems[i] = { ...newItems[i], qty: Math.max(1, parseInt(e.target.value) || 1) };
-                          const total = newItems.reduce((s, x) => s + x.price * x.qty, 0);
+                          const total = newItems.reduce((s, x) => s + Number(x.price || 0) * Number(x.qty || 0), 0);
                           setEditingInvoice({ ...editingInvoice, lineItems: newItems, total });
                         }} style={{ width: 50, padding: "5px 6px", borderRadius: 6, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "#fff", fontSize: 12, textAlign: "center" }} />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#F5A623", minWidth: 70, textAlign: "right", fontFamily: "monospace" }}>${(li.price * li.qty).toFixed(2)}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#F5A623", minWidth: 70, textAlign: "right", fontFamily: "monospace" }}>${(price * qty).toFixed(2)}</span>
                         <button onClick={() => {
                           const newItems = editingInvoice.lineItems.filter((_, j) => j !== i);
-                          const total = newItems.reduce((s, x) => s + x.price * x.qty, 0);
+                          const total = newItems.reduce((s, x) => s + Number(x.price || 0) * Number(x.qty || 0), 0);
                           setEditingInvoice({ ...editingInvoice, lineItems: newItems, items: newItems.length, total });
                         }} title={lang === "es" ? "Eliminar" : "Remove"} style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(248,113,113,.1)", border: "none", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X style={{ width: 11, height: 11 }} /></button>
                       </div>
-                    ))}
+                      );
+                    })}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(245,166,35,.25)" }}>
                       <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)" }}>Total</span>
-                      <span style={{ fontSize: 24, fontFamily: "Bebas Neue", color: "#F5A623", letterSpacing: ".02em" }}>${editingInvoice.total.toFixed(2)}</span>
+                      <span style={{ fontSize: 24, fontFamily: "Bebas Neue", color: "#F5A623", letterSpacing: ".02em" }}>${Number(editingInvoice.total || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 )}
@@ -7035,17 +7127,27 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </tr>
                   </thead>
                   <tbody>
-                    {(viewingInvoice.lineItems && viewingInvoice.lineItems.length > 0) ? viewingInvoice.lineItems.map((li, i) => (
-                      <tr key={i}>
-                        <td>
-                          <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: li.type === "stay" ? "rgba(41,171,226,.15)" : li.type === "tour" ? "rgba(141,198,63,.15)" : "rgba(245,166,35,.15)", color: li.type === "stay" ? "#1A7FA8" : li.type === "tour" ? "#5C9024" : "#A06F0F", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em", marginRight: 8 }}>{li.type === "stay" ? (lang === "es" ? "Estadía" : "Stay") : li.type === "tour" ? "Tour" : (lang === "es" ? "Traslado" : "Transfer")}</span>
-                          {li.name}
-                        </td>
-                        <td className="num">{li.qty}</td>
-                        <td className="num">${li.price.toFixed(2)}</td>
-                        <td className="num" style={{ fontWeight: 700 }}>${(li.price * li.qty).toFixed(2)}</td>
-                      </tr>
-                    )) : (
+                    {(viewingInvoice.lineItems && viewingInvoice.lineItems.length > 0) ? viewingInvoice.lineItems.map((li, i) => {
+                      const price = Number(li.price ?? li.unit ?? 0);
+                      const qty = Number(li.qty ?? li.quantity ?? 1);
+                      const label = li.type === "stay" ? (lang === "es" ? "Estadía" : "Stay")
+                        : li.type === "tour" ? "Tour"
+                        : li.type === "transfer" ? (lang === "es" ? "Traslado" : "Transfer")
+                        : (lang === "es" ? "Servicio" : "Service");
+                      const bg = li.type === "stay" ? "rgba(41,171,226,.15)" : li.type === "tour" ? "rgba(141,198,63,.15)" : li.type === "transfer" ? "rgba(245,166,35,.15)" : "rgba(255,255,255,.06)";
+                      const col = li.type === "stay" ? "#1A7FA8" : li.type === "tour" ? "#5C9024" : li.type === "transfer" ? "#A06F0F" : "rgba(15,24,34,.6)";
+                      return (
+                        <tr key={i}>
+                          <td>
+                            <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: bg, color: col, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em", marginRight: 8 }}>{label}</span>
+                            {li.name || li.description || "—"}
+                          </td>
+                          <td className="num">{qty}</td>
+                          <td className="num">${price.toFixed(2)}</td>
+                          <td className="num" style={{ fontWeight: 700 }}>${(price * qty).toFixed(2)}</td>
+                        </tr>
+                      );
+                    }) : (
                       <tr>
                         <td colSpan={4} style={{ textAlign: "center", padding: 18, color: "rgba(15,24,34,.4)", fontStyle: "italic" }}>
                           {viewingInvoice.items} {lang === "es" ? (viewingInvoice.items === 1 ? "ítem facturado" : "ítems facturados") : (viewingInvoice.items === 1 ? "item billed" : "items billed")}
@@ -7059,7 +7161,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div style={{ width: 260 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12, color: "rgba(15,24,34,.6)" }}>
                       <span>Subtotal</span>
-                      <span style={{ fontFamily: "monospace" }}>${viewingInvoice.total.toFixed(2)}</span>
+                      <span style={{ fontFamily: "monospace" }}>${Number(viewingInvoice.total || 0).toFixed(2)}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12, color: "rgba(15,24,34,.6)", borderBottom: "1px solid rgba(15,24,34,.1)" }}>
                       <span>{lang === "es" ? "Impuestos" : "Tax"}</span>
@@ -7067,7 +7169,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 0", fontSize: 16, fontWeight: 700, color: "#0F1822" }}>
                       <span>Total</span>
-                      <span style={{ color: "#F5A623", fontSize: 24, fontFamily: "Bebas Neue", letterSpacing: ".02em" }}>${viewingInvoice.total.toFixed(2)}</span>
+                      <span style={{ color: "#F5A623", fontSize: 24, fontFamily: "Bebas Neue", letterSpacing: ".02em" }}>${Number(viewingInvoice.total || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -7801,7 +7903,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-tab ${settingsTab === "security" ? "active" : ""}`} onClick={() => setSettingsTab("security")}><Shield />{t("adm_security")}</button>
               <button className={`adm-tab ${settingsTab === "integrations" ? "active" : ""}`} onClick={() => setSettingsTab("integrations")}><Globe />{t("adm_integrations")}</button>
               <button className={`adm-tab ${settingsTab === "legal" ? "active" : ""}`} onClick={() => setSettingsTab("legal")}><FileText />{lang === "es" ? "Legal" : "Legal"}</button>
-              <button className={`adm-tab ${settingsTab === "roles" ? "active" : ""}`} onClick={() => setSettingsTab("roles")}><Key />{lang === "es" ? "Roles" : "Roles"}</button>
+              {/* Tab "Roles" eliminada (PM 2026-06-10): los Roles
+                  Personalizados ahora viven dentro de "Usuarios y Roles" para
+                  evitar dos secciones que parecen lo mismo. */}
               <button className={`adm-tab ${settingsTab === "authtools" ? "active" : ""}`} onClick={() => setSettingsTab("authtools")}><Lock />{lang === "es" ? "Auth Tools" : "Auth Tools"}</button>
             </div>
 
@@ -8465,11 +8569,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema":"Tagline"}</label><input className="adm-fi" value={companySettings.tagline} onChange={(e) => updCompanySetting("tagline", e.target.value)} /></div>
                 </div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Correo de Contacto":"Contact Email"}</label><input className="adm-fi" type="email" value={companySettings.contact_email} onChange={(e) => updCompanySetting("contact_email", e.target.value)} /></div>
-                <div className="adm-fg-row">
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono (mostrar)":"Phone (display)"}</label><input className="adm-fi" type="tel" value={companySettings.contact_phone} onChange={(e) => updCompanySetting("contact_phone", e.target.value)} placeholder="+1 (787) 237-9519" /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono (tel:)":"Phone (tel:)"}</label><input className="adm-fi" type="tel" value={companySettings.contact_phone_tel} onChange={(e) => updCompanySetting("contact_phone_tel", e.target.value)} placeholder="+17872379519" /></div>
-                </div>
-                <div className="adm-fg"><label className="adm-fl">WhatsApp <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>{lang === "es" ? "(solo dígitos con código país, ej. 17872379519)" : "(digits only with country code, e.g. 17872379519)"}</span></label><input className="adm-fi" value={companySettings.whatsapp_phone} onChange={(e) => updCompanySetting("whatsapp_phone", e.target.value)} placeholder="17872379519" /></div>
+                {/* Un solo teléfono: el admin escribe el número como quiera
+                    mostrarlo y derivamos las variantes para `tel:` y `wa.me`
+                    automáticamente al guardar (PM 2026-06-10). */}
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono / WhatsApp":"Phone / WhatsApp"} <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>{lang === "es" ? "(usado para llamadas y WhatsApp)" : "(used for calls and WhatsApp)"}</span></label><input className="adm-fi" type="tel" value={companySettings.contact_phone} onChange={(e) => {
+                  const display = e.target.value;
+                  // Variantes derivadas: tel: con + y dígitos; wa.me solo dígitos.
+                  const digits = display.replace(/\D/g, "");
+                  updCompanySetting("contact_phone", display);
+                  updCompanySetting("contact_phone_tel", digits ? "+" + digits : "");
+                  updCompanySetting("whatsapp_phone", digits);
+                }} placeholder="+1 (787) 237-9519" /></div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" value={companySettings.address} onChange={(e) => updCompanySetting("address", e.target.value)} /></div>
                 <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving}>
                   {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
@@ -8554,7 +8664,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             {settingsTab === "notifications" && (
               <>
                 <NotifMatrixCard />
-                <QuietHoursCard />
+                {/* QuietHoursCard removida (PM 2026-06-10): no tiene sentido
+                    para un negocio que opera con reservas asíncronas — la
+                    matriz de notificaciones es suficiente. */}
               </>
             )}
 
@@ -8565,14 +8677,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <Info style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0, marginTop: 2 }} />
                   <span>
                     {lang==="es"
-                      ? "Las opciones de 2FA, timeout de sesión y alertas de login están planificadas pero todavía no se aplican en el backend. Solo Cambiar Contraseña está operativo."
-                      : "2FA, session timeout and login alerts are planned but not enforced by the backend yet. Only Change Password is functional."}
+                      ? "Por ahora solo está disponible el cambio de contraseña. El resto de las opciones de seguridad se irán habilitando a medida que se implementen."
+                      : "Only password change is available for now. The rest of the security options will be enabled as they get implemented."}
                   </span>
                 </div>
-                <NotifSetting label={lang==="es"?"Autenticación de dos factores":"Two-factor authentication"} desc={lang==="es"?"Requerir un código de verificación además de la contraseña":"Require a verification code in addition to password"} defaultOn />
-                <NotifSetting label={lang==="es"?"Tiempo de sesión (30 min)":"Session timeout (30 min)"} desc={lang==="es"?"Cerrar sesión automáticamente tras 30 minutos de inactividad":"Automatically log out after 30 minutes of inactivity"} defaultOn />
-                <NotifSetting label={lang==="es"?"Alertas de inicio de sesión":"Login alerts"} desc={lang==="es"?"Notificación por correo al iniciar sesión desde un dispositivo nuevo":"Email notification on new device login"} defaultOn />
-                <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,.06)" }}>
+                {/* Removidos 2FA, session timeout, login alerts: el backend no
+                    los respeta hoy y mostrar toggles que no hacen nada confunde
+                    al admin (PM 2026-06-10). */}
+                <div style={{ marginTop: 6, paddingTop: 0 }}>
                   <button className="adm-btn adm-btn-ghost" onClick={async () => {
                     const sess = PRDISE.load("session", null);
                     const email = sess?.email;
@@ -8597,9 +8709,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <AuthToolsPanel lang={lang} />
             )}
 
-            {settingsTab === "roles" && (
+            {/* Roles Personalizados ahora son parte del tab "Usuarios y
+                Roles" (PM 2026-06-10) — el tab "Roles" standalone se eliminó
+                para no duplicar conceptos. */}
+            {settingsTab === "team" && (
               <>
-                <div className="adm-card">
+                <div className="adm-card" style={{ marginTop: 18 }}>
                   <div className="adm-card-head">
                     <div className="adm-card-title"><Key />{lang === "es" ? "Roles Personalizados" : "Custom Roles"}</div>
                     <button className="adm-btn adm-btn-primary" onClick={() => setEditingCustomRole({ id: "new", name: "", label_es: "", label_en: "", description: "", active: true, permissions: [] })}>
@@ -8687,8 +8802,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-card-head"><div className="adm-card-title"><FileText />{lang === "es" ? "Contenido Legal" : "Legal Content"}</div></div>
                   <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 18, lineHeight: 1.6 }}>
                     {lang === "es"
-                      ? "Edita los Términos y Condiciones y la Política de Privacidad. Se publican en /terms y /privacy y el flujo de registro enlaza a estas páginas. Texto plano (los saltos de línea se preservan). El texto que ingreses acá es lo que verá el público — no incluyas notas internas tipo 'editar desde admin'."
-                      : "Edit the Terms & Conditions and Privacy Policy. They're published at /terms and /privacy and linked from the signup flow. Plain text (line breaks are preserved). What you type here is what users will see — don't include internal notes like 'edit from admin'."}
+                      ? "Edita los Términos y Condiciones y la Política de Privacidad. Se publican en /terms y /privacy y el flujo de registro enlaza a estas páginas. Texto plano (los saltos de línea se preservan)."
+                      : "Edit the Terms & Conditions and Privacy Policy. They are published at /terms and /privacy and linked from the signup flow. Plain text (line breaks are preserved)."}
                   </p>
 
                   <h4 style={{ fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".08em", color: "var(--gold)", marginTop: 8, marginBottom: 10 }}>{lang === "es" ? "TÉRMINOS Y CONDICIONES" : "TERMS & CONDITIONS"}</h4>
@@ -8923,12 +9038,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("bedrooms", String(ownedUpdate.bedrooms || 0));
               fd.append("bathrooms", String(ownedUpdate.bathrooms || 0));
               fd.append("location", ownedUpdate.zone || "");
-              if (ownedUpdate.lat != null) fd.append("lat", String(ownedUpdate.lat));
-              if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               fd.append("active", ownedUpdate.status === "hidden" ? "false" : "true");
               if (ownedUpdate.partnerId) fd.append("partner_id", ownedUpdate.partnerId);
               if (ownedUpdate.partnerUrl) fd.append("partner_url", ownedUpdate.partnerUrl);
+              // Pricing mixto + categoría (PM 2026-06-10).
+              fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_night");
+              fd.append("pricing_extras", JSON.stringify(Array.isArray(ownedUpdate.pricingExtras) ? ownedUpdate.pricingExtras : []));
+              fd.append("category", ownedUpdate.category || "");
               // Amenities + galería: el Server Action readListField acepta
               // JSON string, CSV, o múltiples entries. Usamos JSON por
               // simplicidad y para preservar espacios/comas en valores.
@@ -8957,14 +9074,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("duration_minutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
               fd.append("max_pax", String(ownedUpdate.capacity || 10));
               fd.append("location", ownedUpdate.location || "");
-              if (ownedUpdate.lat != null) fd.append("lat", String(ownedUpdate.lat));
-              if (ownedUpdate.lng != null) fd.append("lng", String(ownedUpdate.lng));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               // Tour "hidden" debe desactivar el tour para que no salga en el
               // catálogo público (RLS activeOnly). "draft" idem.
               fd.append("active", (ownedUpdate.status === "draft" || ownedUpdate.status === "hidden") ? "false" : "true");
               if (ownedUpdate.partnerId) fd.append("partner_id", ownedUpdate.partnerId);
               if (ownedUpdate.partnerUrl) fd.append("partner_url", ownedUpdate.partnerUrl);
+              // Pricing mixto + categoría (PM 2026-06-10).
+              fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_person");
+              fd.append("pricing_extras", JSON.stringify(Array.isArray(ownedUpdate.pricingExtras) ? ownedUpdate.pricingExtras : []));
+              fd.append("category", ownedUpdate.category || "");
               const includesArr = Array.isArray(ownedUpdate.includes) ? ownedUpdate.includes : [];
               fd.append("includes", JSON.stringify(includesArr));
               const coverImg = ownedUpdate.img || "";
@@ -8999,6 +9118,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("from_location", ownedUpdate.from || "");
               fd.append("to_location", ownedUpdate.to || "");
               fd.append("base_price_cents", priceCents);
+              fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_unit");
               if (ownedUpdate.distanceKm != null) fd.append("distance_km", String(ownedUpdate.distanceKm));
               if (ownedUpdate.durationMinutes != null) fd.append("duration_minutes", String(ownedUpdate.durationMinutes));
               fd.append("max_pax", String(ownedUpdate.maxPax || ownedUpdate.capacity || 4));
@@ -9084,7 +9204,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 }
 
 function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const it = editing.item || {};
   const isNew = editing.isNew;
   const type = editing.type;
@@ -9127,6 +9247,22 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // Partner (referral) — solo aplica a stays/tours
   const [partnerId, setPartnerId] = useState(it.partnerId || "");
   const [partnerUrl, setPartnerUrl] = useState(it.partnerUrl || "");
+  // Route form: estado controlado (antes mutaba `it` directo, lo cual rompía
+  // sutilmente en algunos casos y dificultaba debugging).
+  const [routeFrom, setRouteFrom] = useState(it.from || "");
+  const [routeTo, setRouteTo] = useState(it.to || "");
+  const [routePrice, setRoutePrice] = useState(it.price ?? "");
+  const [routeMaxPax, setRouteMaxPax] = useState(it.maxPax || it.capacity || 4);
+  const [routeDistance, setRouteDistance] = useState(it.km ?? it.distanceKm ?? "");
+  const [routeDuration, setRouteDuration] = useState(it.durationMinutes ?? "");
+  const [routeFeatured, setRouteFeatured] = useState(!!it.featured);
+  const [routePricingUnit, setRoutePricingUnit] = useState(it.pricingUnit || "per_unit");
+  // Pricing mixto + categoría (PM 2026-06-10): aplica a stays/tours/route.
+  const defaultPricingUnit = type === "hotel" ? "per_night" : type === "tour" ? "per_person" : "per_unit";
+  const [pricingUnit, setPricingUnit] = useState(it.pricingUnit || defaultPricingUnit);
+  const [pricingExtras, setPricingExtras] = useState(Array.isArray(it.pricingExtras) ? it.pricingExtras : []);
+  const [extraDraft, setExtraDraft] = useState({ label_en: "", label_es: "", price: "", unit: "per_person" });
+  const [category, setCategory] = useState(it.category || "");
   const partnerOptions = useMemo(
     () => (Array.isArray(PARTNERS) ? PARTNERS.filter((p) => p.active && !p.deleted_at) : []),
     []
@@ -9366,8 +9502,6 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     // Hotel-specific
     if (type === "hotel") {
       if (vals.location) updated.zone = vals.location;
-      if (vals.gps___latitude) updated.lat = parseFloat(vals.gps___latitude) || updated.lat;
-      if (vals.gps___longitude) updated.lng = parseFloat(vals.gps___longitude) || updated.lng;
       if (vals.price___night__usd_) updated.price = vals.price___night__usd_;
       if (vals.rooms) updated.bedrooms = vals.rooms;
       if (vals.sleeps) updated.sleeps = vals.sleeps;
@@ -9408,12 +9542,43 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.body = bodyEN || it.body;
       updated.bodyES = bodyES;
     }
+    // Route-specific: leemos del estado controlado en vez de mutar `it`.
+    if (type === "route") {
+      updated.from = routeFrom.trim();
+      updated.to = routeTo.trim();
+      updated.price = Number(routePrice) || 0;
+      updated.maxPax = parseInt(routeMaxPax, 10) || 4;
+      updated.distanceKm = routeDistance === "" ? null : (parseFloat(routeDistance) || null);
+      updated.durationMinutes = routeDuration === "" ? null : (parseInt(routeDuration, 10) || null);
+      updated.featured = !!routeFeatured;
+      updated.pricingUnit = routePricingUnit || "per_unit";
+      // Validación cliente: el server también valida pero acá damos feedback
+      // inmediato sin un round-trip.
+      if (!updated.from) { alert(lang === "es" ? "El campo 'Desde' es obligatorio." : "'From' is required."); return; }
+      if (!updated.to) { alert(lang === "es" ? "El campo 'Hasta' es obligatorio." : "'To' is required."); return; }
+      if (!routePrice || updated.price <= 0) { alert(lang === "es" ? "Ingresá un precio base mayor a cero." : "Enter a base price greater than zero."); return; }
+    }
+    // Pricing mixto + categoría — aplica a stays/tours (route ya tiene su propio
+    // pricingUnit gestionado arriba).
+    if (type === "hotel" || type === "tour") {
+      updated.pricingUnit = pricingUnit;
+      updated.pricingExtras = pricingExtras;
+      updated.category = category.trim() || null;
+    }
 
-    // New items need an ID
+    // New items need an ID. Para stays/tours el slug se deriva del nombre
+    // (no se pide al admin) — fallback a timestamp si el nombre quedó vacío,
+    // para garantizar unicidad.
+    const slugify = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
     if (isNew && !updated.id) {
-      updated.id = type + "-" + Date.now().toString(36);
+      if (type === "hotel" || type === "tour") {
+        const baseSlug = slugify(updated.name || nameEN);
+        updated.id = baseSlug ? `${baseSlug}-${Date.now().toString(36).slice(-4)}` : `${type}-${Date.now().toString(36)}`;
+      } else {
+        updated.id = type + "-" + Date.now().toString(36);
+      }
       if (type === "post") {
-        updated.slug = (updated.title || "post").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+        updated.slug = slugify(updated.title || "post");
         updated.views = 0;
         updated.date = new Date().toISOString().split("T")[0];
       }
@@ -9476,10 +9641,6 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Name" : "Nombre"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><input className="adm-fi" value={contentLang === "en" ? nameEN : nameES} onChange={(e) => { if (contentLang === "en") setNameEN(e.target.value); else setNameES(e.target.value); }} placeholder={contentLang === "en" ? "Stay name" : "Nombre de la estadía (opcional)"} /></div>
               <div className="adm-fg"><label className="adm-fl">Location</label><input className="adm-fi" defaultValue={it.zone || ""} placeholder="Zone / area" /></div>
-            </div>
-            <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">GPS — Latitude</label><input type="number" step="any" className="adm-fi" defaultValue="" placeholder="18.0933" /></div>
-              <div className="adm-fg"><label className="adm-fl">GPS — Longitude</label><input type="number" step="any" className="adm-fi" defaultValue="" placeholder="-67.1533" /></div>
             </div>
             <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Description" : "Descripción"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><textarea className="adm-fi" rows={3} value={contentLang === "en" ? descEN : descES} onChange={(e) => { if (contentLang === "en") setDescEN(e.target.value); else setDescES(e.target.value); }} placeholder={contentLang === "en" ? "Describe the property..." : "Descripción en español (opcional)..."} style={{ resize: "vertical", minHeight: 70 }} /></div>
 
@@ -9557,10 +9718,6 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Name" : "Nombre"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><input className="adm-fi" value={contentLang === "en" ? nameEN : nameES} onChange={(e) => { if (contentLang === "en") setNameEN(e.target.value); else setNameES(e.target.value); }} placeholder={contentLang === "en" ? "Tour name" : "Nombre del tour (opcional)"} /></div>
               <div className="adm-fg"><label className="adm-fl">Location</label><input className="adm-fi" defaultValue={it.location || ""} placeholder="Meeting point" /></div>
-            </div>
-            <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">GPS — Latitude</label><input type="number" step="any" className="adm-fi" defaultValue="" placeholder="18.0933" /></div>
-              <div className="adm-fg"><label className="adm-fl">GPS — Longitude</label><input type="number" step="any" className="adm-fi" defaultValue="" placeholder="-67.1533" /></div>
             </div>
             <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Description" : "Descripción"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><textarea className="adm-fi" rows={3} value={contentLang === "en" ? descEN : descES} onChange={(e) => { if (contentLang === "en") setDescEN(e.target.value); else setDescES(e.target.value); }} placeholder={contentLang === "en" ? "Describe the tour experience..." : "Descripción en español (opcional)..."} style={{ resize: "vertical", minHeight: 70 }} /></div>
 
@@ -9685,23 +9842,31 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         {/* ══ ROUTE FORM ══ */}
         {type === "route" && (
           <>
-            {/* Campos alineados al schema real de transfer_routes en
-                Supabase. El form previo (Name/Type/Vehicle/Base Price/Peak
-                Hour/City) era legacy y ninguno mapeaba al insert/update. */}
+            {/* Estado controlado: cada input es controlled vía useState. Antes
+                el form mutaba `it` directo con `onChange={(e) => (it.from=...)}`
+                lo cual se rompía si el modal re-renderizaba a la mitad. */}
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Desde" : "From"} *</label><input className="adm-fi" defaultValue={it.from || ""} onChange={(e) => (it.from = e.target.value)} placeholder={lang === "es" ? "SJU Airport" : "SJU Airport"} /></div>
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hasta" : "To"} *</label><input className="adm-fi" defaultValue={it.to || ""} onChange={(e) => (it.to = e.target.value)} placeholder={lang === "es" ? "Cabo Rojo" : "Cabo Rojo"} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Desde" : "From"} *</label><input className="adm-fi" value={routeFrom} onChange={(e) => setRouteFrom(e.target.value)} placeholder="SJU Airport" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hasta" : "To"} *</label><input className="adm-fi" value={routeTo} onChange={(e) => setRouteTo(e.target.value)} placeholder="Cabo Rojo" /></div>
             </div>
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Precio base ($)" : "Base price ($)"} *</label><input type="number" step="0.01" className="adm-fi" defaultValue={it.price ?? ""} onChange={(e) => (it.price = parseFloat(e.target.value) || 0)} /></div>
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Cap. máx. pasajeros" : "Max passengers"}</label><input type="number" className="adm-fi" defaultValue={it.maxPax || it.capacity || 4} onChange={(e) => (it.maxPax = parseInt(e.target.value) || 4)} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Precio base ($)" : "Base price ($)"} *</label><input type="number" step="0.01" min="0" className="adm-fi" value={routePrice} onChange={(e) => setRoutePrice(e.target.value)} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Cap. máx. pasajeros" : "Max passengers"}</label><input type="number" min="1" className="adm-fi" value={routeMaxPax} onChange={(e) => setRouteMaxPax(e.target.value)} /></div>
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Unidad" : "Unit"}</label>
+                <select className="adm-fi" value={routePricingUnit} onChange={(e) => setRoutePricingUnit(e.target.value)}>
+                  <option value="per_unit">{lang === "es" ? "fijo por viaje" : "flat per trip"}</option>
+                  <option value="per_person">{lang === "es" ? "por persona" : "per person"}</option>
+                  <option value="per_hour">{lang === "es" ? "por hora" : "per hour"}</option>
+                </select>
+              </div>
             </div>
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Distancia (km)" : "Distance (km)"}</label><input type="number" step="0.1" className="adm-fi" defaultValue={it.km || ""} onChange={(e) => (it.distanceKm = parseFloat(e.target.value) || null)} /></div>
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Duración (min)" : "Duration (min)"}</label><input type="number" className="adm-fi" defaultValue={it.durationMinutes || ""} onChange={(e) => (it.durationMinutes = parseInt(e.target.value) || null)} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Distancia (km)" : "Distance (km)"}</label><input type="number" step="0.1" min="0" className="adm-fi" value={routeDistance} onChange={(e) => setRouteDistance(e.target.value)} placeholder={lang === "es" ? "Opcional" : "Optional"} /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Duración (min)" : "Duration (min)"}</label><input type="number" min="0" className="adm-fi" value={routeDuration} onChange={(e) => setRouteDuration(e.target.value)} placeholder={lang === "es" ? "Opcional" : "Optional"} /></div>
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", marginTop: 6 }}>
-              <input type="checkbox" defaultChecked={!!it.featured} onChange={(e) => (it.featured = e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />
+              <input type="checkbox" checked={routeFeatured} onChange={(e) => setRouteFeatured(e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }}>
                   ⭐ {lang === "es" ? "Marcar como ruta popular" : "Mark as popular route"}
@@ -9831,35 +9996,120 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           </div>
         )}
 
+        {/* ══ PRICING MIXTO + CATEGORÍA (stays / tours) ═══════════════════ */}
+        {(type === "hotel" || type === "tour") && (
+          <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.22)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <CreditCard style={{ width: 14, height: 14, color: "var(--gold)" }} />
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--gold)" }}>
+                {lang === "es" ? "Precio y categoría" : "Pricing & category"}
+              </div>
+            </div>
+            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", lineHeight: 1.5, margin: "0 0 10px 0" }}>
+              {lang === "es"
+                ? "Definí la unidad del precio base (por persona, por hora, etc.) y agregá extras opcionales si el servicio tiene cobros mixtos."
+                : "Define the unit of the base price (per person, per hour, etc.) and add optional extras for mixed pricing."}
+            </p>
+            <div className="adm-fg-row">
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Unidad del precio base" : "Base price unit"}</label>
+                <select className="adm-fi" value={pricingUnit} onChange={(e) => setPricingUnit(e.target.value)}>
+                  {type === "hotel" && <option value="per_night">{lang === "es" ? "por noche" : "per night"}</option>}
+                  <option value="per_person">{lang === "es" ? "por persona" : "per person"}</option>
+                  <option value="per_hour">{lang === "es" ? "por hora" : "per hour"}</option>
+                  <option value="per_unit">{lang === "es" ? "fijo (por servicio)" : "flat (per service)"}</option>
+                  <option value="per_attraction">{lang === "es" ? "por atracción" : "per attraction"}</option>
+                </select>
+              </div>
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Categoría" : "Category"}</label>
+                <input className="adm-fi" list={`cat-list-${type}`} value={category} onChange={(e) => setCategory(e.target.value)} placeholder={type === "tour" ? (lang === "es" ? "Aventura, Cultural, Bote…" : "Adventure, Cultural, Boat…") : (lang === "es" ? "Villa, Cabaña, Hostal…" : "Villa, Cabin, Hostel…")} />
+                <datalist id={`cat-list-${type}`}>
+                  {(type === "tour"
+                    ? [...new Set((TOURS || []).map(x => x.category).filter(Boolean))]
+                    : [...new Set((HOTELS || []).map(x => x.category).filter(Boolean))]
+                  ).map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+            </div>
+            <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 9, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.55)", marginBottom: 8 }}>
+                {lang === "es" ? "Extras opcionales" : "Optional extras"} {pricingExtras.length > 0 && <span style={{ marginLeft: 6, color: "var(--gold)" }}>({pricingExtras.length})</span>}
+              </div>
+              {pricingExtras.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  {pricingExtras.map((ex, idx) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: idx < pricingExtras.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none", fontSize: 12 }}>
+                      <span style={{ flex: 1, color: "rgba(255,255,255,.85)" }}>{lang === "es" ? (ex.label_es || ex.label_en || "—") : (ex.label_en || ex.label_es || "—")}</span>
+                      <span style={{ fontFamily: "monospace", color: "var(--gold)" }}>${(Number(ex.price_cents) / 100).toFixed(2)}</span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,.45)" }}>/{ex.unit || "per_unit"}</span>
+                      <button type="button" onClick={() => setPricingExtras(pricingExtras.filter((_, j) => j !== idx))} style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(248,113,113,.12)", border: "none", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={lang === "es" ? "Quitar" : "Remove"}>
+                        <X style={{ width: 10, height: 10 }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ flex: 2, minWidth: 140 }}>
+                  <label style={{ fontSize: 9.5, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Etiqueta" : "Label"}</label>
+                  <input className="adm-fi" value={extraDraft.label_en} onChange={(e) => setExtraDraft({ ...extraDraft, label_en: e.target.value })} placeholder={lang === "es" ? "Snorkel add-on" : "Snorkel add-on"} />
+                </div>
+                <div style={{ flex: 1, minWidth: 80 }}>
+                  <label style={{ fontSize: 9.5, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Precio $" : "Price $"}</label>
+                  <input type="number" step="0.01" min="0" className="adm-fi" value={extraDraft.price} onChange={(e) => setExtraDraft({ ...extraDraft, price: e.target.value })} placeholder="10" />
+                </div>
+                <div style={{ flex: 1, minWidth: 110 }}>
+                  <label style={{ fontSize: 9.5, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>{lang === "es" ? "Unidad" : "Unit"}</label>
+                  <select className="adm-fi" value={extraDraft.unit} onChange={(e) => setExtraDraft({ ...extraDraft, unit: e.target.value })}>
+                    <option value="per_person">{lang === "es" ? "por persona" : "per person"}</option>
+                    <option value="per_hour">{lang === "es" ? "por hora" : "per hour"}</option>
+                    <option value="per_unit">{lang === "es" ? "fijo" : "flat"}</option>
+                    <option value="per_attraction">{lang === "es" ? "por atracción" : "per attraction"}</option>
+                    {type === "hotel" && <option value="per_night">{lang === "es" ? "por noche" : "per night"}</option>}
+                  </select>
+                </div>
+                <button type="button" className="adm-btn adm-btn-ghost" style={{ marginLeft: 4, padding: "8px 12px" }} onClick={() => {
+                  const price = Number(extraDraft.price);
+                  if (!extraDraft.label_en.trim() && !extraDraft.label_es.trim()) { alert(lang === "es" ? "Etiqueta requerida." : "Label required."); return; }
+                  if (!Number.isFinite(price) || price < 0) { alert(lang === "es" ? "Precio inválido." : "Invalid price."); return; }
+                  setPricingExtras([...pricingExtras, {
+                    label_en: extraDraft.label_en.trim(),
+                    label_es: extraDraft.label_es.trim() || extraDraft.label_en.trim(),
+                    price_cents: Math.round(price * 100),
+                    unit: extraDraft.unit,
+                  }]);
+                  setExtraDraft({ label_en: "", label_es: "", price: "", unit: extraDraft.unit });
+                }}><Plus style={{ width: 11, height: 11 }} />{lang === "es" ? "Agregar" : "Add"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {(type === "hotel" || type === "tour") && (
           <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <ExternalLink style={{ width: 14, height: 14, color: "#29ABE2" }} />
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "#29ABE2" }}>Alianza / Partner de referido</div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "#29ABE2" }}>{lang === "es" ? "Alianza / Partner (reporting interno)" : "Partner alliance (internal reporting)"}</div>
             </div>
             <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", lineHeight: 1.5, margin: "0 0 12px 0" }}>
-              Selecciona la página aliada a la que se redirigirá al usuario cuando haga click en "Reservar". Si no asignas un partner, el botón aparecerá deshabilitado.
+              {lang === "es"
+                ? "Asociá este servicio al partner real que lo provee. El cliente nunca ve esto — PRDISE concentra todas las reservas. Sirve para reportar comisiones y dividir el revenue internamente."
+                : "Link this service to the real partner who provides it. Customers never see this — PRDISE concentrates all bookings. Used internally for commission reporting and revenue split."}
             </p>
             <div className="adm-fg">
               <label className="adm-fl">Partner</label>
               <select className="adm-fi" value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
-                <option value="">— Sin partner asignado —</option>
+                <option value="">{lang === "es" ? "— Sin partner asignado —" : "— No partner assigned —"}</option>
                 {partnerOptions.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
               {partnerOptions.length === 0 && (
                 <div style={{ fontSize: 10.5, color: "rgba(245,166,35,.85)", marginTop: 4 }}>
-                  ⚠ No hay partners activos. Crea uno en la sección "Alianzas" del menú.
+                  ⚠ {lang === "es" ? "No hay partners activos. Creá uno en la sección \"Alianzas\" del menú." : "No active partners. Create one from \"Partners\" in the menu."}
                 </div>
               )}
-            </div>
-            <div className="adm-fg" style={{ marginTop: 8 }}>
-              <label className="adm-fl">URL del item en el partner (deeplink, opcional)</label>
-              <input className="adm-fi" type="url" value={partnerUrl} onChange={(e) => setPartnerUrl(e.target.value)} placeholder="https://partner.com/listing/abc123  ó  /listing/abc123" />
-              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4, lineHeight: 1.4 }}>
-                Si vacío, usamos el base URL del partner. Acepta URL completa o ruta relativa (/listing/abc).
-              </div>
             </div>
           </div>
         )}
@@ -10152,45 +10402,10 @@ const INTEGRATIONS_CONFIG = {
       { key: "currency", labelEN: "Currency (optional)", labelES: "Moneda (opcional)", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
     ],
   },
-  mailchimp: {
-    name: "Mailchimp", descES: "Campañas de email marketing", descEN: "Email marketing campaigns", color: "#FFE01B",
-    fields: [
-      { key: "apiKey", labelEN: "API Key", labelES: "Clave API", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-us21", required: true, secret: true },
-      { key: "audienceId", labelEN: "Audience / List ID", labelES: "ID de Audiencia / Lista", placeholder: "a1b2c3d4e5", required: true },
-      { key: "serverPrefix", labelEN: "Server Prefix", labelES: "Prefijo del Servidor", placeholder: "us21", required: true },
-      { key: "listName", labelEN: "List Name (optional)", labelES: "Nombre de Lista (opcional)", placeholder: "PRDISE Customers" },
-      { key: "autoTags", labelEN: "Auto Tags for new customers (optional)", labelES: "Etiquetas automáticas para nuevos clientes (opcional)", placeholder: "new-customer, website-signup" },
-    ],
-  },
-  "google-analytics": {
-    name: "Google Analytics", descES: "Rastrear tráfico y conversiones del sitio", descEN: "Track website traffic and conversions", color: "#E37400",
-    fields: [
-      { key: "version", labelEN: "Analytics Version", labelES: "Versión de Analytics", type: "select", options: ["GA4", "Universal Analytics"], required: true },
-      { key: "measurementId", labelEN: "Measurement ID (GA4)", labelES: "ID de Medición (GA4)", placeholder: "G-XXXXXXXXXX", required: true },
-      { key: "apiSecret", labelEN: "API Secret (for backend events)", labelES: "Secreto API (para eventos del backend)", placeholder: "xxx", secret: true },
-      { key: "trackingId", labelEN: "Tracking ID (Universal Analytics)", labelES: "ID de Seguimiento (Universal Analytics)", placeholder: "UA-XXXXXXX-1" },
-    ],
-  },
-  whatsapp: {
-    name: "WhatsApp Business", descES: "Chat con clientes y notificaciones", descEN: "Customer chat and notifications", color: "#25D366",
-    fields: [
-      { key: "businessAccountId", labelEN: "WhatsApp Business Account ID", labelES: "ID de cuenta WhatsApp Business", placeholder: "123456789...", required: true },
-      { key: "phoneNumberId", labelEN: "Phone Number ID", labelES: "ID de número telefónico", placeholder: "987654321...", required: true },
-      { key: "accessToken", labelEN: "Access Token", labelES: "Token de Acceso", placeholder: "EAAxxxx...", required: true, secret: true },
-      { key: "phoneNumber", labelEN: "WhatsApp Number", labelES: "Número de WhatsApp", placeholder: "+1 787 237 9519", required: true },
-      { key: "templates", labelEN: "Approved Templates (optional)", labelES: "Plantillas aprobadas (opcional)", placeholder: "welcome_msg, booking_confirm" },
-      { key: "defaultLanguage", labelEN: "Default Language (optional)", labelES: "Idioma por defecto (opcional)", type: "select", options: ["en_US", "es_ES", "es_MX", "pt_BR"] },
-    ],
-  },
-  slack: {
-    name: "Slack", descES: "Notificaciones internas del equipo", descEN: "Internal team notifications", color: "#4A154B",
-    fields: [
-      { key: "webhookUrl", labelEN: "Webhook URL", labelES: "URL de Webhook", placeholder: "https://hooks.slack.com/services/...", required: true, secret: true },
-      { key: "channel", labelEN: "Channel", labelES: "Canal", placeholder: "#reservations", required: true },
-      { key: "botName", labelEN: "Bot Name (optional)", labelES: "Nombre del Bot (opcional)", placeholder: "PRDISE Bot" },
-      { key: "botIcon", labelEN: "Bot Icon URL (optional)", labelES: "URL del Ícono del Bot (opcional)", placeholder: "https://..." },
-    ],
-  },
+  // Integraciones que NO usamos hoy (Mailchimp, GA, WhatsApp Business API,
+  // Slack) fueron removidas del panel admin para no confundir al usuario
+  // operativo (PM 2026-06-10). El envío de mensajes corre por WhatsApp web
+  // (link wa.me) y los pagos por Stripe / PayPal.
 };
 
 function IntegrationsPanel() {
@@ -10410,8 +10625,8 @@ function AuthToolsPanel({ lang }) {
       </div>
       <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 14, lineHeight: 1.6 }}>
         {lang === "es"
-          ? "Workarounds para cuando el SMTP no entrega emails (Brevo en validación, sender no verificado, rate limit). Genera el link y envíaselo al cliente por WhatsApp, o fuerza la confirmación si confías en el cliente."
-          : "Workarounds for when SMTP doesn't deliver emails (Brevo pending validation, sender not verified, rate limit). Generate the link and send it to the customer via WhatsApp, or force-confirm if you trust them."}
+          ? "Si el correo automático no le llegó al cliente (por estar en spam, por bloqueo del proveedor o cualquier otro motivo), generá acá el link de confirmación o de cambio de contraseña y enviáselo manualmente por WhatsApp. También podés confirmar la cuenta directamente si ya verificaste la identidad del cliente."
+          : "If the automated email did not reach the customer (spam, provider block, or any other reason), generate the confirmation or password-reset link here and send it manually via WhatsApp. You can also confirm the account directly if you have already verified the customer's identity."}
       </p>
 
       <div className="adm-fg">
@@ -10837,6 +11052,13 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
 
   const handleSubmit = async () => {
     setError("");
+    // Cliente obligatorio: forzamos seleccionar uno existente o crear uno
+    // nuevo. Antes el modal dejaba crear la factura sin user_id y la dejaba
+    // huérfana (PM 2026-06-10: sin cliente y servicio no hay factura).
+    if (!selectedUserId || mode !== "locked") {
+      setError(T("Buscá un cliente existente o creá uno nuevo antes de continuar.", "Search an existing customer or create a new one before continuing."));
+      return;
+    }
     if (!customerName.trim()) { setError(T("Nombre del cliente requerido", "Customer name required")); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) { setError(T("Email del cliente inválido", "Invalid customer email")); return; }
     if (items.length === 0) { setError(T("Agregá al menos un ítem", "Add at least one item")); return; }
@@ -11114,7 +11336,13 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
 
         <div className="adm-modal-actions">
           <button className="adm-btn adm-btn-ghost" onClick={onClose} disabled={submitting}>{T("Cancelar", "Cancel")}</button>
-          <button className="adm-btn adm-btn-primary" onClick={handleSubmit} disabled={submitting}>
+          <button
+            className="adm-btn adm-btn-primary"
+            onClick={handleSubmit}
+            disabled={submitting || mode !== "locked"}
+            title={mode !== "locked" ? T("Confirmá un cliente primero", "Confirm a customer first") : undefined}
+            style={{ opacity: (submitting || mode !== "locked") ? 0.55 : 1, cursor: (submitting || mode !== "locked") ? "not-allowed" : "pointer" }}
+          >
             {submitting ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
             {submitting ? T("Creando...", "Creating...") : T("Crear factura", "Create invoice")}
           </button>

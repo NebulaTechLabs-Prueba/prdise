@@ -59,6 +59,16 @@ function readListField(fd: FormData, field: string): string[] {
   return parseJsonArray(single);
 }
 
+/**
+ * Lee `pricing_extras` como JSON string (lo serializamos en el client). Si
+ * no viene o no parsea, devuelve []. Zod valida la shape después.
+ */
+function readPricingExtras(fd: FormData): unknown {
+  const raw = fd.get("pricing_extras");
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
 // ===========================================================================
 // STAYS
 // ===========================================================================
@@ -88,6 +98,9 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     active: asBool(formData, "active"),
     partner_id: formData.get("partner_id") ?? "",
     partner_url: formData.get("partner_url") ?? "",
+    pricing_unit: formData.get("pricing_unit") ?? undefined,
+    pricing_extras: readPricingExtras(formData),
+    category: formData.get("category") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -120,6 +133,9 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
       active: d.active,
       partner_id: d.partner_id ?? null,
       partner_url: d.partner_url ?? null,
+      pricing_unit: d.pricing_unit,
+      pricing_extras: d.pricing_extras as never,
+      category: d.category || null,
       created_by: actorId,
     })
     .select("id")
@@ -164,6 +180,9 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     active: asBool(formData, "active"),
     partner_id: formData.get("partner_id") ?? "",
     partner_url: formData.get("partner_url") ?? "",
+    pricing_unit: formData.get("pricing_unit") ?? undefined,
+    pricing_extras: readPricingExtras(formData),
+    category: formData.get("category") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -196,6 +215,9 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
       active: d.active,
       partner_id: d.partner_id ?? null,
       partner_url: d.partner_url ?? null,
+      pricing_unit: d.pricing_unit,
+      pricing_extras: d.pricing_extras as never,
+      category: d.category || null,
     })
     .eq("id", id);
 
@@ -267,6 +289,9 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     active: asBool(formData, "active"),
     partner_id: formData.get("partner_id") ?? "",
     partner_url: formData.get("partner_url") ?? "",
+    pricing_unit: formData.get("pricing_unit") ?? undefined,
+    pricing_extras: readPricingExtras(formData),
+    category: formData.get("category") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -300,6 +325,9 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       active: d.active,
       partner_id: d.partner_id ?? null,
       partner_url: d.partner_url ?? null,
+      pricing_unit: d.pricing_unit,
+      pricing_extras: d.pricing_extras as never,
+      category: d.category || null,
       created_by: actorId,
     })
     .select("id")
@@ -345,6 +373,9 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     active: asBool(formData, "active"),
     partner_id: formData.get("partner_id") ?? "",
     partner_url: formData.get("partner_url") ?? "",
+    pricing_unit: formData.get("pricing_unit") ?? undefined,
+    pricing_extras: readPricingExtras(formData),
+    category: formData.get("category") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -378,6 +409,9 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
       active: d.active,
       partner_id: d.partner_id ?? null,
       partner_url: d.partner_url ?? null,
+      pricing_unit: d.pricing_unit,
+      pricing_extras: d.pricing_extras as never,
+      category: d.category || null,
     })
     .eq("id", id);
 
@@ -432,6 +466,7 @@ export async function createTransferRoute(
     from_location: formData.get("from_location"),
     to_location: formData.get("to_location"),
     base_price_cents: formData.get("base_price_cents"),
+    pricing_unit: formData.get("pricing_unit") ?? undefined,
     distance_km: asNumberOrNull(formData, "distance_km"),
     duration_minutes: asNumberOrNull(formData, "duration_minutes"),
     max_pax: formData.get("max_pax"),
@@ -452,6 +487,7 @@ export async function createTransferRoute(
       from_location: d.from_location,
       to_location: d.to_location,
       base_price_cents: d.base_price_cents,
+      pricing_unit: d.pricing_unit,
       distance_km: d.distance_km ?? null,
       duration_minutes: d.duration_minutes ?? null,
       max_pax: d.max_pax,
@@ -462,6 +498,13 @@ export async function createTransferRoute(
     .single();
 
   if (error) {
+    // UNIQUE(from_location, to_location): mensaje amigable en vez del SQL crudo.
+    if (error.code === "23505" || /duplicate key/i.test(error.message)) {
+      return {
+        ok: false,
+        error: `Ya existe una ruta "${d.from_location} → ${d.to_location}". Editá la existente o usá otro origen/destino.`,
+      };
+    }
     return { ok: false, error: `No se pudo crear la ruta: ${error.message}` };
   }
 
@@ -486,6 +529,7 @@ export async function updateTransferRoute(
     from_location: formData.get("from_location"),
     to_location: formData.get("to_location"),
     base_price_cents: formData.get("base_price_cents"),
+    pricing_unit: formData.get("pricing_unit") ?? undefined,
     distance_km: asNumberOrNull(formData, "distance_km"),
     duration_minutes: asNumberOrNull(formData, "duration_minutes"),
     max_pax: formData.get("max_pax"),
@@ -506,6 +550,7 @@ export async function updateTransferRoute(
       from_location: d.from_location,
       to_location: d.to_location,
       base_price_cents: d.base_price_cents,
+      pricing_unit: d.pricing_unit,
       distance_km: d.distance_km ?? null,
       duration_minutes: d.duration_minutes ?? null,
       max_pax: d.max_pax,

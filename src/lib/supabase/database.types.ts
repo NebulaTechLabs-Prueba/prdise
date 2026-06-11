@@ -1161,6 +1161,7 @@ export type Database = {
           amenities: Json
           bathrooms: number
           bedrooms: number
+          category: string | null
           created_at: string
           created_by: string | null
           description_en: string | null
@@ -1175,6 +1176,8 @@ export type Database = {
           partner_id: string | null
           partner_url: string | null
           price_cents: number
+          pricing_extras: Json
+          pricing_unit: string | null
           rating_avg: number
           rating_count: number
           short_desc_en: string | null
@@ -1189,6 +1192,7 @@ export type Database = {
           amenities?: Json
           bathrooms?: number
           bedrooms?: number
+          category?: string | null
           created_at?: string
           created_by?: string | null
           description_en?: string | null
@@ -1203,6 +1207,8 @@ export type Database = {
           partner_id?: string | null
           partner_url?: string | null
           price_cents: number
+          pricing_extras?: Json
+          pricing_unit?: string | null
           rating_avg?: number
           rating_count?: number
           short_desc_en?: string | null
@@ -1217,6 +1223,7 @@ export type Database = {
           amenities?: Json
           bathrooms?: number
           bedrooms?: number
+          category?: string | null
           created_at?: string
           created_by?: string | null
           description_en?: string | null
@@ -1231,6 +1238,8 @@ export type Database = {
           partner_id?: string | null
           partner_url?: string | null
           price_cents?: number
+          pricing_extras?: Json
+          pricing_unit?: string | null
           rating_avg?: number
           rating_count?: number
           short_desc_en?: string | null
@@ -1260,6 +1269,7 @@ export type Database = {
       tours: {
         Row: {
           active: boolean
+          category: string | null
           created_at: string
           created_by: string | null
           description_en: string | null
@@ -1278,6 +1288,8 @@ export type Database = {
           partner_id: string | null
           partner_url: string | null
           price_cents: number
+          pricing_extras: Json
+          pricing_unit: string | null
           rating_avg: number
           rating_count: number
           short_desc_en: string | null
@@ -1289,6 +1301,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          category?: string | null
           created_at?: string
           created_by?: string | null
           description_en?: string | null
@@ -1307,6 +1320,8 @@ export type Database = {
           partner_id?: string | null
           partner_url?: string | null
           price_cents: number
+          pricing_extras?: Json
+          pricing_unit?: string | null
           rating_avg?: number
           rating_count?: number
           short_desc_en?: string | null
@@ -1318,6 +1333,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          category?: string | null
           created_at?: string
           created_by?: string | null
           description_en?: string | null
@@ -1336,6 +1352,8 @@ export type Database = {
           partner_id?: string | null
           partner_url?: string | null
           price_cents?: number
+          pricing_extras?: Json
+          pricing_unit?: string | null
           rating_avg?: number
           rating_count?: number
           short_desc_en?: string | null
@@ -1373,6 +1391,7 @@ export type Database = {
           from_location: string
           id: string
           max_pax: number
+          pricing_unit: string | null
           to_location: string
           updated_at: string
         }
@@ -1386,6 +1405,7 @@ export type Database = {
           from_location: string
           id?: string
           max_pax?: number
+          pricing_unit?: string | null
           to_location: string
           updated_at?: string
         }
@@ -1399,6 +1419,7 @@ export type Database = {
           from_location?: string
           id?: string
           max_pax?: number
+          pricing_unit?: string | null
           to_location?: string
           updated_at?: string
         }
