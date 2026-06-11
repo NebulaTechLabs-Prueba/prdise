@@ -74,6 +74,58 @@ export async function updateContactStatus(
 }
 
 /**
+ * Crear un contacto manual desde el panel admin (PM 2026-06-11). Útil para
+ * registrar leads que llegaron por otros canales (WhatsApp directo, llamada
+ * telefónica, evento presencial) sin pasar por el form de contacto público.
+ */
+export async function createManualContact(
+  formData: FormData
+): Promise<ActionResult<{ id: string }>> {
+  const guard = await getStaffOrError();
+  if (!guard.ok) return guard;
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const message = String(formData.get("message") ?? "").trim();
+
+  if (!name) return { ok: false, error: "Nombre requerido" };
+  if (!email && !phone) {
+    return { ok: false, error: "Se requiere al menos email o teléfono" };
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Email inválido" };
+  }
+
+  const supabase = await createClient();
+  const actorId = guard.current.user.id;
+
+  const { data, error } = await supabase
+    .from("contact_messages")
+    .insert({
+      name,
+      // contact_messages.email es NOT NULL — si el admin solo capturó tel,
+      // usamos un placeholder válido (no funcional) para no romper el
+      // constraint. La columna seguirá siendo útil para búsquedas.
+      email: email || `no-email+${Date.now()}@prdise.local`,
+      phone: phone || null,
+      message: message || "Contacto agregado manualmente desde admin.",
+      status: "new",
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    return { ok: false, error: `No se pudo crear el contacto: ${error.message}` };
+  }
+
+  await writeAuditLog(actorId, "contact.create_manual", "contact_message", data?.id ?? null, {
+    email,
+  });
+  return { ok: true, data: { id: data?.id ?? "" } };
+}
+
+/**
  * Eliminar permanentemente un mensaje (no hay soft delete en esta tabla).
  */
 export async function deleteContactMessage(

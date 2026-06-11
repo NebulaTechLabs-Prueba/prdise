@@ -101,6 +101,10 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     pricing_unit: formData.get("pricing_unit") ?? undefined,
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
+    check_in_time: formData.get("check_in_time") ?? "",
+    check_out_time: formData.get("check_out_time") ?? "",
+    cancellation_policy: formData.get("cancellation_policy") ?? "",
+    house_rules: formData.get("house_rules") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -136,6 +140,12 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      ...(("check_in_time" in d) ? {
+        check_in_time: (d as { check_in_time?: string }).check_in_time || null,
+        check_out_time: (d as { check_out_time?: string }).check_out_time || null,
+        cancellation_policy: (d as { cancellation_policy?: string }).cancellation_policy || null,
+        house_rules: (d as { house_rules?: string }).house_rules || null,
+      } : {}),
       created_by: actorId,
     })
     .select("id")
@@ -183,6 +193,10 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     pricing_unit: formData.get("pricing_unit") ?? undefined,
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
+    check_in_time: formData.get("check_in_time") ?? "",
+    check_out_time: formData.get("check_out_time") ?? "",
+    cancellation_policy: formData.get("cancellation_policy") ?? "",
+    house_rules: formData.get("house_rules") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -218,6 +232,12 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      ...(("check_in_time" in d) ? {
+        check_in_time: (d as { check_in_time?: string }).check_in_time || null,
+        check_out_time: (d as { check_out_time?: string }).check_out_time || null,
+        cancellation_policy: (d as { cancellation_policy?: string }).cancellation_policy || null,
+        house_rules: (d as { house_rules?: string }).house_rules || null,
+      } : {}),
     })
     .eq("id", id);
 

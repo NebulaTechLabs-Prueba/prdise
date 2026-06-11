@@ -218,6 +218,11 @@ const stayBaseSchema = z.object({
   pricing_unit: stayPricingUnitSchema,
   pricing_extras: pricingExtrasArraySchema,
   category: optionalText(120, "Categoría"),
+  // Políticas editables del stay (PM 2026-06-11): antes hardcoded en JSX.
+  check_in_time: optionalText(40, "Hora de entrada"),
+  check_out_time: optionalText(40, "Hora de salida"),
+  cancellation_policy: optionalText(2000, "Política de cancelación"),
+  house_rules: optionalText(2000, "Normas de la casa"),
 }).merge(partnerLinkSchema);
 
 export const createStaySchema = stayBaseSchema;

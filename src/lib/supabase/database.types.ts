@@ -1161,12 +1161,16 @@ export type Database = {
           amenities: Json
           bathrooms: number
           bedrooms: number
+          cancellation_policy: string | null
           category: string | null
+          check_in_time: string | null
+          check_out_time: string | null
           created_at: string
           created_by: string | null
           description_en: string | null
           description_es: string | null
           featured: boolean
+          house_rules: string | null
           id: string
           images: Json
           lat: number | null
@@ -1192,12 +1196,16 @@ export type Database = {
           amenities?: Json
           bathrooms?: number
           bedrooms?: number
+          cancellation_policy?: string | null
           category?: string | null
+          check_in_time?: string | null
+          check_out_time?: string | null
           created_at?: string
           created_by?: string | null
           description_en?: string | null
           description_es?: string | null
           featured?: boolean
+          house_rules?: string | null
           id?: string
           images?: Json
           lat?: number | null
@@ -1223,12 +1231,16 @@ export type Database = {
           amenities?: Json
           bathrooms?: number
           bedrooms?: number
+          cancellation_policy?: string | null
           category?: string | null
+          check_in_time?: string | null
+          check_out_time?: string | null
           created_at?: string
           created_by?: string | null
           description_en?: string | null
           description_es?: string | null
           featured?: boolean
+          house_rules?: string | null
           id?: string
           images?: Json
           lat?: number | null
@@ -1379,6 +1391,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      transfer_locations: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          label_en: string
+          label_es: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label_en: string
+          label_es: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label_en?: string
+          label_es?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       transfer_routes: {
         Row: {

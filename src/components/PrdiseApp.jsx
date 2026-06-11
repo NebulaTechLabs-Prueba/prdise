@@ -34,6 +34,12 @@ import {
   createTransferRoute as sbCreateRoute, updateTransferRoute as sbUpdateRoute, deleteTransferRoute as sbDeleteRoute,
 } from "@/lib/admin/catalog";
 import {
+  listTransferLocations as sbListTransferLocations,
+  createTransferLocation as sbCreateTransferLocation,
+  updateTransferLocation as sbUpdateTransferLocation,
+  deleteTransferLocation as sbDeleteTransferLocation,
+} from "@/lib/admin/transfer_locations";
+import {
   togglePostPublish as sbTogglePostPublish,
   togglePostFeatured as sbTogglePostFeatured,
   deletePost as sbDeletePost,
@@ -60,6 +66,7 @@ import {
   listContactMessages as sbListContactMessages,
   updateContactStatus as sbUpdateContactStatus,
   deleteContactMessage as sbDeleteContactMessage,
+  createManualContact as sbCreateManualContact,
 } from "@/lib/admin/contacts";
 import {
   getDashboardSummary as sbGetDashboardSummary,
@@ -132,22 +139,18 @@ const COUNTRIES = [
   "Peru", "Spain", "Venezuela", "Other",
 ];
 
-// Defaults para que los <select> de Desde/Hasta no aparezcan vacíos cuando
-// la tabla transfer_routes está sin filas. En tiempo de ejecución, las
-// opciones reales se derivan de ROUTES (poblada por loadInitialData), así
-// que cuando el admin agrega/edita rutas, los dropdowns reflejan el cambio
-// automáticamente sin necesidad de una tabla aparte de "locations".
-const ORIGINS_DEFAULTS = ["SJU Airport", "BQN Airport", "San Juan Hotel", "Ponce", "Rincón", "Other"];
-const DESTINATIONS_DEFAULTS = ["Cabo Rojo", "Boquerón", "La Parguera", "Joyuda", "Combate", "SJU Airport", "BQN Airport", "Other"];
-function getOrigins() {
-  if (!Array.isArray(ROUTES) || ROUTES.length === 0) return ORIGINS_DEFAULTS;
-  const set = new Set(ROUTES.map((r) => r?.from).filter(Boolean));
-  return set.size === 0 ? ORIGINS_DEFAULTS : Array.from(set).sort();
-}
-function getDestinations() {
-  if (!Array.isArray(ROUTES) || ROUTES.length === 0) return DESTINATIONS_DEFAULTS;
-  const set = new Set(ROUTES.map((r) => r?.to).filter(Boolean));
-  return set.size === 0 ? DESTINATIONS_DEFAULTS : Array.from(set).sort();
+// Transfer locations (PM 2026-06-11): los dropdowns Desde/Hasta se alimentan
+// EXCLUSIVAMENTE de la tabla `transfer_locations` poblada por el admin. Si
+// la tabla está vacía, los dropdowns muestran un placeholder pidiendo al
+// admin que cree puntos. No más arrays hardcoded.
+const TRANSFER_LOCATIONS = [];
+function getTransferLocationsList(lang) {
+  if (!Array.isArray(TRANSFER_LOCATIONS) || TRANSFER_LOCATIONS.length === 0) return [];
+  return TRANSFER_LOCATIONS
+    .filter((l) => l.active !== false)
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 100) - (b.sort_order ?? 100))
+    .map((l) => (lang === "es" ? (l.label_es || l.label_en) : (l.label_en || l.label_es)));
 }
 
 const STAY_ABOUT = {};
@@ -207,6 +210,12 @@ function mapStayToHotel(s) {
     pricingUnit: s.pricing_unit || "per_night",
     pricingExtras: Array.isArray(s.pricing_extras) ? s.pricing_extras : [],
     category: s.category || "",
+    // Políticas editables (PM 2026-06-11): si el stay no las definió,
+    // el detail page hace fallback al texto default.
+    checkInTime: s.check_in_time || "3:00 PM",
+    checkOutTime: s.check_out_time || "11:00 AM",
+    cancellationPolicy: s.cancellation_policy || "",
+    houseRules: s.house_rules || "",
   };
 }
 
@@ -335,16 +344,17 @@ function getSetting(key) {
 
 async function loadInitialData() {
   try {
-    const [{ createClient }, { getStays, getTours, getTransferRoutes, getVehicles, getPublishedPosts, getPartners }, { getSiteSettings }] = await Promise.all([
+    const [{ createClient }, { getStays, getTours, getTransferRoutes, getTransferLocations, getVehicles, getPublishedPosts, getPartners }, { getSiteSettings }] = await Promise.all([
       import("@/lib/supabase/client"),
       import("@/lib/queries/catalog"),
       import("@/lib/queries/settings"),
     ]);
     const sb = createClient();
-    const [stays, tours, routes, vehicles, posts, partners, settings] = await Promise.all([
+    const [stays, tours, routes, locations, vehicles, posts, partners, settings] = await Promise.all([
       getStays(sb),
       getTours(sb),
       getTransferRoutes(sb),
+      getTransferLocations(sb),
       getVehicles(sb),
       getPublishedPosts(sb, {}),
       getPartners(sb, { activeOnly: false }),
@@ -365,6 +375,9 @@ async function loadInitialData() {
 
     ROUTES.length = 0;
     (routes || []).forEach((r) => ROUTES.push(mapRouteToRoute(r)));
+
+    TRANSFER_LOCATIONS.length = 0;
+    (locations || []).forEach((l) => TRANSFER_LOCATIONS.push(l));
 
     A_POSTS.length = 0;
     (posts || []).forEach((p) => A_POSTS.push(mapPostToAdminPost(p)));
@@ -510,7 +523,7 @@ const TX = {
     adm_welcome: "WELCOME BACK,", adm_sub: "Here's what's happening with Living in PRDISE today",
     adm_totalRevenue: "Total Revenue", adm_totalBookings: "Total Bookings", adm_activeStays: "Active Stays", adm_newUsers: "New Users",
     adm_dashboard: "Dashboard", adm_analytics: "Analytics", adm_stays: "Stays", adm_tours: "Tours", adm_transfers: "Transfers", adm_posts: "Posts",
-    adm_payments: "Payments", adm_invoices: "Invoices", adm_users: "Users & Roles", adm_contacts: "Contacts", adm_settings: "Settings",
+    adm_payments: "Payments", adm_invoices: "Invoices", adm_users: "Employees & Roles", adm_contacts: "Contacts", adm_settings: "Settings",
     adm_overview: "Overview", adm_modules: "Modules", adm_operations: "Operations", adm_system: "System",
     adm_manageStays: "Manage Stays", adm_manageTours: "Manage Tours", adm_postsArticles: "Posts & Articles", adm_transfersOps: "Transfers Operations",
     adm_paymentsFinance: "Payments & Finance", adm_invoicesBilling: "Invoices & Billing", adm_employeeAccounts: "Employee Accounts",
@@ -610,7 +623,7 @@ const TX = {
     adm_welcome: "BIENVENIDO/A,", adm_sub: "Esto es lo que está pasando en Living in PRDISE hoy",
     adm_totalRevenue: "Ingresos Totales", adm_totalBookings: "Reservas Totales", adm_activeStays: "Estadías Activas", adm_newUsers: "Nuevos Usuarios",
     adm_dashboard: "Panel", adm_analytics: "Analíticas", adm_stays: "Estadías", adm_tours: "Tours", adm_transfers: "Traslados", adm_posts: "Publicaciones",
-    adm_payments: "Pagos", adm_invoices: "Facturas", adm_users: "Usuarios y Roles", adm_contacts: "Contactos", adm_settings: "Configuración",
+    adm_payments: "Pagos", adm_invoices: "Facturas", adm_users: "Empleados y Roles", adm_contacts: "Contactos", adm_settings: "Configuración",
     adm_overview: "General", adm_modules: "Módulos", adm_operations: "Operaciones", adm_system: "Sistema",
     adm_manageStays: "Gestionar Estadías", adm_manageTours: "Gestionar Tours", adm_postsArticles: "Publicaciones y Artículos", adm_transfersOps: "Operaciones de Traslados",
     adm_paymentsFinance: "Pagos y Finanzas", adm_invoicesBilling: "Facturas y Cobros", adm_employeeAccounts: "Cuentas de Empleados",
@@ -1579,7 +1592,7 @@ function Crumb({ items }) {
 
 /* ═══════════════ HOME ═══════════════ */
 function TransferQuickSearch() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -1588,6 +1601,11 @@ function TransferQuickSearch() {
   const minDate = toISO(tomorrow);
 
   const doSearch = () => {
+    // Validar from != to antes de redirigir (PM 2026-06-11).
+    if (from && to && from === to) {
+      alert(lang === "es" ? "El origen y el destino no pueden ser iguales." : "Origin and destination cannot be the same.");
+      return;
+    }
     const qs = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}&pax=${pax}`;
     nav(`/transfer-search?${qs}`);
   };
@@ -1608,7 +1626,7 @@ function TransferQuickSearch() {
               <label><MapPin />{t("from")}</label>
               <select value={from} onChange={(e) => setFrom(e.target.value)} className="transfer-quick-select">
                 <option value="">{t("selectOrigin")}</option>
-                {getOrigins().map(o => <option key={o} value={o}>{o}</option>)}
+                {getTransferLocationsList(lang).map(o => <option key={o} value={o} disabled={o === to}>{o}</option>)}
               </select>
             </div>
             <div className="transfer-quick-swap">
@@ -1622,7 +1640,7 @@ function TransferQuickSearch() {
               <label><MapPin />{t("to")}</label>
               <select value={to} onChange={(e) => setTo(e.target.value)} className="transfer-quick-select">
                 <option value="">{t("selectDest")}</option>
-                {getDestinations().map(d => <option key={d} value={d}>{d}</option>)}
+                {getTransferLocationsList(lang).map(d => <option key={d} value={d} disabled={d === from}>{d}</option>)}
               </select>
             </div>
             <div className="transfer-quick-field" style={{ flex: ".8", minWidth: 150 }}>
@@ -1682,6 +1700,9 @@ function HomePage() {
           a /tours. Si no hay tours publicados → empty state Próximamente. */}
       {(() => {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
+        // Si no hay tours publicados → no renderizar la sección (PM 2026-06-11:
+        // home solo muestra contenido aprobado por admin, sin "Próximamente").
+        if (published.length === 0) return null;
         // Prioridad: featured primero (color === "gold" en el map),
         // después el resto por orden natural. Cortar a 3.
         const featured = published.filter(tr => tr.color === "gold");
@@ -1695,19 +1716,6 @@ function HomePage() {
             <h2>{t("curatedExp")}</h2>
             <p>{t("curatedExpSub")}</p>
           </div>
-          {published.length === 0 ? (
-            <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.15)", borderRadius: 16, background: "rgba(255,255,255,.02)" }}>
-              <Compass style={{ width: 32, height: 32, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
-              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
-                {lang === "es" ? "Próximamente" : "Coming soon"}
-              </h3>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 420, margin: "0 auto" }}>
-                {lang === "es"
-                  ? "Estamos preparando nuevas experiencias para esta temporada. Vuelve pronto."
-                  : "We're putting together new experiences for this season. Check back soon."}
-              </p>
-            </div>
-          ) : (
           <>
           <div className="svc-grid">
             {homeTours.map((tr) => (
@@ -1743,9 +1751,63 @@ function HomePage() {
             </div>
           )}
           </>
-          )}
         </div>
       </section>
+        );
+      })()}
+
+      {/* Sección Estadías (PM 2026-06-11): mismo patrón que tours. Si no hay
+          stays publicados, no aparece la sección. Si hay, muestra 3 (featured
+          primero) + link a /stays. */}
+      {(() => {
+        const publishedStays = HOTELS.filter(h => !h.status || h.status === "published");
+        if (publishedStays.length === 0) return null;
+        const featuredStays = publishedStays.filter(h => h.color === "gold");
+        const restStays = publishedStays.filter(h => h.color !== "gold");
+        const homeStays = [...featuredStays, ...restStays].slice(0, 3);
+        return (
+          <section className="svc" style={{ paddingTop: 0 }}>
+            <div className="container">
+              <div className="sec-head">
+                <div className="tag">{lang === "es" ? "Estadías" : "Stays"}</div>
+                <h2>{lang === "es" ? "Dónde quedarte" : "Where to stay"}</h2>
+                <p>{lang === "es" ? "Villas, cabañas y estadías curadas en la costa oeste." : "Villas, cabins, and curated stays on the west coast."}</p>
+              </div>
+              <div className="svc-grid">
+                {homeStays.map((h) => (
+                  <NavLink to={`/stay?id=${h.id}`} key={h.id} className="svc-card">
+                    <div className="svc-pic">
+                      <img src={h.img} alt={h.name} />
+                      <div className="svc-badge" style={{ background: COLORS[h.color] }}>{h.zone || (lang === "es" ? "Estadía" : "Stay")}</div>
+                    </div>
+                    <div className="svc-info">
+                      <h3>{L(h.name, h.nameES).toUpperCase()}</h3>
+                      <p>{L(h.desc, h.descES)}</p>
+                      <div style={{ display: "flex", alignItems: "baseline", marginBottom: 14 }}>
+                        {h.price > 0 ? (
+                          <>
+                            <span className="price" style={{ color: COLORS[h.color] }}>${h.price}</span>
+                            <span className="price-sub">{lang === "es" ? "/ noche" : "/ night"}</span>
+                          </>
+                        ) : (
+                          <span className="price" style={{ color: COLORS[h.color], fontSize: 18 }}>{t("onRequest")}</span>
+                        )}
+                      </div>
+                      <span className="svc-link" style={{ color: COLORS[h.color] }}>{lang === "es" ? "Ver detalle" : "View details"} <ArrowRight /></span>
+                    </div>
+                  </NavLink>
+                ))}
+              </div>
+              {publishedStays.length > homeStays.length && (
+                <div style={{ textAlign: "center", marginTop: 32 }}>
+                  <NavLink to="/stays" className="cta-sec" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px" }}>
+                    {lang === "es" ? `Ver todas las estadías (${publishedStays.length})` : `View all stays (${publishedStays.length})`}
+                    <ArrowRight style={{ width: 14, height: 14 }} />
+                  </NavLink>
+                </div>
+              )}
+            </div>
+          </section>
         );
       })()}
 
@@ -2003,7 +2065,8 @@ function HotelDetail({ params }) {
   const hotel = id ? (HOTELS.find((h) => h.id === id) || null) : null;
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
-  const [guests, setGuests] = useState(2);
+  // Default a 2, pero cap a la capacidad real del stay si es menor.
+  const [guests, setGuests] = useState(() => Math.min(2, Math.max(1, hotel?.sleeps || 2)));
   const [user, setUser] = useState(null);
   useEffect(() => {
     if (hotel) document.title = `${hotel.name} — Living in PRDISE`;
@@ -2128,7 +2191,14 @@ function HotelDetail({ params }) {
               </div>
               <div className="detail-section">
                 <h3>{t("policies")}</h3>
-                <p>{t("checkInAfter")}: 3:00 PM · {t("checkOutBefore")}: 11:00 AM<br />{lang === "es" ? "Cancelación gratis hasta 48h antes. Dentro de 48h, aplica cargo del 50%." : "Free cancellation up to 48h before. Within 48h, 50% fee applies."}<br />{lang === "es" ? "No se permiten mascotas · No fumar · Depósito de seguridad requerido." : "Pets not allowed · No smoking · Security deposit required."}</p>
+                <p style={{ whiteSpace: "pre-wrap" }}>
+                  {t("checkInAfter")}: {hotel.checkInTime || "3:00 PM"} · {t("checkOutBefore")}: {hotel.checkOutTime || "11:00 AM"}
+                  {hotel.cancellationPolicy && <><br />{hotel.cancellationPolicy}</>}
+                  {hotel.houseRules && <><br />{hotel.houseRules}</>}
+                  {!hotel.cancellationPolicy && !hotel.houseRules && (
+                    <><br />{lang === "es" ? "Consulta con el equipo PRDISE las condiciones específicas de esta estadía." : "Ask the PRDISE team for the specific terms of this stay."}</>
+                  )}
+                </p>
               </div>
               {/* Sección "Location" con mapa GPS removida (PM 2026-06-09).
                   El catálogo no provee coordenadas reales y el iframe con
@@ -2184,8 +2254,13 @@ function HotelDetail({ params }) {
                 </div>
                 <div className="f-grp">
                   <label className="f-lab">{t("guests")}</label>
+                  {/* PM 2026-06-11: cap al máx. real del stay (sleeps).
+                      Antes la lista era fija 1-8 lo que permitía pedir más
+                      huéspedes que la capacidad declarada del listing. */}
                   <select className="f-in" value={guests} onChange={(e) => setGuests(parseInt(e.target.value))}>
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n} {t("guest")}{n > 1 ? "s" : ""}</option>)}
+                    {Array.from({ length: Math.max(1, hotel.sleeps || 1) }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n} {t("guest")}{n > 1 ? "s" : ""}</option>
+                    ))}
                   </select>
                 </div>
                 {pricing && (
@@ -2536,7 +2611,7 @@ function TransferSearchPage() {
                 <label className="f-lab">{t("from")} *</label>
                 <select className={`f-in ${errors.from?"err":""}`} value={form.from} onChange={(e) => upd("from", e.target.value)}>
                   <option value="">{t("selectOrigin")}</option>
-                  {getOrigins().map((o) => <option key={o}>{o}</option>)}
+                  {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === form.to}>{o}</option>)}
                 </select>
                 {errors.from && <p className="err-msg">{errors.from}</p>}
               </div>
@@ -2544,7 +2619,7 @@ function TransferSearchPage() {
                 <label className="f-lab">{t("to")} *</label>
                 <select className={`f-in ${errors.to?"err":""}`} value={form.to} onChange={(e) => upd("to", e.target.value)}>
                   <option value="">{t("selectDest")}</option>
-                  {getDestinations().map((d) => <option key={d}>{d}</option>)}
+                  {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === form.from}>{d}</option>)}
                 </select>
                 {errors.to && <p className="err-msg">{errors.to}</p>}
               </div>
@@ -4007,7 +4082,25 @@ const A_ROUTES = [];
 const A_TRANSFER_BOOKINGS = [];
 const A_DRIVERS = [];
 const A_USERS = [];
-const A_ROLES = [];
+// Roles base (PM 2026-06-11): los dos roles del DB enum (admin + user) se
+// muestran siempre en Roles y Permisos como referencia, con sus permisos
+// default. Read-only — el enum no se cambia desde el panel.
+const A_ROLES = [
+  {
+    id: "role-admin",
+    name: "Admin",
+    isBase: true,
+    perms: { all: "full" },
+    description: "Rol del super administrador. Acceso completo a todo el panel.",
+  },
+  {
+    id: "role-user",
+    name: "Cliente",
+    isBase: true,
+    perms: {},
+    description: "Rol del cliente final. Sin acceso al panel admin; solo a /account.",
+  },
+];
 const A_INVOICES = [];
 const A_CONTACTS = [];
 const A_POSTS = [];
@@ -4458,21 +4551,33 @@ function AdminPanel({ onClose }) {
   // Settings de empresa (KV en site_settings). Pre-cargados desde
   // SITE_SETTINGS (poblado por loadInitialData). El admin edita y guarda
   // bulk; el resto del sitio los lee via getSetting().
-  const [companySettings, setCompanySettings] = useState(() => ({
-    company_name: getSetting("company_name"),
-    tagline: getSetting("tagline"),
-    contact_email: getSetting("contact_email"),
-    contact_phone: getSetting("contact_phone"),
-    contact_phone_tel: getSetting("contact_phone_tel"),
-    whatsapp_phone: getSetting("whatsapp_phone"),
-    address: getSetting("address"),
-  }));
+  // Settings de empresa. Antes la init usaba `getSetting(k)` que cae al
+  // default hardcodeado si la key está vacía — el lema "House of Tours"
+  // se "regresaba" porque ese era el default y el upsert no persistía la
+  // forma esperada. Ahora:
+  //   * useState init lee SITE_SETTINGS directo (sin fallback a default)
+  //     → el form muestra exactamente lo que hay en DB.
+  //   * Tras savear, re-fetch desde DB para confirmar que los valores
+  //     persistieron correctamente (evita "se ve guardado pero al refrescar
+  //     reaparece el viejo").
+  const initCompanySettings = () => ({
+    company_name: SITE_SETTINGS.company_name ?? "",
+    tagline: SITE_SETTINGS.tagline ?? "",
+    contact_email: SITE_SETTINGS.contact_email ?? "",
+    contact_phone: SITE_SETTINGS.contact_phone ?? "",
+    contact_phone_tel: SITE_SETTINGS.contact_phone_tel ?? "",
+    whatsapp_phone: SITE_SETTINGS.whatsapp_phone ?? "",
+    address: SITE_SETTINGS.address ?? "",
+  });
+  const [companySettings, setCompanySettings] = useState(initCompanySettings);
   const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
-  const updCompanySetting = (k, v) => setCompanySettings((s) => ({ ...s, [k]: v }));
+  const [companySettingsSaved, setCompanySettingsSaved] = useState(false);
+  const updCompanySetting = (k, v) => { setCompanySettings((s) => ({ ...s, [k]: v })); setCompanySettingsSaved(false); };
   const saveCompanySettings = async () => {
     setCompanySettingsSaving(true);
+    setCompanySettingsSaved(false);
     try {
-      const entries = Object.entries(companySettings).map(([key, value]) => ({ key, value }));
+      const entries = Object.entries(companySettings).map(([key, value]) => ({ key, value: value ?? "" }));
       const fd = new FormData();
       fd.append("entries", JSON.stringify(entries));
       const res = await sbUpdateSiteSettingsBulk(fd);
@@ -4480,10 +4585,20 @@ function AdminPanel({ onClose }) {
         alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
         return;
       }
-      // Reflejar en el cache en memoria para que el resto del sitio lea
-      // los valores nuevos sin recargar la página.
-      Object.assign(SITE_SETTINGS, companySettings);
-      alert(lang === "es" ? "Configuración guardada." : "Settings saved.");
+      // Re-fetch para confirmar que los valores quedaron persistidos en DB.
+      // Esto blinda contra cualquier discrepancia entre lo que envía el
+      // cliente y lo que termina guardado (e.g., trims server-side).
+      try {
+        const { getSiteSettings } = await import("@/lib/queries/settings");
+        const { createClient } = await import("@/lib/supabase/client");
+        const fresh = await getSiteSettings(createClient());
+        Object.assign(SITE_SETTINGS, fresh || {});
+        setCompanySettings(initCompanySettings());
+      } catch {
+        Object.assign(SITE_SETTINGS, companySettings);
+      }
+      setCompanySettingsSaved(true);
+      setTimeout(() => setCompanySettingsSaved(false), 2500);
     } catch (e) {
       alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
     } finally {
@@ -4526,6 +4641,10 @@ function AdminPanel({ onClose }) {
   const [customRoles, setCustomRoles] = useState([]);
   const [customRolesLoading, setCustomRolesLoading] = useState(false);
   const [editingCustomRole, setEditingCustomRole] = useState(null);
+  // Add Contact modal (PM 2026-06-11): permite registrar manualmente leads que
+  // llegaron por WhatsApp, llamada o canal off-system.
+  const [newContact, setNewContact] = useState(null);
+  const [newContactSaving, setNewContactSaving] = useState(false);
   const reloadCustomRoles = async () => {
     setCustomRolesLoading(true);
     try {
@@ -4542,6 +4661,24 @@ function AdminPanel({ onClose }) {
 
   const [splashOff, setSplashOff] = useState(() => PRDISE.load("splashOff", false));
   const [transferTab, setTransferTab] = useState("routes");
+  // Transfer locations (PM 2026-06-11): CRUD desde admin.
+  const [transferLocations, setTransferLocations] = useState([]);
+  const [editingLocation, setEditingLocation] = useState(null);
+  const [locationSaving, setLocationSaving] = useState(false);
+  const reloadTransferLocations = async () => {
+    try {
+      const list = await sbListTransferLocations();
+      if (Array.isArray(list)) {
+        setTransferLocations(list);
+        // Sincronizar también el cache global usado por el sitio público.
+        TRANSFER_LOCATIONS.length = 0;
+        list.filter((l) => l.active !== false).forEach((l) => TRANSFER_LOCATIONS.push(l));
+      }
+    } catch (e) {
+      console.warn("[admin] reloadTransferLocations:", e);
+    }
+  };
+  useEffect(() => { reloadTransferLocations(); }, []);
   const [contactsFilter, setContactsFilter] = useState("all");
   // Carga datos REALES de Supabase al montar AdminPanel: drivers, contacts y
   // transfer bookings. Antes estos modulos siempre mostraban arrays vacios
@@ -4600,7 +4737,7 @@ function AdminPanel({ onClose }) {
           setInvoices(mappedInvoices);
         }
         if (usrs?.ok && Array.isArray(usrs.data?.items)) {
-          setUsers(usrs.data.items.map((u) => ({
+          const mappedUsers = usrs.data.items.map((u) => ({
             id: u.id,
             email: u.email || "",
             name: [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.email || "—",
@@ -4622,7 +4759,37 @@ function AdminPanel({ onClose }) {
             points: u.points_balance || 0,
             tier: u.tier || "bronze",
             joinedAt: (u.created_at || "").slice(0, 10),
-          })));
+          }));
+          setUsers(mappedUsers);
+          // Inyectar los usuarios role='user' a la lista de Contactos como
+          // "clientes" (PM 2026-06-11): todo el que se registre vía /register
+          // debe aparecer en Contactos también, sin importar si llenó el form
+          // de contacto. El merge usa email como key para deduplicar contra
+          // contact_messages existentes.
+          const customers = mappedUsers
+            .filter((u) => u.roleRaw === "user")
+            .map((u) => ({
+              id: "user-" + u.id,
+              userId: u.id,
+              name: u.name,
+              email: u.email,
+              phone: u.phone,
+              message: lang === "es" ? "Cliente registrado en /register" : "Customer registered at /register",
+              status: "new",
+              date: u.joinedAt,
+              isCustomer: true,
+              source: "register",
+            }));
+          setContacts((prev) => {
+            const byKey = new Map();
+            for (const c of prev) byKey.set((c.email || c.phone || c.id).toLowerCase(), c);
+            for (const c of customers) {
+              const k = (c.email || c.phone || c.id).toLowerCase();
+              if (!byKey.has(k)) byKey.set(k, c);
+              else byKey.set(k, { ...byKey.get(k), isCustomer: true, userId: c.userId });
+            }
+            return Array.from(byKey.values());
+          });
         }
         if (Array.isArray(drv)) {
           setDrivers(drv.map((d) => ({
@@ -5583,8 +5750,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <p className="sub">{lang==="es"?"Publica, oculta o edita tus estadías. También puedes seleccionar múltiples.":"Publish, hide or edit your stays. You can also select multiple and work in bulk."}</p>
               </div>
               <div className="adm-ph-actions">
-                <button className="adm-btn adm-btn-ghost"><Database />Upload batch</button>
-                <button className="adm-btn adm-btn-ghost"><Database />Download batch</button>
+                {/* PM 2026-06-11: Upload/Download batch removidos — el sistema
+                    aún no está listo para imports/exports arbitrarios y los
+                    botones generaban confusión. */}
                 <button
                   className="adm-btn adm-btn-primary"
                   onClick={() => { if (canCreateInModule("stays")) setEditing({ type: "hotel", isNew: true }); }}
@@ -5686,8 +5854,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <p className="sub">{lang==="es"?"Publica, oculta o edita tus tours. También puedes seleccionar múltiples.":"Publish, hide or edit your tours. You can also select multiple and work in bulk."}</p>
               </div>
               <div className="adm-ph-actions">
-                <button className="adm-btn adm-btn-ghost"><Database />Upload batch</button>
-                <button className="adm-btn adm-btn-ghost"><Database />Download batch</button>
+                {/* PM 2026-06-11: Upload/Download batch removidos. */}
                 <button
                   className="adm-btn adm-btn-primary"
                   onClick={() => { if (canCreateInModule("tours")) setEditing({ type: "tour", isNew: true }); }}
@@ -5993,6 +6160,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
             <div className="adm-filter-row">
               <button className={`adm-fchip ${transferTab === "routes" ? "active" : ""}`} onClick={() => setTransferTab("routes")}>{lang === "es" ? "Rutas" : "Routes"} <span className="adm-fchip-num">{routes.length}</span></button>
+              <button className={`adm-fchip ${transferTab === "locations" ? "active" : ""}`} onClick={() => setTransferTab("locations")}>{lang === "es" ? "Destinos" : "Locations"} <span className="adm-fchip-num">{transferLocations.length}</span></button>
               <button className={`adm-fchip ${transferTab === "vehicles" ? "active" : ""}`} onClick={() => setTransferTab("vehicles")}>{lang === "es" ? "Vehículos" : "Vehicles"} <span className="adm-fchip-num">{vehicles.length}</span></button>
               <button className={`adm-fchip ${transferTab === "drivers" ? "active" : ""}`} onClick={() => setTransferTab("drivers")}>{lang === "es" ? "Conductores" : "Drivers"} <span className="adm-fchip-num">{drivers.length}</span></button>
               <button className={`adm-fchip ${transferTab === "bookings" ? "active" : ""}`} onClick={() => setTransferTab("bookings")}>{lang === "es" ? "Reservas" : "Bookings"} <span className="adm-fchip-num">{transferBookings.length}</span></button>
@@ -6089,6 +6257,67 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </table>
                 </div>
                 <PaginationBar current={routesPage} total={Math.ceil(routes.length / routesPerPage)} onPage={setRoutesPage} />
+              </div>
+            )}
+
+            {transferTab === "locations" && (
+              <div className="adm-card">
+                <div className="adm-card-head">
+                  <div className="adm-card-title"><MapPin />{lang === "es" ? "Destinos de Traslado" : "Transfer Locations"}</div>
+                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true })}>
+                    <Plus />{lang === "es" ? "Nuevo destino" : "New location"}
+                  </button>
+                </div>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", margin: "0 0 14px", lineHeight: 1.5 }}>
+                  {lang === "es"
+                    ? "Los puntos creados acá alimentan los dropdowns 'Desde' y 'Hasta' del buscador público. Si desactivás un destino, deja de aparecer pero las rutas históricas siguen referenciándolo."
+                    : "Locations here power the 'From' and 'To' dropdowns on the public search. Disabling a location hides it but historical routes still reference it."}
+                </p>
+                <div className="adm-tbl-wrap">
+                  <table className="adm-tbl">
+                    <thead><tr>
+                      <th>{lang === "es" ? "Etiqueta (ES)" : "Label (ES)"}</th>
+                      <th>{lang === "es" ? "Etiqueta (EN)" : "Label (EN)"}</th>
+                      <th>{lang === "es" ? "Clave técnica" : "Tech key"}</th>
+                      <th style={{ width: 80 }}>{lang === "es" ? "Orden" : "Order"}</th>
+                      <th style={{ width: 90 }}>Status</th>
+                      <th style={{ textAlign: "right", width: 100 }}>{lang === "es" ? "Acciones" : "Actions"}</th>
+                    </tr></thead>
+                    <tbody>
+                      {transferLocations.length === 0 && (
+                        <tr><td colSpan={6} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 30 }}>
+                          {lang === "es" ? "Sin destinos. Crea el primero." : "No locations yet. Create the first one."}
+                        </td></tr>
+                      )}
+                      {transferLocations.map((l) => (
+                        <tr key={l.id}>
+                          <td style={{ fontWeight: 600 }}>{l.label_es}</td>
+                          <td>{l.label_en}</td>
+                          <td style={{ fontFamily: "monospace", fontSize: 11, color: "rgba(255,255,255,.5)" }}>{l.name}</td>
+                          <td>{l.sort_order}</td>
+                          <td>
+                            <span className={`adm-pill ${l.active ? "active" : "inactive"}`}>
+                              {l.active ? (lang === "es" ? "ACTIVO" : "ACTIVE") : (lang === "es" ? "INACTIVO" : "INACTIVE")}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="adm-row-actions">
+                              <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingLocation({ ...l })}><Pencil /></button>
+                              <button className="adm-icon-btn danger" title={lang === "es" ? "Desactivar" : "Disable"} disabled={!l.active} style={{ opacity: l.active ? 1 : 0.3 }} onClick={async () => {
+                                if (!window.confirm(lang === "es" ? `¿Desactivar "${l.label_es}"?` : `Disable "${l.label_es}"?`)) return;
+                                const fd = new FormData();
+                                fd.append("id", l.id);
+                                const res = await sbDeleteTransferLocation(fd);
+                                if (!res?.ok) { alert(res?.error || "Error"); return; }
+                                reloadTransferLocations();
+                              }}><Trash2 /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -7673,7 +7902,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
               <div className="adm-ph-actions">
                 <button className="adm-btn adm-btn-ghost"><Database />{lang==="es"?"Exportar":"Export"}</button>
-                <button className="adm-btn adm-btn-primary"><Plus />{lang==="es"?"Agregar contacto":"Add contact"}</button>
+                <button className="adm-btn adm-btn-primary" onClick={() => setNewContact({ name: "", email: "", phone: "", message: "" })}>
+                  <Plus />{lang==="es"?"Agregar contacto":"Add contact"}
+                </button>
               </div>
             </div>
 
@@ -7898,7 +8129,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             </div>
             <div className="adm-tabs">
               <button className={`adm-tab ${settingsTab === "general" ? "active" : ""}`} onClick={() => setSettingsTab("general")}><Settings />{t("adm_general")}</button>
-              <button className={`adm-tab ${settingsTab === "team" ? "active" : ""}`} onClick={() => setSettingsTab("team")}><Users />{lang === "es" ? "Usuarios y Roles" : "Users & Roles"}</button>
+              <button className={`adm-tab ${settingsTab === "team" ? "active" : ""}`} onClick={() => setSettingsTab("team")}><Users />{lang === "es" ? "Empleados y Roles" : "Employees & Roles"}</button>
               <button className={`adm-tab ${settingsTab === "notifications" ? "active" : ""}`} onClick={() => setSettingsTab("notifications")}><Bell />{t("adm_notifications")}</button>
               <button className={`adm-tab ${settingsTab === "security" ? "active" : ""}`} onClick={() => setSettingsTab("security")}><Shield />{t("adm_security")}</button>
               <button className={`adm-tab ${settingsTab === "integrations" ? "active" : ""}`} onClick={() => setSettingsTab("integrations")}><Globe />{t("adm_integrations")}</button>
@@ -8016,7 +8247,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <tbody>
                     {roles.map((r) => {
                       const isSuperAdmin = r.name === "Super Admin";
-                      const isDisabled = isSuperAdmin || !canManageRoles;
+                      // Roles base del enum DB (admin/user) son read-only.
+                      const isBase = r.isBase === true;
+                      const isDisabled = isSuperAdmin || isBase || !canManageRoles;
                       const permEntries = Object.entries(r.perms || {});
                       const permLabel = (v) => v === "full" ? (lang==="es"?"acceso completo":"full") : v === "edit" ? (lang==="es"?"editar":"edit") : v === "view" ? (lang==="es"?"ver":"view") : v;
                       return (
@@ -8051,14 +8284,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               ><Pencil /></button>
                               {(() => {
                                 const usersWithThisRole = users.filter(u => u.role === r.name).length;
-                                const canDelete = canManageRoles && !isSuperAdmin && usersWithThisRole === 0;
+                                const canDelete = canManageRoles && !isSuperAdmin && !isBase && usersWithThisRole === 0;
                                 const tooltip = isSuperAdmin
                                   ? (lang==="es"?"Super Admin no se puede eliminar":"Super Admin cannot be deleted")
-                                  : !canManageRoles
-                                    ? (lang==="es"?"Sin permiso":"No permission")
-                                    : usersWithThisRole > 0
-                                      ? (lang==="es"?`No puedes eliminar: ${usersWithThisRole} usuario(s) lo tienen asignado`:`Cannot delete: ${usersWithThisRole} user(s) have this role`)
-                                      : (lang==="es"?"Eliminar rol":"Delete role");
+                                  : isBase
+                                    ? (lang==="es"?"Rol base del sistema":"System base role")
+                                    : !canManageRoles
+                                      ? (lang==="es"?"Sin permiso":"No permission")
+                                      : usersWithThisRole > 0
+                                        ? (lang==="es"?`No puedes eliminar: ${usersWithThisRole} usuario(s) lo tienen asignado`:`Cannot delete: ${usersWithThisRole} user(s) have this role`)
+                                        : (lang==="es"?"Eliminar rol":"Delete role");
                                 return (
                                   <button
                                     className="adm-icon-btn danger"
@@ -8583,7 +8818,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" value={companySettings.address} onChange={(e) => updCompanySetting("address", e.target.value)} /></div>
                 <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving}>
                   {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
-                  {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : t("adm_save")}
+                  {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : companySettingsSaved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : t("adm_save")}
                 </button>
               </div>
 
@@ -8673,17 +8908,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             {settingsTab === "security" && (
               <div className="adm-card">
                 <div className="adm-card-head"><div className="adm-card-title">{lang==="es"?"Seguridad y Autenticación":"Security & Authentication"}</div></div>
-                <div style={{ padding: "12px 16px", marginBottom: 14, borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", fontSize: 12, color: "rgba(255,255,255,.7)", lineHeight: 1.55, display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <Info style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0, marginTop: 2 }} />
-                  <span>
-                    {lang==="es"
-                      ? "Por ahora solo está disponible el cambio de contraseña. El resto de las opciones de seguridad se irán habilitando a medida que se implementen."
-                      : "Only password change is available for now. The rest of the security options will be enabled as they get implemented."}
-                  </span>
-                </div>
-                {/* Removidos 2FA, session timeout, login alerts: el backend no
-                    los respeta hoy y mostrar toggles que no hacen nada confunde
-                    al admin (PM 2026-06-10). */}
+                {/* PM 2026-06-11: el aviso "por ahora sólo está disponible..."
+                    se retiró — confundía al admin. La acción principal de
+                    esta sección es Cambiar Contraseña. Cuando habilitemos
+                    2FA / sesiones activas, se agregan acá como nuevas filas. */}
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,.65)", margin: "0 0 14px", lineHeight: 1.6 }}>
+                  {lang === "es"
+                    ? "Gestioná la contraseña de tu cuenta. Próximamente: doble factor, cierre de sesiones activas y registro de accesos."
+                    : "Manage your account password. Coming soon: two-factor auth, active session signout, and access log."}
+                </p>
                 <div style={{ marginTop: 6, paddingTop: 0 }}>
                   <button className="adm-btn adm-btn-ghost" onClick={async () => {
                     const sess = PRDISE.load("session", null);
@@ -8709,92 +8942,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <AuthToolsPanel lang={lang} />
             )}
 
-            {/* Roles Personalizados ahora son parte del tab "Usuarios y
-                Roles" (PM 2026-06-10) — el tab "Roles" standalone se eliminó
-                para no duplicar conceptos. */}
-            {settingsTab === "team" && (
-              <>
-                <div className="adm-card" style={{ marginTop: 18 }}>
-                  <div className="adm-card-head">
-                    <div className="adm-card-title"><Key />{lang === "es" ? "Roles Personalizados" : "Custom Roles"}</div>
-                    <button className="adm-btn adm-btn-primary" onClick={() => setEditingCustomRole({ id: "new", name: "", label_es: "", label_en: "", description: "", active: true, permissions: [] })}>
-                      <Plus />{lang === "es" ? "Nuevo rol" : "New role"}
-                    </button>
-                  </div>
-                  <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 16, lineHeight: 1.6 }}>
-                    {lang === "es"
-                      ? "Los roles personalizados son una extensión sobre los roles base (Administrador / Cliente). Asignar un rol custom a un cliente le concede los permisos administrativos seleccionados sin promoverlo a admin completo. El admin siempre tiene todos los permisos."
-                      : "Custom roles are an extension over the base roles (Administrator / Customer). Assigning a custom role to a customer grants them the selected admin permissions without promoting them to full admin. Admin always has every permission."}
-                  </p>
-                  {customRolesLoading && (
-                    <div style={{ padding: "20px 0", textAlign: "center", color: "rgba(255,255,255,.4)", fontSize: 12 }}>
-                      {lang === "es" ? "Cargando…" : "Loading…"}
-                    </div>
-                  )}
-                  {!customRolesLoading && customRoles.length === 0 && (
-                    <div style={{ padding: "32px 20px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 12, color: "rgba(255,255,255,.55)" }}>
-                      <Key style={{ width: 26, height: 26, opacity: 0.35, marginBottom: 8 }} />
-                      <div style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".04em", color: "rgba(255,255,255,.7)", marginBottom: 4 }}>
-                        {lang === "es" ? "Sin roles personalizados" : "No custom roles yet"}
-                      </div>
-                      <p style={{ fontSize: 12, margin: 0 }}>
-                        {lang === "es"
-                          ? "Crea tu primer rol para empezar a delegar permisos administrativos a usuarios."
-                          : "Create your first role to start delegating admin permissions to users."}
-                      </p>
-                    </div>
-                  )}
-                  {!customRolesLoading && customRoles.length > 0 && (
-                    <div className="adm-tbl-wrap">
-                      <table className="adm-tbl">
-                        <thead>
-                          <tr>
-                            <th>{lang === "es" ? "Nombre" : "Name"}</th>
-                            <th>{lang === "es" ? "Etiqueta" : "Label"}</th>
-                            <th>{lang === "es" ? "Permisos" : "Permissions"}</th>
-                            <th>{lang === "es" ? "Usuarios" : "Users"}</th>
-                            <th>{lang === "es" ? "Estado" : "Status"}</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {customRoles.map((r) => (
-                            <tr key={r.id}>
-                              <td><code style={{ fontFamily: "monospace", color: "var(--gold)" }}>{r.name}</code></td>
-                              <td>{lang === "es" ? r.label_es : r.label_en}</td>
-                              <td>{r.permissions.length}</td>
-                              <td>{r.user_count}</td>
-                              <td><span className={`adm-pill ${r.active ? "published" : "hidden"}`}>{r.active ? (lang === "es" ? "Activo" : "Active") : (lang === "es" ? "Inactivo" : "Inactive")}</span></td>
-                              <td>
-                                <div className="adm-row-actions">
-                                  <button className="adm-icon-btn" onClick={() => setEditingCustomRole({ ...r })} title={lang === "es" ? "Editar" : "Edit"}><Pencil /></button>
-                                  <button className="adm-icon-btn danger" onClick={async () => {
-                                    if (!confirm(lang === "es" ? `¿Eliminar el rol "${r.label_es}"? Los ${r.user_count} usuario(s) con este rol quedarán sin él.` : `Delete role "${r.label_en}"? The ${r.user_count} user(s) with this role will lose it.`)) return;
-                                    const fd = new FormData(); fd.append("id", r.id);
-                                    const res = await sbDeleteCustomRole(fd);
-                                    if (res?.ok) reloadCustomRoles();
-                                    else alert((lang === "es" ? "No se pudo eliminar: " : "Could not delete: ") + (res?.error || ""));
-                                  }} title={lang === "es" ? "Eliminar" : "Delete"}><Trash2 /></button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {editingCustomRole && (
-                  <CustomRoleEditModal
-                    role={editingCustomRole}
-                    lang={lang}
-                    onClose={() => setEditingCustomRole(null)}
-                    onSaved={() => { setEditingCustomRole(null); reloadCustomRoles(); }}
-                  />
-                )}
-              </>
-            )}
+            {/* PM 2026-06-11: la tarjeta "Roles Personalizados" se removió.
+                "Roles y Permisos" (arriba) cumple esta función — el admin
+                define ahí los roles custom y sus permisos granulares, y los
+                asigna desde la fila del usuario. Doble UI confundía. */}
 
             {settingsTab === "legal" && (
               <>
@@ -8824,6 +8975,147 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
         )}
       </main>
+
+      {/* Transfer location editor modal (PM 2026-06-11) */}
+      {editingLocation && (
+        <div className="adm-modal-bg" onClick={() => setEditingLocation(null)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <button className="adm-modal-close" onClick={() => setEditingLocation(null)}><X /></button>
+            <h3>{editingLocation.id === "new" ? (lang === "es" ? "NUEVO DESTINO" : "NEW LOCATION") : (lang === "es" ? "EDITAR DESTINO" : "EDIT LOCATION")}</h3>
+            <p className="adm-modal-sub">
+              {lang === "es"
+                ? "Punto de recogida o destino para los dropdowns 'Desde' y 'Hasta'."
+                : "Pickup or drop-off point for the 'From' and 'To' dropdowns."}
+            </p>
+            <div className="adm-fg-row">
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Etiqueta (ES)" : "Label (ES)"} *</label>
+                <input className="adm-fi" value={editingLocation.label_es} onChange={(e) => setEditingLocation({ ...editingLocation, label_es: e.target.value })} placeholder="SJU Airport" />
+              </div>
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Etiqueta (EN)" : "Label (EN)"} *</label>
+                <input className="adm-fi" value={editingLocation.label_en} onChange={(e) => setEditingLocation({ ...editingLocation, label_en: e.target.value })} placeholder="SJU Airport" />
+              </div>
+            </div>
+            <div className="adm-fg-row">
+              <div className="adm-fg" style={{ flex: 2 }}>
+                <label className="adm-fl">{lang === "es" ? "Clave técnica" : "Tech key"} *</label>
+                <input className="adm-fi" value={editingLocation.name} onChange={(e) => setEditingLocation({ ...editingLocation, name: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} placeholder="sju_airport" />
+              </div>
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Orden" : "Order"}</label>
+                <input type="number" min="0" max="9999" className="adm-fi" value={editingLocation.sort_order} onChange={(e) => setEditingLocation({ ...editingLocation, sort_order: parseInt(e.target.value, 10) || 100 })} />
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: -6, marginBottom: 12 }}>
+              {lang === "es" ? "Clave única: solo minúsculas, números, '_' o '-'. No se cambia una vez creado el destino." : "Unique key: lowercase, digits, '_' or '-'. Don't change after creation."}
+            </p>
+            <label className="adm-fg" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!editingLocation.active} onChange={(e) => setEditingLocation({ ...editingLocation, active: e.target.checked })} />
+              <span className="adm-fl" style={{ margin: 0 }}>{lang === "es" ? "Activo (aparece en dropdowns públicos)" : "Active (appears in public dropdowns)"}</span>
+            </label>
+            <div className="adm-modal-actions">
+              <button className="adm-btn adm-btn-ghost" onClick={() => setEditingLocation(null)} disabled={locationSaving}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+              <button className="adm-btn adm-btn-primary" disabled={locationSaving} onClick={async () => {
+                const l = editingLocation;
+                if (!l.name.trim()) { alert(lang === "es" ? "Clave técnica requerida." : "Tech key required."); return; }
+                if (!l.label_es.trim() || !l.label_en.trim()) { alert(lang === "es" ? "Ambas etiquetas (ES/EN) son requeridas." : "Both labels (ES/EN) are required."); return; }
+                setLocationSaving(true);
+                try {
+                  const fd = new FormData();
+                  fd.append("name", l.name.trim());
+                  fd.append("label_es", l.label_es.trim());
+                  fd.append("label_en", l.label_en.trim());
+                  fd.append("sort_order", String(l.sort_order || 100));
+                  fd.append("active", l.active ? "true" : "false");
+                  let res;
+                  if (l.id === "new") {
+                    res = await sbCreateTransferLocation(fd);
+                  } else {
+                    fd.append("id", l.id);
+                    res = await sbUpdateTransferLocation(fd);
+                  }
+                  if (!res?.ok) { alert(res?.error || "Error"); return; }
+                  setEditingLocation(null);
+                  reloadTransferLocations();
+                } finally { setLocationSaving(false); }
+              }}>
+                {locationSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+                {locationSaving ? (lang === "es" ? "Guardando…" : "Saving…") : (lang === "es" ? "Guardar" : "Save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Contact modal (PM 2026-06-11) */}
+      {newContact && (
+        <div className="adm-modal-bg" onClick={() => setNewContact(null)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <button className="adm-modal-close" onClick={() => setNewContact(null)}><X /></button>
+            <h3>{lang === "es" ? "AGREGAR CONTACTO" : "ADD CONTACT"}</h3>
+            <p className="adm-modal-sub">
+              {lang === "es"
+                ? "Registrá un lead que llegó por otro canal (WhatsApp, llamada, presencial)."
+                : "Register a lead from another channel (WhatsApp, phone call, in-person)."}
+            </p>
+            <div className="adm-fg">
+              <label className="adm-fl">{lang === "es" ? "Nombre" : "Name"} *</label>
+              <input className="adm-fi" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} placeholder="John Smith" autoFocus />
+            </div>
+            <div className="adm-fg-row">
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Email" : "Email"}</label>
+                <input type="email" className="adm-fi" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} placeholder="email@ejemplo.com" />
+              </div>
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Teléfono" : "Phone"}</label>
+                <input type="tel" className="adm-fi" value={newContact.phone} onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })} placeholder="+1 787 555 0100" />
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: -6, marginBottom: 10 }}>
+              {lang === "es" ? "Indicá al menos email o teléfono." : "Provide at least email or phone."}
+            </p>
+            <div className="adm-fg">
+              <label className="adm-fl">{lang === "es" ? "Notas" : "Notes"}</label>
+              <textarea className="adm-fi" rows={3} value={newContact.message} onChange={(e) => setNewContact({ ...newContact, message: e.target.value })} placeholder={lang === "es" ? "Detalles del contacto, intereses, etc. (opcional)" : "Contact details, interests, etc. (optional)"} />
+            </div>
+            <div className="adm-modal-actions">
+              <button className="adm-btn adm-btn-ghost" onClick={() => setNewContact(null)} disabled={newContactSaving}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+              <button className="adm-btn adm-btn-primary" disabled={newContactSaving} onClick={async () => {
+                if (!newContact.name.trim()) { alert(lang === "es" ? "Nombre requerido." : "Name required."); return; }
+                if (!newContact.email.trim() && !newContact.phone.trim()) { alert(lang === "es" ? "Indicá email o teléfono." : "Provide email or phone."); return; }
+                setNewContactSaving(true);
+                try {
+                  const fd = new FormData();
+                  fd.append("name", newContact.name.trim());
+                  fd.append("email", newContact.email.trim());
+                  fd.append("phone", newContact.phone.trim());
+                  fd.append("message", newContact.message.trim());
+                  const res = await sbCreateManualContact(fd);
+                  if (!res?.ok) { alert((lang === "es" ? "No se pudo crear: " : "Could not create: ") + (res?.error || "")); return; }
+                  // Append a la lista local sin re-fetch.
+                  setContacts((prev) => [{
+                    id: res.data.id,
+                    name: newContact.name.trim(),
+                    email: newContact.email.trim(),
+                    phone: newContact.phone.trim(),
+                    message: newContact.message.trim() || (lang === "es" ? "Contacto agregado manualmente." : "Contact added manually."),
+                    status: "new",
+                    date: new Date().toISOString().slice(0, 10),
+                    isCustomer: false,
+                    source: "manual",
+                  }, ...prev]);
+                  setNewContact(null);
+                } finally { setNewContactSaving(false); }
+              }}>
+                {newContactSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+                {newContactSaving ? (lang === "es" ? "Guardando…" : "Saving…") : (lang === "es" ? "Crear contacto" : "Create contact")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedContact && (() => {
         const c = selectedContact;
@@ -9046,6 +9338,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_night");
               fd.append("pricing_extras", JSON.stringify(Array.isArray(ownedUpdate.pricingExtras) ? ownedUpdate.pricingExtras : []));
               fd.append("category", ownedUpdate.category || "");
+              // Políticas (PM 2026-06-11): persisten en stays.*_policy/rules.
+              fd.append("check_in_time", ownedUpdate.checkInTime || "");
+              fd.append("check_out_time", ownedUpdate.checkOutTime || "");
+              fd.append("cancellation_policy", ownedUpdate.cancellationPolicy || "");
+              fd.append("house_rules", ownedUpdate.houseRules || "");
               // Amenities + galería: el Server Action readListField acepta
               // JSON string, CSV, o múltiples entries. Usamos JSON por
               // simplicidad y para preservar espacios/comas en valores.
@@ -9506,6 +9803,17 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       if (vals.rooms) updated.bedrooms = vals.rooms;
       if (vals.sleeps) updated.sleeps = vals.sleeps;
       if (services.length) updated.amenities = services;
+      // Políticas (PM 2026-06-11). El scraper deriva las keys a partir del
+      // label normalizado en handleSave; los labels en ES vs EN producen
+      // keys distintas, leemos ambas para no perder data según idioma activo.
+      const checkInVal = vals.hora_de_entrada || vals.check_in_time || "";
+      const checkOutVal = vals.hora_de_salida || vals.check_out_time || "";
+      const cancelVal = vals.pol_tica_de_cancelaci_n || vals.cancellation_policy || "";
+      const rulesVal = vals.normas_de_la_casa || vals.house_rules || "";
+      if (checkInVal !== undefined) updated.checkInTime = checkInVal;
+      if (checkOutVal !== undefined) updated.checkOutTime = checkOutVal;
+      if (cancelVal !== undefined) updated.cancellationPolicy = cancelVal;
+      if (rulesVal !== undefined) updated.houseRules = rulesVal;
       // Extended content → update STAY_ABOUT
       if (storyEN || areaEN || perfectFor.length || highlightsList.length) {
         STAY_ABOUT[updated.id] = {
@@ -9696,8 +10004,16 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               <div className="adm-fg"><label className="adm-fl">Sleeps</label><input type="number" className="adm-fi" defaultValue={it.sleeps || ""} placeholder="Max guests" /></div>
             </div>
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">Check-in</label><input type="time" className="adm-fi" defaultValue="15:00" /></div>
-              <div className="adm-fg"><label className="adm-fl">Check-out</label><input type="time" className="adm-fi" defaultValue="11:00" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hora de entrada" : "Check-in time"}</label><input className="adm-fi" defaultValue={it.checkInTime || "3:00 PM"} placeholder="3:00 PM" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hora de salida" : "Check-out time"}</label><input className="adm-fi" defaultValue={it.checkOutTime || "11:00 AM"} placeholder="11:00 AM" /></div>
+            </div>
+            <div className="adm-fg">
+              <label className="adm-fl">{lang === "es" ? "Política de cancelación" : "Cancellation policy"}</label>
+              <textarea className="adm-fi" rows={2} defaultValue={it.cancellationPolicy || ""} placeholder={lang === "es" ? "Ej: Cancelación gratis hasta 48h antes. Después, cargo del 50%." : "E.g. Free cancellation up to 48h before. 50% fee after that."} />
+            </div>
+            <div className="adm-fg">
+              <label className="adm-fl">{lang === "es" ? "Normas de la casa" : "House rules"}</label>
+              <textarea className="adm-fi" rows={2} defaultValue={it.houseRules || ""} placeholder={lang === "es" ? "Ej: No mascotas · No fumar · Depósito requerido" : "E.g. No pets · No smoking · Deposit required"} />
             </div>
             <div className="adm-fg">
               <label className="adm-fl">Amenities / Services</label>

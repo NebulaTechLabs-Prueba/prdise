@@ -173,6 +173,22 @@ export async function getTransferRoutes(
 }
 
 /* ============================================================================
+ * Transfer locations (puntos pickup/dropoff editables — PM 2026-06-11)
+ * ============================================================================ */
+
+export async function getTransferLocations(
+  client: CatalogClient
+): Promise<Tables<"transfer_locations">[]> {
+  const { data, error } = await client
+    .from("transfer_locations")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/* ============================================================================
  * Vehicles
  * ============================================================================ */
 
