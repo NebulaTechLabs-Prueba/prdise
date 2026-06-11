@@ -5622,14 +5622,67 @@ function AdminPanel({ onClose }) {
     const cancelPct = totalInvsNonDraft > 0
       ? Math.round((cancelledInvs.length / totalInvsNonDraft) * 100)
       : null;
+    // PM 2026-06-12: usamos el MAYOR entre dashboardSummary (server) y el
+    // cómputo local porque dashboardSummary puede traer 0 cuando filtra por
+    // un date range que no incluye la factura (ej. fecha de pago vs fecha
+    // de emisión) y el admin esperaba ver $25 del paid invoice. El local
+    // siempre incluye TODAS las facturas pagadas cargadas en memoria.
+    const serverRevenue = s?.revenueCents != null ? s.revenueCents / 100 : 0;
+    const localRevenue = computedRevenueCents / 100;
+    const serverBookings = s?.bookingsCount ?? 0;
+    const serverNewUsers = s?.newUsersCount ?? 0;
+    // PM 2026-06-12: chartData estaba hardcoded a [] → la barra de ingresos
+    // del dashboard nunca dibujaba nada. Computamos buckets desde las
+    // facturas PAGADAS por día (rango 7d) o por semana (rango 30d). Usamos
+    // paid_at si existe, sino issued/created como fallback. Valor de la
+    // barra = porcentaje relativo al máximo del rango.
+    const today = new Date();
+    const buckets = [];
+    if (dateRange === "7d") {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        const label = d.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { weekday: "short" });
+        buckets.push({ key: iso, day: label, revenue: 0 });
+      }
+    } else {
+      // 30d, agrupado por 4 semanas (S1..S4) anclado al día actual.
+      for (let i = 3; i >= 0; i--) {
+        const end = new Date(today);
+        end.setDate(end.getDate() - i * 7);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 6);
+        const startKey = start.toISOString().slice(0, 10);
+        const endKey = end.toISOString().slice(0, 10);
+        buckets.push({ key: `${startKey}_${endKey}`, day: lang === "es" ? `S${4 - i}` : `W${4 - i}`, revenue: 0, _start: startKey, _end: endKey });
+      }
+    }
+    for (const inv of paidInvs) {
+      const ts = inv.paidDate || inv.issued || (inv.createdAt || "").slice(0, 10);
+      if (!ts) continue;
+      if (dateRange === "7d") {
+        const b = buckets.find((x) => x.key === ts);
+        if (b) b.revenue += inv.total || 0;
+      } else {
+        const b = buckets.find((x) => ts >= x._start && ts <= x._end);
+        if (b) b.revenue += inv.total || 0;
+      }
+    }
+    const maxRevenue = Math.max(1, ...buckets.map((b) => b.revenue));
+    const chartData = buckets.map((b) => ({
+      day: b.day,
+      revenue: b.revenue,
+      value: Math.max(2, Math.round((b.revenue / maxRevenue) * 100)),
+    }));
     return {
-      revenue: s?.revenueCents != null ? s.revenueCents / 100 : computedRevenueCents / 100,
+      revenue: Math.max(serverRevenue, localRevenue),
       revenueDelta: fmtPct(s?.deltas?.revenuePct),
-      bookings: s?.bookingsCount ?? computedBookings,
+      bookings: Math.max(serverBookings, computedBookings),
       bookingsDelta: fmtPct(s?.deltas?.bookingsPct),
-      newUsers: s?.newUsersCount ?? (customers || []).length,
+      newUsers: Math.max(serverNewUsers, (customers || []).length),
       newUsersDelta: fmtPct(s?.deltas?.newUsersPct),
-      chartData: [],
+      chartData,
       chartTitle: dateRange === "7d"
         ? (lang === "es" ? "Ingresos (últimos 7 días)" : "Revenue (last 7 days)")
         : (lang === "es" ? "Ingresos (últimos 30 días)" : "Revenue (last 30 days)"),
@@ -8736,9 +8789,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         const totalUSD = (c.totalInvestedCents || 0) / 100;
                         const freq = c.mostFrequentServiceType
                           ? (lang === "es"
-                            ? { tour: "Tour", stay: "Estadía", transfer: "Traslado", other: "Otro" }[c.mostFrequentServiceType] || "—"
-                            : { tour: "Tour", stay: "Stay", transfer: "Transfer", other: "Other" }[c.mostFrequentServiceType] || "—")
-                          : "—";
+                            ? { tour: "Tour", stay: "Estadía", transfer: "Traslado", other: "Sin categoría" }[c.mostFrequentServiceType] || "—"
+                            : { tour: "Tour", stay: "Stay", transfer: "Transfer", other: "Uncategorized" }[c.mostFrequentServiceType] || "—")
+                          : ((c.serviceCount || 0) > 0
+                              ? (lang === "es" ? "Sin categoría" : "Uncategorized")
+                              : "—");
                         return (
                           <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setCustomerDetailId(c.id)}>
                             <td>
@@ -9862,11 +9917,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               const isGhost = d.role === "ghost" || (d.id || "").startsWith("ghost-");
               const fullName = [d.firstName, d.lastName].filter(Boolean).join(" ") || d.email || "—";
               const totalUSD = (d.totalInvestedCents || 0) / 100;
+              // PM 2026-06-12: si tiene serviceCount > 0 pero no hay categoría
+              // resuelta (todas las líneas son custom sin FK al catálogo),
+              // mostramos "Servicio sin categoría" en lugar de "Sin actividad"
+              // — el cliente SÍ tuvo actividad, simplemente no podemos
+              // identificar el tipo de servicio porque las líneas eran custom.
               const freqLabel = d.mostFrequentServiceType
                 ? (lang === "es"
-                  ? { tour: "Tour", stay: "Estadía", transfer: "Traslado", other: "Otro" }[d.mostFrequentServiceType] || "—"
-                  : { tour: "Tour", stay: "Stay", transfer: "Transfer", other: "Other" }[d.mostFrequentServiceType] || "—")
-                : (lang === "es" ? "Sin actividad" : "No activity yet");
+                  ? { tour: "Tour", stay: "Estadía", transfer: "Traslado", other: lang === "es" ? "Servicio sin categoría" : "Uncategorized service" }[d.mostFrequentServiceType] || "—"
+                  : { tour: "Tour", stay: "Stay", transfer: "Transfer", other: "Uncategorized service" }[d.mostFrequentServiceType] || "—")
+                : ((d.serviceCount || 0) > 0
+                    ? (lang === "es" ? "Servicio sin categoría" : "Uncategorized service")
+                    : (lang === "es" ? "Sin actividad" : "No activity yet"));
               return (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>

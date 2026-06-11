@@ -142,10 +142,19 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
   //    si la factura está atada a otro perfil pero el admin tipeó otro
   //    email, ese email merece su fila propia en la lista.
   const profileEmails = new Set(items.map((c) => (c.email || "").toLowerCase().trim()).filter(Boolean));
-  type GhostInvoice = { id: string; customer_name: string | null; customer_email: string | null; customer_phone: string | null; total_cents: number; status: string; created_at: string | null };
+  type GhostInvoice = {
+    id: string;
+    customer_name: string | null;
+    customer_email: string | null;
+    customer_phone: string | null;
+    total_cents: number;
+    status: string;
+    created_at: string | null;
+    items: Array<{ tour_id: string | null; stay_id: string | null; transfer_route_id: string | null }> | null;
+  };
   const { data: ghostInvs } = await supabase
     .from("invoices")
-    .select("id, customer_name, customer_email, customer_phone, total_cents, status, created_at");
+    .select("id, customer_name, customer_email, customer_phone, total_cents, status, created_at, items:invoice_items(tour_id, stay_id, transfer_route_id)");
   const ghostsByEmail = new Map<string, {
     customer_name: string;
     phone: string | null;
@@ -153,6 +162,7 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
     invoicesPaid: number;
     serviceCount: number;
     firstSeen: string;
+    typeCounts: Record<string, number>;
   }>();
   for (const inv of (ghostInvs ?? []) as GhostInvoice[]) {
     const email = (inv.customer_email || "").toLowerCase().trim();
@@ -164,12 +174,29 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
       invoicesPaid: 0,
       serviceCount: 0,
       firstSeen: inv.created_at ?? "",
+      typeCounts: {} as Record<string, number>,
     };
     if (inv.status === "paid") {
       prev.totalPaid += Number(inv.total_cents ?? 0);
       prev.invoicesPaid += 1;
     }
-    prev.serviceCount += 1;
+    // Contar servicios por tipo desde invoice_items para resolver
+    // mostFrequentServiceType del ghost. Si el item no tiene FK a catálogo
+    // (línea custom), se cuenta como "other".
+    for (const it of inv.items ?? []) {
+      let kind = "other";
+      if (it.tour_id) kind = "tour";
+      else if (it.stay_id) kind = "stay";
+      else if (it.transfer_route_id) kind = "transfer";
+      prev.typeCounts[kind] = (prev.typeCounts[kind] ?? 0) + 1;
+      prev.serviceCount += 1;
+    }
+    // Si la factura no tenía items resueltos por la query, contamos
+    // 1 servicio "other" para no quedar en 0.
+    if (!inv.items || inv.items.length === 0) {
+      prev.typeCounts["other"] = (prev.typeCounts["other"] ?? 0) + 1;
+      prev.serviceCount += 1;
+    }
     // Conservamos el firstSeen más antiguo.
     if ((inv.created_at ?? "") && (!prev.firstSeen || (inv.created_at ?? "") < prev.firstSeen)) {
       prev.firstSeen = inv.created_at ?? "";
@@ -179,6 +206,12 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
   }
   for (const [email, g] of ghostsByEmail) {
     const [firstName, ...rest] = g.customer_name.split(/\s+/);
+    // mostFrequentServiceType: la categoría con más conteo. Tie-break
+    // determinístico por orden alfabético del key.
+    const entries = Object.entries(g.typeCounts).sort((a, b) =>
+      b[1] - a[1] || a[0].localeCompare(b[0])
+    );
+    const mostFrequent = entries.length > 0 ? entries[0][0] : null;
     items.push({
       id: "ghost-" + email,
       email,
@@ -193,7 +226,7 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
       totalInvestedCents: g.totalPaid,
       invoicesPaid: g.invoicesPaid,
       serviceCount: g.serviceCount,
-      mostFrequentServiceType: null,
+      mostFrequentServiceType: mostFrequent,
     });
   }
 
