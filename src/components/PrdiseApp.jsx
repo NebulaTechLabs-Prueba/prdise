@@ -2596,8 +2596,18 @@ function TransferSearchPage() {
     bags: 2,
     notes: "",
   });
+  // PM 2026-06-11: un servicio de traslado puede incluir varios recorridos
+  // (round-trip, día completo con paradas, etc.). El cliente añade tantos
+  // como necesite; el equipo PRDISE recibe el desglose completo por WhatsApp.
+  const [extraTrips, setExtraTrips] = useState([]);
   const [user, setUser] = useState(null);
   const [errors, setErrors] = useState({});
+  const addTrip = () => setExtraTrips((arr) => [
+    ...arr,
+    { id: "t" + Date.now() + "-" + arr.length, from: "", to: "", fromCustom: "", toCustom: "", date: minDate, time: "10:00", pax: form.pax, bags: form.bags },
+  ]);
+  const updTrip = (id, k, v) => setExtraTrips((arr) => arr.map((t) => t.id === id ? { ...t, [k]: v } : t));
+  const removeTrip = (id) => setExtraTrips((arr) => arr.filter((t) => t.id !== id));
   useEffect(() => {
     const u = PRDISE.load("user", null);
     if (u && u.firstName !== "Guest") setUser(u);
@@ -2619,6 +2629,17 @@ function TransferSearchPage() {
     if (isOtherTo && !form.toCustom.trim()) errs.toCustom = lang === "es" ? "Indicá el punto de destino" : "Enter the destination point";
     if (effectiveFrom && effectiveTo && effectiveFrom.toLowerCase() === effectiveTo.toLowerCase()) errs.to = lang === "es" ? "El destino no puede ser igual al origen." : "Destination must differ from origin.";
     if (!form.date) errs.date = "Please select a date";
+    // Validar recorridos adicionales (mismo set de reglas).
+    extraTrips.forEach((tp) => {
+      if (!tp.from) errs["trip-" + tp.id + "-from"] = lang === "es" ? "Seleccioná el origen" : "Select an origin";
+      if (!tp.to) errs["trip-" + tp.id + "-to"] = lang === "es" ? "Seleccioná el destino" : "Select a destination";
+      if ((tp.from === "Otro" || tp.from === "Other") && !(tp.fromCustom || "").trim()) errs["trip-" + tp.id + "-fromCustom"] = lang === "es" ? "Indicá el punto de origen" : "Enter the origin point";
+      if ((tp.to === "Otro" || tp.to === "Other") && !(tp.toCustom || "").trim()) errs["trip-" + tp.id + "-toCustom"] = lang === "es" ? "Indicá el punto de destino" : "Enter the destination point";
+      const f = (tp.from === "Otro" || tp.from === "Other") ? (tp.fromCustom || "").trim() : tp.from;
+      const t2 = (tp.to === "Otro" || tp.to === "Other") ? (tp.toCustom || "").trim() : tp.to;
+      if (f && t2 && f.toLowerCase() === t2.toLowerCase()) errs["trip-" + tp.id + "-to"] = lang === "es" ? "El destino no puede ser igual al origen." : "Destination must differ from origin.";
+      if (!tp.date) errs["trip-" + tp.id + "-date"] = lang === "es" ? "Seleccioná la fecha" : "Select a date";
+    });
     setErrors(errs);
     if (Object.keys(errs).length) {
       setTimeout(() => document.querySelector(".f-in.err")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
@@ -2627,7 +2648,16 @@ function TransferSearchPage() {
     const route = ROUTES.find((r) => r.from === effectiveFrom && r.to === effectiveTo) || ROUTES.find((r) => r.from === effectiveTo && r.to === effectiveFrom);
     const km = route ? route.km : 150;
     const time_est = route ? route.time : "2h 30min";
-    PRDISE.save("transferSearch", { ...form, from: effectiveFrom, to: effectiveTo, km, time_est });
+    // Persistir recorridos adicionales normalizados (origen/destino efectivos).
+    const trips = extraTrips.map((tp) => ({
+      from: (tp.from === "Otro" || tp.from === "Other") ? tp.fromCustom.trim() : tp.from,
+      to: (tp.to === "Otro" || tp.to === "Other") ? tp.toCustom.trim() : tp.to,
+      date: tp.date,
+      time: tp.time,
+      pax: tp.pax,
+      bags: tp.bags,
+    }));
+    PRDISE.save("transferSearch", { ...form, from: effectiveFrom, to: effectiveTo, km, time_est, trips });
     nav("/transfer-results");
   };
   return (
@@ -2704,7 +2734,110 @@ function TransferSearchPage() {
               <label className="f-lab">{t("specialRequests")}</label>
               <textarea className="f-in" value={form.notes} onChange={(e) => upd("notes", e.target.value)} placeholder={t("specialReqPlaceholder")} />
             </div>
-            <button type="button" onClick={search} className="f-submit"><Search />{t("searchVehicles")}</button>
+
+            {/* Recorridos adicionales (PM 2026-06-11): un servicio puede
+                contener varios trayectos (round-trip, día con paradas). El
+                cliente agrega tantos como necesite con el mismo set de campos
+                que el principal. La etiqueta evita "leg" — usamos
+                "recorrido" / "trip" que se entiende mejor en contexto. */}
+            {extraTrips.map((tp, idx) => {
+              const otherFrom = tp.from === "Otro" || tp.from === "Other";
+              const otherTo = tp.to === "Otro" || tp.to === "Other";
+              const eKey = (k) => "trip-" + tp.id + "-" + k;
+              return (
+                <div key={tp.id} style={{ marginTop: 16, padding: 16, borderRadius: 14, background: "rgba(245,166,35,.04)", border: "1px solid rgba(245,166,35,.18)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 14, letterSpacing: ".08em", color: "var(--gold)" }}>
+                      {lang === "es" ? `RECORRIDO ${idx + 2}` : `TRIP ${idx + 2}`}
+                    </div>
+                    <button type="button" onClick={() => removeTrip(tp.id)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700 }}>
+                      <X style={{ width: 12, height: 12 }} />{lang === "es" ? "Quitar" : "Remove"}
+                    </button>
+                  </div>
+                  <div className="f-row">
+                    <div>
+                      <label className="f-lab">{t("from")} *</label>
+                      <select className={`f-in ${errors[eKey("from")] ? "err" : ""}`} value={tp.from} onChange={(e) => updTrip(tp.id, "from", e.target.value)}>
+                        <option value="">{t("selectOrigin")}</option>
+                        {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === tp.to}>{o}</option>)}
+                      </select>
+                      {errors[eKey("from")] && <p className="err-msg">{errors[eKey("from")]}</p>}
+                      {otherFrom && (
+                        <input
+                          className={`f-in ${errors[eKey("fromCustom")] ? "err" : ""}`}
+                          style={{ marginTop: 8 }}
+                          placeholder={lang === "es" ? "Indicá el punto de origen…" : "Type the origin point…"}
+                          value={tp.fromCustom}
+                          onChange={(e) => updTrip(tp.id, "fromCustom", e.target.value)}
+                        />
+                      )}
+                      {errors[eKey("fromCustom")] && <p className="err-msg">{errors[eKey("fromCustom")]}</p>}
+                    </div>
+                    <div>
+                      <label className="f-lab">{t("to")} *</label>
+                      <select className={`f-in ${errors[eKey("to")] ? "err" : ""}`} value={tp.to} onChange={(e) => updTrip(tp.id, "to", e.target.value)}>
+                        <option value="">{t("selectDest")}</option>
+                        {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === tp.from}>{d}</option>)}
+                      </select>
+                      {errors[eKey("to")] && <p className="err-msg">{errors[eKey("to")]}</p>}
+                      {otherTo && (
+                        <input
+                          className={`f-in ${errors[eKey("toCustom")] ? "err" : ""}`}
+                          style={{ marginTop: 8 }}
+                          placeholder={lang === "es" ? "Indicá el punto de destino…" : "Type the destination point…"}
+                          value={tp.toCustom}
+                          onChange={(e) => updTrip(tp.id, "toCustom", e.target.value)}
+                        />
+                      )}
+                      {errors[eKey("toCustom")] && <p className="err-msg">{errors[eKey("toCustom")]}</p>}
+                    </div>
+                  </div>
+                  <div className="f-row">
+                    <div>
+                      <label className="f-lab">{t("date")}</label>
+                      <DatePicker value={tp.date} onChange={(v) => updTrip(tp.id, "date", v)} min={minDate} />
+                      {errors[eKey("date")] && <p className="err-msg">{errors[eKey("date")]}</p>}
+                    </div>
+                    <div>
+                      <label className="f-lab">{t("time")}</label>
+                      <input type="time" className="f-in" value={tp.time} onChange={(e) => updTrip(tp.id, "time", e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="f-row">
+                    <div>
+                      <label className="f-lab">{t("passengers")}</label>
+                      <select className="f-in" value={tp.pax} onChange={(e) => updTrip(tp.id, "pax", parseInt(e.target.value))}>
+                        {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} pax</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="f-lab">{t("luggage")}</label>
+                      <select className="f-in" value={tp.bags} onChange={(e) => updTrip(tp.id, "bags", parseInt(e.target.value))}>
+                        {[0, 1, 2, 3, 4, 6, 10].map((n) => <option key={n} value={n}>{n === 0 ? "—" : `${n}`}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={addTrip}
+              style={{ marginTop: 14, width: "100%", padding: "12px 16px", borderRadius: 12, background: "transparent", border: "1.5px dashed rgba(245,166,35,.4)", color: "var(--gold)", fontSize: 12.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(245,166,35,.08)"; e.currentTarget.style.borderStyle = "solid"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderStyle = "dashed"; }}
+            >
+              <Plus style={{ width: 14, height: 14 }} />
+              {lang === "es" ? "Agregar otro recorrido" : "Add another trip"}
+            </button>
+            <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 6, textAlign: "center", lineHeight: 1.5 }}>
+              {lang === "es"
+                ? "¿Necesitás más de un trayecto? Sumá round-trip, paradas o tours con varias paradas."
+                : "Need more than one trip? Add a round-trip, intermediate stops or multi-stop tours."}
+            </p>
+
+            <button type="button" onClick={search} className="f-submit" style={{ marginTop: 16 }}><Search />{t("searchVehicles")}</button>
             {user && (
               <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,.7)" }}>
                 <CheckCircle style={{ width: 12, height: 12, color: "var(--green)", flexShrink: 0 }} />
@@ -2753,18 +2886,39 @@ function TransferResultsPage() {
     if (u) setUser(u);
   }, []);
   if (!search) return null;
-  const eligible = VEHICLES.filter((v) => v.seats >= search.pax && v.bags >= search.bags);
+  // Capacidad requerida: el vehículo debe cubrir el recorrido más exigente
+  // (más pasajeros + más maletas de cualquier recorrido del servicio).
+  const trips = Array.isArray(search.trips) ? search.trips : [];
+  const maxPax = Math.max(search.pax || 1, ...trips.map((tp) => tp.pax || 1));
+  const maxBags = Math.max(search.bags || 0, ...trips.map((tp) => tp.bags || 0));
+  const eligible = VEHICLES.filter((v) => v.seats >= maxPax && v.bags >= maxBags);
+  const tripCount = 1 + trips.length;
   return (
     <>
-      <PageHero tag="Vehicle Selection" title="AVAILABLE" titleEm="VEHICLES" subtitle={`${search.from} → ${search.to} · ${search.date} at ${search.time}`} />
+      <PageHero
+        tag="Vehicle Selection"
+        title="AVAILABLE"
+        titleEm="VEHICLES"
+        subtitle={tripCount > 1
+          ? (lang === "es" ? `${tripCount} recorridos · empieza ${search.date} ${search.time}` : `${tripCount} trips · starts ${search.date} ${search.time}`)
+          : `${search.from} → ${search.to} · ${search.date} at ${search.time}`}
+      />
       <div className="inner-page">
         <div className="inner-wrap">
 
           <div className="search-summary">
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,.75)" }}>
-              <strong>{search.from}</strong> → <strong>{search.to}</strong> · {search.km} km · ~{search.time_est} · {search.pax} pax · {search.bags} bags
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.75)", flex: 1 }}>
+              <div><strong>{search.from}</strong> → <strong>{search.to}</strong> · {search.date}{search.time ? ` ${search.time}` : ""} · {search.pax} pax · {search.bags} bags</div>
+              {trips.map((tp, i) => (
+                <div key={i} style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,.6)" }}>
+                  <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(245,166,35,.15)", color: "var(--gold)", fontWeight: 700, marginRight: 6 }}>
+                    {lang === "es" ? `R${i + 2}` : `T${i + 2}`}
+                  </span>
+                  <strong>{tp.from}</strong> → <strong>{tp.to}</strong> · {tp.date}{tp.time ? ` ${tp.time}` : ""} · {tp.pax} pax · {tp.bags} bags
+                </div>
+              ))}
             </div>
-            <NavLink to="/transfer-search" className="cta-sec" style={{ padding: "8px 16px", fontSize: 10 }}>Modify Search</NavLink>
+            <NavLink to="/transfer-search" className="cta-sec" style={{ padding: "8px 16px", fontSize: 10 }}>{lang === "es" ? "Modificar" : "Modify Search"}</NavLink>
           </div>
           <div style={{ maxWidth: 900, margin: "0 auto" }}>
             {eligible.length === 0 ? (
@@ -2776,6 +2930,14 @@ function TransferResultsPage() {
             ) : eligible.map((v) => {
               const distanceFee = v.perKm * search.km;
               const total = v.base + distanceFee;
+              // El detalle del mensaje a WhatsApp incluye todos los recorridos
+              // del servicio (no solo el principal). El equipo PRDISE recibe
+              // el desglose completo para cotizar y coordinar el operativo.
+              const primaryLine = `${search.from} → ${search.to} · ${search.date}${search.time ? " " + search.time : ""} · ${search.pax} pax · ${search.bags} bags`;
+              const tripLines = trips.map((tp, i) => `${lang === "es" ? "R" : "T"}${i + 2}: ${tp.from} → ${tp.to} · ${tp.date}${tp.time ? " " + tp.time : ""} · ${tp.pax} pax · ${tp.bags} bags`);
+              const detailsCombined = trips.length > 0
+                ? [`${lang === "es" ? "R1" : "T1"}: ${primaryLine}`, ...tripLines].join("\n")
+                : primaryLine;
               const waHref = buildWhatsAppHref({
                 user,
                 lang,
@@ -2783,7 +2945,7 @@ function TransferResultsPage() {
                   kind: "transfer",
                   name: v.name,
                   priceUsd: total,
-                  details: `${search.from} → ${search.to} · ${search.date}${search.time ? " " + search.time : ""} · ${search.pax} pax · ${search.bags} bags`,
+                  details: detailsCombined,
                 },
               });
               return (
