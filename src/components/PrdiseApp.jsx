@@ -2841,7 +2841,11 @@ function TransferSearchPage() {
             {user && (
               <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,.7)" }}>
                 <CheckCircle style={{ width: 12, height: 12, color: "var(--green)", flexShrink: 0 }} />
-                <span>Booking as <strong style={{ color: "#fff" }}>{user.firstName} {user.lastName}</strong> — info prefilled at checkout</span>
+                <span>
+                  {lang === "es"
+                    ? <>Sesión iniciada como <strong style={{ color: "#fff" }}>{user.firstName} {user.lastName}</strong> — el equipo PRDISE recibirá tus datos junto con la consulta por WhatsApp.</>
+                    : <>Signed in as <strong style={{ color: "#fff" }}>{user.firstName} {user.lastName}</strong> — the PRDISE team will receive your info along with the WhatsApp inquiry.</>}
+                </span>
               </div>
             )}
           </div>
@@ -5940,7 +5944,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         { label: lang === "es" ? "Nueva estadía" : "New stay", icon: Home, action: () => { setSection("hotels"); setEditing({ type: "hotel", isNew: true }); } },
                         { label: lang === "es" ? "Nuevo tour" : "New tour", icon: Compass, action: () => { setSection("tours"); setEditing({ type: "tour", isNew: true }); } },
                         { label: lang === "es" ? "Nueva ruta" : "New route", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("routes"); setEditing({ type: "route", isNew: true }); } },
-                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", plate: "", seats: 4, driver: "", base: 0, trips: 0, status: "available" }); } },
+                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" }); } },
                         { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true }); } },
                         { label: lang === "es" ? "Nuevo post" : "New post", icon: Edit, action: () => { setSection("posts"); setEditing({ type: "post", isNew: true }); } },
                       ].map((it, i) => (
@@ -6715,17 +6719,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card">
                 <div className="adm-card-head">
                   <div className="adm-card-title"><Car />{lang === "es" ? "Flota de Vehículos" : "Fleet Vehicles"}</div>
-                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingVehicle({ id: "new", name: "", plate: "", seats: 4, driver: "", base: 0, trips: 0, status: "available" })}><Plus />{lang === "es" ? "Agregar Vehículo" : "Add Vehicle"}</button>
+                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" })}><Plus />{lang === "es" ? "Agregar Vehículo" : "Add Vehicle"}</button>
                 </div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Placa":"Plate"}</th><th>{lang==="es"?"Capacidad":"Capacity"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>{lang==="es"?"Precio Base":"Base Price"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+                    <thead><tr><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Placa":"Plate"}</th><th>{lang==="es"?"Capacidad":"Capacity"}</th><th>{lang==="es"?"Maletas":"Bags"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>{lang==="es"?"Precio Base":"Base Price"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
                     <tbody>
                       {paginate(vehicles, vehiclesPage, routesPerPage).map((v) => (
                         <tr key={v.id}>
                           <td style={{ fontWeight: 600 }}>{v.name}</td>
                           <td style={{ fontFamily: "monospace", color: "rgba(255,255,255,.6)", fontSize: 12 }}>{v.plate}</td>
                           <td>{v.seats} pax</td>
+                          <td>{v.bags ?? 0}</td>
                           <td style={{ color: "rgba(255,255,255,.7)" }}>{v.driver}</td>
                           <td style={{ color: "#F5A623", fontWeight: 700 }}>${v.base}</td>
                           <td>{v.trips}</td>
@@ -6761,10 +6766,26 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <button className="adm-modal-close" onClick={() => setEditingVehicle(null)}><X /></button>
                   <h3>{editingVehicle.id === "new" ? (lang === "es" ? "AGREGAR VEHÍCULO" : "ADD VEHICLE") : (lang === "es" ? "EDITAR VEHÍCULO" : "EDIT VEHICLE")}</h3>
 
-                  <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre del Vehículo" : "Vehicle Name"} *</label><input className="adm-fi" value={editingVehicle.name} onChange={(e) => setEditingVehicle({ ...editingVehicle, name: e.target.value })} placeholder="Toyota HiAce 2024" /></div>
                   <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Placa" : "Plate"} *</label><input className="adm-fi" value={editingVehicle.plate} onChange={(e) => setEditingVehicle({ ...editingVehicle, plate: e.target.value })} placeholder="ABC-1234" /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Capacidad" : "Capacity"} (pax)</label><input type="number" className="adm-fi" value={editingVehicle.seats} onChange={(e) => setEditingVehicle({ ...editingVehicle, seats: parseInt(e.target.value) || 0 })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre del Vehículo" : "Vehicle Name"} *</label><input className="adm-fi" value={editingVehicle.name} onChange={(e) => setEditingVehicle({ ...editingVehicle, name: e.target.value })} placeholder="Toyota HiAce 2024" /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Tipo" : "Type"}</label>
+                      <select className="adm-fi" value={editingVehicle.type || ""} onChange={(e) => setEditingVehicle({ ...editingVehicle, type: e.target.value })}>
+                        <option value="">{lang === "es" ? "Seleccionar…" : "Select…"}</option>
+                        <option value="sedan">Sedan</option>
+                        <option value="suv">SUV</option>
+                        <option value="van">Van</option>
+                        <option value="minibus">Minibus</option>
+                        <option value="bus">Bus</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Placa" : "Plate"}</label><input className="adm-fi" value={editingVehicle.plate} onChange={(e) => setEditingVehicle({ ...editingVehicle, plate: e.target.value })} placeholder="ABC-1234" /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Capacidad" : "Capacity"} (pax) *</label><input type="number" min="1" className="adm-fi" value={editingVehicle.seats} onChange={(e) => setEditingVehicle({ ...editingVehicle, seats: parseInt(e.target.value) || 0 })} /></div>
+                    <div className="adm-fg">
+                      <label className="adm-fl">{lang === "es" ? "Maletas / carga" : "Bags / cargo"} *</label>
+                      <input type="number" min="0" className="adm-fi" value={editingVehicle.bags ?? 0} onChange={(e) => setEditingVehicle({ ...editingVehicle, bags: parseInt(e.target.value) || 0 })} />
+                    </div>
                   </div>
                   <div className="adm-fg-row">
                     <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Precio Base" : "Base Price"} ($)</label><input type="number" className="adm-fi" value={editingVehicle.base} onChange={(e) => setEditingVehicle({ ...editingVehicle, base: parseInt(e.target.value) || 0 })} /></div>
@@ -10687,10 +10708,32 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             {/* Estado controlado: cada input es controlled vía useState. Antes
                 el form mutaba `it` directo con `onChange={(e) => (it.from=...)}`
                 lo cual se rompía si el modal re-renderizaba a la mitad. */}
+            {/* PM 2026-06-11: origen/destino salen del catálogo de Destinos
+                (Configuración → Traslados → Destinos). Si el admin necesita
+                un punto que no existe, debe crearlo primero allá. */}
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Desde" : "From"} *</label><input className="adm-fi" value={routeFrom} onChange={(e) => setRouteFrom(e.target.value)} placeholder="SJU Airport" /></div>
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hasta" : "To"} *</label><input className="adm-fi" value={routeTo} onChange={(e) => setRouteTo(e.target.value)} placeholder="Cabo Rojo" /></div>
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Desde" : "From"} *</label>
+                <select className="adm-fi" value={routeFrom} onChange={(e) => setRouteFrom(e.target.value)}>
+                  <option value="">{lang === "es" ? "— Seleccionar —" : "— Select —"}</option>
+                  {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === routeTo}>{o}</option>)}
+                </select>
+              </div>
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Hasta" : "To"} *</label>
+                <select className="adm-fi" value={routeTo} onChange={(e) => setRouteTo(e.target.value)}>
+                  <option value="">{lang === "es" ? "— Seleccionar —" : "— Select —"}</option>
+                  {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === routeFrom}>{d}</option>)}
+                </select>
+              </div>
             </div>
+            {getTransferLocationsList(lang).length === 0 && (
+              <p style={{ fontSize: 10.5, color: "rgba(245,166,35,.85)", marginTop: -8, marginBottom: 10 }}>
+                ⚠ {lang === "es"
+                  ? "Aún no hay destinos. Creá puntos en Traslados → Destinos antes de armar rutas."
+                  : "No locations yet. Create points in Transfers → Locations before adding routes."}
+              </p>
+            )}
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Precio base ($)" : "Base price ($)"} *</label><input type="number" step="0.01" min="0" className="adm-fi" value={routePrice} onChange={(e) => setRoutePrice(e.target.value)} /></div>
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Cap. máx. pasajeros" : "Max passengers"}</label><input type="number" min="1" className="adm-fi" value={routeMaxPax} onChange={(e) => setRouteMaxPax(e.target.value)} /></div>
