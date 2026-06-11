@@ -69,6 +69,10 @@ import {
   createManualContact as sbCreateManualContact,
 } from "@/lib/admin/contacts";
 import {
+  listCustomers as sbListCustomers,
+  getCustomerDetail as sbGetCustomerDetail,
+} from "@/lib/admin/customers";
+import {
   listMyNotifications as sbListMyNotifications,
   markNotificationRead as sbMarkNotificationRead,
   markAllNotificationsRead as sbMarkAllNotificationsRead,
@@ -2580,6 +2584,10 @@ function TransferSearchPage() {
   const [form, setForm] = useState({
     from: qs.get("from") || "",
     to: qs.get("to") || "",
+    // PM 2026-06-11: cuando se elige "Otro/Other", abrimos un text input para
+    // que el cliente ingrese el punto en cuestión (lugar no en el catálogo).
+    fromCustom: "",
+    toCustom: "",
     date: qs.get("date") || minDate,
     time: qs.get("time") || "10:00",
     pax: parseInt(qs.get("pax")) || 2,
@@ -2594,21 +2602,30 @@ function TransferSearchPage() {
   }, []);
   const upd = (k, v) => { setForm((f) => ({ ...f, [k]: v })); if (errors[k]) setErrors((e) => ({ ...e, [k]: null })); };
   const selectRoute = (r) => { setForm((f) => ({ ...f, from: r.from, to: r.to })); setErrors({}); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const isOtherFrom = form.from === "Otro" || form.from === "Other";
+  const isOtherTo = form.to === "Otro" || form.to === "Other";
+  // Punto efectivo: si eligió "Otro/Other", usar el text input; si no, el
+  // dropdown. Esto va al payload que se envía al equipo PRDISE por WhatsApp.
+  const effectiveFrom = isOtherFrom ? form.fromCustom.trim() : form.from;
+  const effectiveTo = isOtherTo ? form.toCustom.trim() : form.to;
+
   const search = () => {
     const errs = {};
     if (!form.from) errs.from = "Please select an origin";
     if (!form.to) errs.to = "Please select a destination";
-    if (form.from && form.to && form.from === form.to) errs.to = "Must be different from origin";
+    if (isOtherFrom && !form.fromCustom.trim()) errs.fromCustom = lang === "es" ? "Indicá el punto de origen" : "Enter the origin point";
+    if (isOtherTo && !form.toCustom.trim()) errs.toCustom = lang === "es" ? "Indicá el punto de destino" : "Enter the destination point";
+    if (effectiveFrom && effectiveTo && effectiveFrom.toLowerCase() === effectiveTo.toLowerCase()) errs.to = lang === "es" ? "El destino no puede ser igual al origen." : "Destination must differ from origin.";
     if (!form.date) errs.date = "Please select a date";
     setErrors(errs);
     if (Object.keys(errs).length) {
       setTimeout(() => document.querySelector(".f-in.err")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
       return;
     }
-    const route = ROUTES.find((r) => r.from === form.from && r.to === form.to) || ROUTES.find((r) => r.from === form.to && r.to === form.from);
+    const route = ROUTES.find((r) => r.from === effectiveFrom && r.to === effectiveTo) || ROUTES.find((r) => r.from === effectiveTo && r.to === effectiveFrom);
     const km = route ? route.km : 150;
     const time_est = route ? route.time : "2h 30min";
-    PRDISE.save("transferSearch", { ...form, km, time_est });
+    PRDISE.save("transferSearch", { ...form, from: effectiveFrom, to: effectiveTo, km, time_est });
     nav("/transfer-results");
   };
   return (
@@ -2627,6 +2644,16 @@ function TransferSearchPage() {
                   {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === form.to}>{o}</option>)}
                 </select>
                 {errors.from && <p className="err-msg">{errors.from}</p>}
+                {isOtherFrom && (
+                  <input
+                    className={`f-in ${errors.fromCustom ? "err" : ""}`}
+                    style={{ marginTop: 8 }}
+                    placeholder={lang === "es" ? "Indicá el punto de origen…" : "Type the origin point…"}
+                    value={form.fromCustom}
+                    onChange={(e) => upd("fromCustom", e.target.value)}
+                  />
+                )}
+                {errors.fromCustom && <p className="err-msg">{errors.fromCustom}</p>}
               </div>
               <div>
                 <label className="f-lab">{t("to")} *</label>
@@ -2635,6 +2662,16 @@ function TransferSearchPage() {
                   {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === form.from}>{d}</option>)}
                 </select>
                 {errors.to && <p className="err-msg">{errors.to}</p>}
+                {isOtherTo && (
+                  <input
+                    className={`f-in ${errors.toCustom ? "err" : ""}`}
+                    style={{ marginTop: 8 }}
+                    placeholder={lang === "es" ? "Indicá el punto de destino…" : "Type the destination point…"}
+                    value={form.toCustom}
+                    onChange={(e) => upd("toCustom", e.target.value)}
+                  />
+                )}
+                {errors.toCustom && <p className="err-msg">{errors.toCustom}</p>}
               </div>
             </div>
             <div className="f-row">
@@ -3656,7 +3693,7 @@ function LoginPage() {
 /* ═══════════════ REGISTER ═══════════════ */
 function RegisterPage() {
   const { t, lang } = useLang();
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", password: "", confirmPassword: "", country: "", acceptTerms: false, acceptPrivacy: false });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", birthDate: "", password: "", confirmPassword: "", country: "", acceptTerms: false, acceptPrivacy: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -3740,6 +3777,19 @@ function RegisterPage() {
     if (!form.firstName.trim() || !form.lastName.trim()) { setError(lang === "es" ? "Ingresa nombre y apellido." : "Please enter your first and last name."); return; }
     if (!emailValid || !form.email) { setError(lang === "es" ? "Ingresa un email válido." : "Please enter a valid email address."); return; }
     if (!form.phone.trim() || form.phone.trim().length < 7) { setError(lang === "es" ? "Ingresa tu número de WhatsApp (con código de país, ej. +1 787 555 1234)." : "Please enter your WhatsApp number (with country code, e.g. +1 787 555 1234)."); return; }
+    if (!form.birthDate) { setError(lang === "es" ? "Ingresá tu fecha de nacimiento." : "Please enter your date of birth."); return; }
+    // Validar mínimo 13 años (política conservadora; ajustá si el negocio
+    // requiere mayoría de edad: 18).
+    if (form.birthDate) {
+      const dob = new Date(form.birthDate);
+      const now = new Date();
+      const ageMs = now - dob;
+      const ageYears = ageMs / (1000 * 60 * 60 * 24 * 365.25);
+      if (Number.isNaN(ageYears) || ageYears < 13 || ageYears > 120) {
+        setError(lang === "es" ? "La fecha de nacimiento no es válida." : "The date of birth is not valid.");
+        return;
+      }
+    }
     if (!form.password || form.password.length < 8) { setError(lang === "es" ? "La contraseña debe tener al menos 8 caracteres." : "Password must be at least 8 characters long."); return; }
     if (form.password !== form.confirmPassword) { setError(lang === "es" ? "Las contraseñas no coinciden." : "Passwords do not match."); return; }
     if (!form.acceptTerms) { setError(lang === "es" ? "Debes aceptar los Términos y Condiciones." : "You must accept the Terms & Conditions."); return; }
@@ -3752,6 +3802,7 @@ function RegisterPage() {
     fd.append("firstName", form.firstName.trim());
     fd.append("lastName", form.lastName.trim());
     fd.append("phone", form.phone.trim());
+    if (form.birthDate) fd.append("birthDate", form.birthDate);
     const result = await sbSignUp(fd);
     setLoading(false);
     if (result.ok) {
@@ -3900,6 +3951,24 @@ function RegisterPage() {
             {lang === "es"
               ? "Te contactaremos por WhatsApp para coordinar reservas y enviarte la factura/recibos."
               : "We'll reach out via WhatsApp to coordinate bookings and send invoices/receipts."}
+          </p>
+        </div>
+
+        <div className="f-grp">
+          <label className="f-lab">
+            {lang === "es" ? "Fecha de nacimiento" : "Date of birth"} *
+          </label>
+          <input
+            type="date"
+            className="f-in"
+            value={form.birthDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setForm(f => ({ ...f, birthDate: e.target.value }))}
+          />
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 4, lineHeight: 1.45 }}>
+            {lang === "es"
+              ? "La usamos para campañas de cumpleaños y ofertas personalizadas. Mínimo 13 años."
+              : "Used for birthday campaigns and personalized offers. Minimum age 13."}
           </p>
         </div>
 
@@ -4555,6 +4624,28 @@ function AdminPanel({ onClose }) {
   const [invoiceCreateOpen, setInvoiceCreateOpen] = useState(false);
   const [invoiceRowBusy, setInvoiceRowBusy] = useState({}); // { [sbId]: 'pdf' | 'wa' | 'stripe' }
   const [contacts, setContacts] = useState(A_CONTACTS);
+  // Customers (PM 2026-06-11): reemplaza al viejo CRM "Contactos y Leads".
+  // Trae profiles role='user' + stats embebidas (totalInvested, serviceCount,
+  // mostFrequentServiceType) vía sbListCustomers.
+  const [customers, setCustomers] = useState([]);
+  const [customerDetailId, setCustomerDetailId] = useState(null);
+  const [customerDetail, setCustomerDetail] = useState(null);
+  const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
+  useEffect(() => {
+    if (!customerDetailId) { setCustomerDetail(null); return; }
+    let cancel = false;
+    (async () => {
+      setCustomerDetailLoading(true);
+      setCustomerDetail(null);
+      try {
+        const res = await sbGetCustomerDetail(customerDetailId);
+        if (!cancel && res?.ok) setCustomerDetail(res.data);
+      } finally {
+        if (!cancel) setCustomerDetailLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [customerDetailId]);
   const [posts, setPosts] = useState(A_POSTS);
   const [postsFilter, setPostsFilter] = useState("all");
   const [postsPage, setPostsPage] = useState(1);
@@ -4826,35 +4917,19 @@ function AdminPanel({ onClose }) {
             joinedAt: (u.created_at || "").slice(0, 10),
           }));
           setUsers(mappedUsers);
-          // Inyectar los usuarios role='user' a la lista de Contactos como
-          // "clientes" (PM 2026-06-11): todo el que se registre vía /register
-          // debe aparecer en Contactos también, sin importar si llenó el form
-          // de contacto. El merge usa email como key para deduplicar contra
-          // contact_messages existentes.
-          const customers = mappedUsers
-            .filter((u) => u.roleRaw === "user")
-            .map((u) => ({
-              id: "user-" + u.id,
-              userId: u.id,
-              name: u.name,
-              email: u.email,
-              phone: u.phone,
-              message: lang === "es" ? "Cliente registrado en /register" : "Customer registered at /register",
-              status: "new",
-              date: u.joinedAt,
-              isCustomer: true,
-              source: "register",
-            }));
-          setContacts((prev) => {
-            const byKey = new Map();
-            for (const c of prev) byKey.set((c.email || c.phone || c.id).toLowerCase(), c);
-            for (const c of customers) {
-              const k = (c.email || c.phone || c.id).toLowerCase();
-              if (!byKey.has(k)) byKey.set(k, c);
-              else byKey.set(k, { ...byKey.get(k), isCustomer: true, userId: c.userId });
-            }
-            return Array.from(byKey.values());
-          });
+        }
+        // Clientes (PM 2026-06-11): listCustomers devuelve la lista completa
+        // de profiles role='user' con stats embebidas (total invertido,
+        // servicios solicitados, categoría más frecuente). El antiguo merge
+        // dentro del bloque `usrs` fallaba silenciosamente; ahora va por
+        // separado y se maneja en su propio try/catch.
+        try {
+          const custRes = await sbListCustomers();
+          if (custRes?.ok && Array.isArray(custRes.data?.items)) {
+            setCustomers(custRes.data.items);
+          }
+        } catch (e) {
+          console.warn("[admin] listCustomers:", e);
         }
         if (Array.isArray(drv)) {
           setDrivers(drv.map((d) => ({
@@ -8046,102 +8121,111 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
         {section === "contacts" && (
           <>
+            {/* PM 2026-06-11: la sección antes pretendía ser un CRM (leads del
+                form de contacto). El sistema ya no gestiona eso; ahora muestra
+                directamente los CLIENTES registrados con stats agregadas:
+                cuánto invirtieron, servicio más frecuente y total solicitado. */}
             <div className="adm-ph">
               <div>
-                <h1>{lang==="es"?"CONTACTOS Y":"CONTACTS &"} <em>{lang==="es"?"CLIENTES":"LEADS"}</em></h1>
-                <p className="sub">{lang==="es"?"Todas las personas que nos contactaron: leads, clientes y consultas.":"All people who reached out: leads, customers, and inquiries from every channel."}</p>
-              </div>
-              <div className="adm-ph-actions">
-                <button className="adm-btn adm-btn-ghost"><Database />{lang==="es"?"Exportar":"Export"}</button>
-                <button className="adm-btn adm-btn-primary" onClick={() => setNewContact({ name: "", email: "", phone: "", message: "" })}>
-                  <Plus />{lang==="es"?"Agregar contacto":"Add contact"}
-                </button>
+                <h1>{lang==="es"?"":""}<em>{lang==="es"?"CLIENTES":"CUSTOMERS"}</em></h1>
+                <p className="sub">{lang==="es"?"Todas las personas que se han registrado en el sistema, con su historial agregado.":"Everyone registered in the system, with aggregated history."}</p>
               </div>
             </div>
 
             <div className="adm-stats">
               <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Total contactos":"Total contacts"}</span><div className="adm-stat-ico"><Users /></div></div>
-                <div className="adm-stat-val">{contacts.length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{contacts.filter(c => c.status === "new").length} {lang==="es"?"nuevos esta semana":"new this week"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Total clientes":"Total customers"}</span><div className="adm-stat-ico"><Users /></div></div>
+                <div className="adm-stat-val">{customers.length}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{customers.filter(c => (c.invoicesPaid || 0) > 0).length} {lang==="es"?"con compras":"with purchases"}</div>
               </div>
               <div className="adm-stat green">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Clientes":"Customers"}</span><div className="adm-stat-ico"><CheckCircle /></div></div>
-                <div className="adm-stat-val">{contacts.filter(c => c.isCustomer).length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{contacts.length > 0 ? Math.round(contacts.filter(c => c.isCustomer).length / contacts.length * 100) : 0}% {lang==="es"?"conversión":"conversion"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Total facturado":"Total invested"}</span><div className="adm-stat-ico"><CreditCard /></div></div>
+                <div className="adm-stat-val">${(customers.reduce((s, c) => s + (c.totalInvestedCents || 0), 0) / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"acumulado por clientes":"customer lifetime spend"}</div>
               </div>
               <div className="adm-stat sky">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Nuevos leads":"New leads"}</span><div className="adm-stat-ico"><User /></div></div>
-                <div className="adm-stat-val">{contacts.filter(c => !c.isCustomer).length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"Esperando seguimiento":"Awaiting follow-up"}</div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Servicios solicitados":"Services requested"}</span><div className="adm-stat-ico"><Compass /></div></div>
+                <div className="adm-stat-val">{customers.reduce((s, c) => s + (c.serviceCount || 0), 0)}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"en facturas":"across invoices"}</div>
               </div>
               <div className="adm-stat orange">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Respuestas pendientes":"Pending replies"}</span><div className="adm-stat-ico"><MessageCircle /></div></div>
-                <div className="adm-stat-val">{contacts.filter(c => c.status === "new").length}</div>
-                <div className="adm-stat-trend down"><AlertTriangle />{lang==="es"?"Requiere atención":"Needs attention"}</div>
-              </div>
-            </div>
-
-            <div className="adm-filter-row">
-              <button className={`adm-fchip ${contactsFilter === "all" ? "active" : ""}`} onClick={() => setContactsFilter("all")}>All <span className="adm-fchip-num">{contacts.length}</span></button>
-              <button className={`adm-fchip ${contactsFilter === "new" ? "active" : ""}`} onClick={() => setContactsFilter("new")}>{lang==="es"?"Nuevos":"New"} <span className="adm-fchip-num">{contacts.filter(c => c.status === "new").length}</span></button>
-              <button className={`adm-fchip ${contactsFilter === "in_progress" ? "active" : ""}`} onClick={() => setContactsFilter("in_progress")}>{lang==="es"?"En progreso":"In progress"} <span className="adm-fchip-num">{contacts.filter(c => c.status === "in_progress").length}</span></button>
-              <button className={`adm-fchip ${contactsFilter === "resolved" ? "active" : ""}`} onClick={() => setContactsFilter("resolved")}>{lang==="es"?"Resueltos":"Resolved"} <span className="adm-fchip-num">{contacts.filter(c => c.status === "resolved").length}</span></button>
-              <button className={`adm-fchip ${contactsFilter === "customers" ? "active" : ""}`} onClick={() => setContactsFilter("customers")}>{lang==="es"?"Clientes":"Customers"} <span className="adm-fchip-num">{contacts.filter(c => c.isCustomer).length}</span></button>
-              <button className={`adm-fchip ${contactsFilter === "leads" ? "active" : ""}`} onClick={() => setContactsFilter("leads")}>Leads <span className="adm-fchip-num">{contacts.filter(c => !c.isCustomer).length}</span></button>
-              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-                <PageSizeSelector value={contactsPerPage} options={[10, 20, 50]} onChange={setContactsPerPage} />
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar por nombre, correo...":"Search by name, email, phone..."} /></div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Cumpleaños conocidos":"Birthdays known"}</span><div className="adm-stat-ico"><Calendar /></div></div>
+                <div className="adm-stat-val">{customers.filter(c => c.birthDate).length}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"para campañas":"available for campaigns"}</div>
               </div>
             </div>
 
             <div className="adm-card">
-              <div className="adm-tbl-wrap">
-                <table className="adm-tbl">
-                  <thead><tr><th>{lang==="es"?"Contacto":"Contact"}</th><th>{lang==="es"?"Teléfono":"Phone"}</th><th>{lang==="es"?"País":"Country"}</th><th>{lang==="es"?"Canal":"Channel"}</th><th>{lang==="es"?"Asunto":"Subject"}</th><th>{lang==="es"?"Tipo":"Type"}</th><th>{lang==="es"?"Reservas":"Bookings"}</th><th>{lang==="es"?"Gastado":"Spent"}</th><th>{lang==="es"?"Registrado":"Joined"}</th><th>{lang==="es"?"Última actividad":"Last activity"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
-                  <tbody>
-                    {paginate(contacts.filter(c => {
-                      if (contactsFilter === "all") return true;
-                      if (contactsFilter === "customers") return c.isCustomer;
-                      if (contactsFilter === "leads") return !c.isCustomer;
-                      return c.status === contactsFilter;
-                    }), contactsPage, contactsPerPage).map((c) => (
-                      <tr key={c.id} style={{ cursor: "pointer", opacity: c.accountActive === false ? 0.55 : 1 }} onClick={() => setSelectedContact(c)}>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{ width: 34, height: 34, borderRadius: "50%", background: c.isCustomer ? "linear-gradient(135deg,#F5A623,#EF6C2B)" : "rgba(41,171,226,.2)", color: c.isCustomer ? "#0c1318" : "#29ABE2", fontFamily: "Bebas Neue", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, filter: c.accountActive === false ? "grayscale(.7)" : "none" }}>{c.name[0]}</div>
-                            <div>
-                              <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                                {c.name}
-                                {c.accountActive === false && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "rgba(239,108,43,.15)", color: "#EF6C2B", fontWeight: 800, letterSpacing: ".05em" }}>{lang === "es" ? "INACTIVA" : "INACTIVE"}</span>}
-                              </div>
-                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{c.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.65)", whiteSpace: "nowrap" }}>{c.phone || "—"}</td>
-                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{c.country || "—"}</td>
-                        <td><span className="adm-pill info">{c.source}</span></td>
-                        <td style={{ fontSize: 12, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.subject}</td>
-                        <td>{c.isCustomer ? <span className="adm-pill vip">Customer</span> : <span className="adm-pill new">Lead</span>}</td>
-                        <td>{c.bookings}</td>
-                        <td style={{ color: c.totalSpent > 0 ? "#F5A623" : "rgba(255,255,255,.4)", fontWeight: c.totalSpent > 0 ? 700 : 400, fontFamily: "monospace" }}>{c.totalSpent > 0 ? fmt(c.totalSpent) : "—"}</td>
-                        <td style={{ fontSize: 11, color: "rgba(255,255,255,.5)", whiteSpace: "nowrap" }}>{c.date || "—"}</td>
-                        <td style={{ fontSize: 11, color: "rgba(255,255,255,.5)", whiteSpace: "nowrap" }}>{c.lastSeen}</td>
-                        <td><span className={`adm-pill ${c.status}`}>{c.status.replace("_", " ")}</span></td>
-                        <td onClick={(e) => e.stopPropagation()}>
-                          <div className="adm-row-actions">
-                            <button className="adm-icon-btn" title={lang==="es"?"Ver perfil":"View profile"} onClick={() => setSelectedContact(c)}><Eye /></button>
-                            <button className="adm-icon-btn" title={lang==="es"?"Responder":"Reply"} onClick={() => setComposeEmail({ to: c.email, name: c.name, subject: c.subject ? "Re: " + c.subject : "", body: "" })}><Send /></button>
-                            <button className="adm-icon-btn danger" title={lang==="es"?"Eliminar":"Delete"} onClick={() => { if (window.confirm(lang === "es" ? `¿Eliminar a ${c.name}?` : `Delete ${c.name}?`)) setContacts(contacts.filter(x => x.id !== c.id)); }}><Trash2 /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="adm-card-head">
+                <div className="adm-card-title"><Users />{lang==="es"?"LISTA DE CLIENTES":"CUSTOMER LIST"} <span className="adm-pill">{customers.length}</span></div>
               </div>
-              <PaginationBar current={contactsPage} total={Math.ceil(contacts.filter(c => { if (contactsFilter === "all") return true; if (contactsFilter === "customers") return c.isCustomer; if (contactsFilter === "leads") return !c.isCustomer; return c.status === contactsFilter; }).length / contactsPerPage)} onPage={setContactsPage} />
+              {customers.length === 0 ? (
+                <div style={{ padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.5)" }}>
+                  <Users style={{ width: 36, height: 36, opacity: 0.3, marginBottom: 12 }} />
+                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".05em", marginBottom: 6 }}>
+                    {lang === "es" ? "Aún no hay clientes registrados" : "No customers registered yet"}
+                  </h3>
+                  <p style={{ fontSize: 13 }}>
+                    {lang === "es" ? "Los clientes que se registren en /register aparecerán acá." : "Customers who sign up at /register will show up here."}
+                  </p>
+                </div>
+              ) : (
+                <div className="adm-tbl-wrap">
+                  <table className="adm-tbl">
+                    <thead><tr>
+                      <th>{lang==="es"?"Cliente":"Customer"}</th>
+                      <th>{lang==="es"?"Teléfono":"Phone"}</th>
+                      <th>{lang==="es"?"País":"Country"}</th>
+                      <th>{lang==="es"?"Cumpleaños":"Birthday"}</th>
+                      <th>{lang==="es"?"Invertido":"Invested"}</th>
+                      <th>{lang==="es"?"Servicios":"Services"}</th>
+                      <th>{lang==="es"?"Más solicitado":"Most requested"}</th>
+                      <th>{lang==="es"?"Registrado":"Joined"}</th>
+                      <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
+                    </tr></thead>
+                    <tbody>
+                      {customers.map((c) => {
+                        const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "—";
+                        const totalUSD = (c.totalInvestedCents || 0) / 100;
+                        const freq = c.mostFrequentServiceType
+                          ? (lang === "es"
+                            ? { tour: "Tour", stay: "Estadía", transfer: "Traslado", other: "Otro" }[c.mostFrequentServiceType] || "—"
+                            : { tour: "Tour", stay: "Stay", transfer: "Transfer", other: "Other" }[c.mostFrequentServiceType] || "—")
+                          : "—";
+                        return (
+                          <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setCustomerDetailId(c.id)}>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={{ width: 34, height: 34, borderRadius: "50%", background: totalUSD > 0 ? "linear-gradient(135deg,#F5A623,#EF6C2B)" : "rgba(41,171,226,.2)", color: totalUSD > 0 ? "#0c1318" : "#29ABE2", fontFamily: "Bebas Neue", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  {(fullName[0] || "?").toUpperCase()}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{fullName}</div>
+                                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{c.email || "—"}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ fontSize: 12, color: "rgba(255,255,255,.65)" }}>{c.phone || "—"}</td>
+                            <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{c.country || "—"}</td>
+                            <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{c.birthDate || "—"}</td>
+                            <td style={{ color: totalUSD > 0 ? "#F5A623" : "rgba(255,255,255,.4)", fontWeight: 700, fontFamily: "monospace" }}>
+                              {totalUSD > 0 ? `$${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
+                            </td>
+                            <td>{c.serviceCount || 0}</td>
+                            <td><span className="adm-pill info">{freq}</span></td>
+                            <td style={{ fontSize: 11, color: "rgba(255,255,255,.5)", whiteSpace: "nowrap" }}>{(c.joinedAt || "").slice(0, 10) || "—"}</td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <div className="adm-row-actions">
+                                <button className="adm-icon-btn" title={lang==="es"?"Ver detalle":"View detail"} onClick={() => setCustomerDetailId(c.id)}><Eye /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -9149,6 +9233,104 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
         )}
       </main>
+
+      {/* Customer detail modal (PM 2026-06-11) — abre al click en fila de Clientes */}
+      {customerDetailId && (
+        <div className="adm-modal-bg" onClick={() => setCustomerDetailId(null)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+            <button className="adm-modal-close" onClick={() => setCustomerDetailId(null)}><X /></button>
+            {customerDetailLoading && (
+              <div style={{ padding: 60, textAlign: "center", color: "rgba(255,255,255,.45)" }}>
+                <Loader2 style={{ width: 28, height: 28, animation: "spin 1s linear infinite" }} />
+                <div style={{ marginTop: 10, fontSize: 12 }}>{lang === "es" ? "Cargando detalle…" : "Loading detail…"}</div>
+              </div>
+            )}
+            {!customerDetailLoading && customerDetail && (() => {
+              const d = customerDetail;
+              const fullName = [d.firstName, d.lastName].filter(Boolean).join(" ") || d.email || "—";
+              const totalUSD = (d.totalInvestedCents || 0) / 100;
+              const freqLabel = d.mostFrequentServiceType
+                ? (lang === "es"
+                  ? { tour: "Tour", stay: "Estadía", transfer: "Traslado", other: "Otro" }[d.mostFrequentServiceType] || "—"
+                  : { tour: "Tour", stay: "Stay", transfer: "Transfer", other: "Other" }[d.mostFrequentServiceType] || "—")
+                : (lang === "es" ? "Sin actividad" : "No activity yet");
+              return (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+                    <div style={{ width: 60, height: 60, borderRadius: "50%", background: totalUSD > 0 ? "linear-gradient(135deg,#F5A623,#EF6C2B)" : "rgba(41,171,226,.2)", color: totalUSD > 0 ? "#0c1318" : "#29ABE2", fontFamily: "Bebas Neue", fontSize: 26, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {(fullName[0] || "?").toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: 0, marginBottom: 4 }}>{fullName.toUpperCase()}</h3>
+                      <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)" }}>
+                        {d.email || "—"}{d.phone ? <> · <span style={{ color: "rgba(255,255,255,.7)" }}>{d.phone}</span></> : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
+                    <div style={{ padding: 12, borderRadius: 12, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.2)" }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--gold)", textTransform: "uppercase", marginBottom: 4 }}>
+                        {lang === "es" ? "Invertido" : "Invested"}
+                      </div>
+                      <div style={{ fontSize: 20, fontFamily: "Bebas Neue", color: "#fff" }}>
+                        ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", marginTop: 2 }}>{d.invoicesPaid} {lang === "es" ? "factura(s) pagada(s)" : "paid invoice(s)"}</div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 12, background: "rgba(141,198,63,.08)", border: "1px solid rgba(141,198,63,.2)" }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "#8DC63F", textTransform: "uppercase", marginBottom: 4 }}>
+                        {lang === "es" ? "Servicios" : "Services"}
+                      </div>
+                      <div style={{ fontSize: 20, fontFamily: "Bebas Neue", color: "#fff" }}>
+                        {d.serviceCount || 0}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", marginTop: 2 }}>{lang === "es" ? "total solicitados" : "total requested"}</div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)" }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "#29ABE2", textTransform: "uppercase", marginBottom: 4 }}>
+                        {lang === "es" ? "Más frecuente" : "Most frequent"}
+                      </div>
+                      <div style={{ fontSize: 17, fontFamily: "Bebas Neue", color: "#fff", letterSpacing: ".05em" }}>
+                        {freqLabel}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "País" : "Country"}</div><div className="adm-info-val">{d.country || "—"}</div></div>
+                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Cumpleaños" : "Birthday"}</div><div className="adm-info-val">{d.birthDate || "—"}</div></div>
+                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Registrado" : "Joined"}</div><div className="adm-info-val">{(d.joinedAt || "").slice(0, 10) || "—"}</div></div>
+                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Status" : "Status"}</div><div className="adm-info-val">{d.status || "—"}</div></div>
+                  </div>
+
+                  {(d.recentInvoices?.length > 0) && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 10 }}>
+                        {lang === "es" ? "Facturas recientes" : "Recent invoices"}
+                      </div>
+                      <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)" }}>
+                        {d.recentInvoices.slice(0, 5).map((inv) => (
+                          <div key={inv.id} style={{ padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,.05)", background: "rgba(255,255,255,.02)" }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#fff", fontFamily: "monospace" }}>{inv.number}</div>
+                              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)" }}>{new Date(inv.createdAt).toLocaleDateString(lang === "es" ? "es-PR" : "en-US")}</div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span className={`adm-pill ${inv.status}`} style={{ fontSize: 10 }}>{inv.status}</span>
+                              <span style={{ fontSize: 13, fontFamily: "monospace", color: "#F5A623", fontWeight: 700 }}>${((inv.totalCents || 0) / 100).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Transfer location editor modal (PM 2026-06-11) */}
       {editingLocation && (

@@ -72,6 +72,13 @@ export type Database = {
             foreignKeyName: "audit_log_actor_id_fkey"
             columns: ["actor_id"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "audit_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -167,6 +174,13 @@ export type Database = {
             foreignKeyName: "bookings_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "bookings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -245,6 +259,13 @@ export type Database = {
             foreignKeyName: "cart_items_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "cart_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -285,6 +306,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "contact_messages_replied_by_fkey"
+            columns: ["replied_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "contact_messages_replied_by_fkey"
             columns: ["replied_by"]
@@ -336,6 +364,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "coupons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_redemptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "coupon_redemptions_user_id_fkey"
@@ -393,6 +428,13 @@ export type Database = {
           used_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "coupons_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "coupons_created_by_fkey"
             columns: ["created_by"]
@@ -473,6 +515,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "custom_roles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "custom_roles_created_by_fkey"
             columns: ["created_by"]
@@ -689,6 +738,13 @@ export type Database = {
             foreignKeyName: "invoices_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "invoices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -732,6 +788,13 @@ export type Database = {
           title_es?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "notifications_recipient_id_fkey"
             columns: ["recipient_id"]
@@ -782,6 +845,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "partners"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_referrals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "partner_referrals_user_id_fkey"
@@ -852,6 +922,13 @@ export type Database = {
             foreignKeyName: "partners_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "partners_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -907,6 +984,13 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "payment_provider_configs_configured_by_fkey"
+            columns: ["configured_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "payment_provider_configs_configured_by_fkey"
             columns: ["configured_by"]
@@ -972,6 +1056,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bookings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "payments_confirmed_by_fkey"
@@ -1081,6 +1172,13 @@ export type Database = {
             foreignKeyName: "posts_author_id_fkey"
             columns: ["author_id"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -1089,6 +1187,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          birth_date: string | null
           country: string | null
           created_at: string
           custom_role_id: string | null
@@ -1114,6 +1213,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          birth_date?: string | null
           country?: string | null
           created_at?: string
           custom_role_id?: string | null
@@ -1139,6 +1239,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          birth_date?: string | null
           country?: string | null
           created_at?: string
           custom_role_id?: string | null
@@ -1220,8 +1321,22 @@ export type Database = {
             foreignKeyName: "reviews_approved_by_fkey"
             columns: ["approved_by"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "reviews_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "reviews_user_id_fkey"
@@ -1255,6 +1370,13 @@ export type Database = {
           value?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "site_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "site_settings_updated_by_fkey"
             columns: ["updated_by"]
@@ -1375,6 +1497,13 @@ export type Database = {
             foreignKeyName: "stays_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "stays_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -1485,6 +1614,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tours_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "tours_created_by_fkey"
             columns: ["created_by"]
@@ -1603,6 +1739,13 @@ export type Database = {
             foreignKeyName: "user_permissions_granted_by_fkey"
             columns: ["granted_by"]
             isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "user_permissions_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -1612,6 +1755,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "permissions"
             referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "user_permissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "customer_stats"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "user_permissions_user_id_fkey"
@@ -1663,7 +1813,16 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      customer_stats: {
+        Row: {
+          invoices_paid: number | null
+          most_frequent_service_type: string | null
+          service_count: number | null
+          total_invested_cents: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       fn_current_role: {

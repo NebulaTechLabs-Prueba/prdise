@@ -37,6 +37,14 @@ export const signUpSchema = z.object({
   firstName: nameSchema,
   lastName: nameSchema,
   phone: phoneSchema,
+  // PM 2026-06-11: opcional al schema (frontend valida edad mínima); el
+  // server confía y persiste si viene. Formato ISO YYYY-MM-DD.
+  birthDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD)")
+    .optional()
+    .or(z.literal("")),
 });
 
 export const signInSchema = z.object({

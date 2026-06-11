@@ -42,13 +42,14 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     phone: formData.get("phone"),
+    birthDate: formData.get("birthDate") ?? "",
   });
 
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
   }
 
-  const { email, password, firstName, lastName, phone } = parsed.data;
+  const { email, password, firstName, lastName, phone, birthDate } = parsed.data;
   const supabase = await createClient();
 
   const { data, error } = await supabase.auth.signUp({
@@ -91,9 +92,11 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
   if (userId) {
     try {
       const admin = createAdminClient();
+      const patch: { phone: string; birth_date?: string } = { phone };
+      if (birthDate) patch.birth_date = birthDate;
       await admin
         .from("profiles")
-        .update({ phone })
+        .update(patch)
         .eq("id", userId);
     } catch (e) {
       // No es bloqueante: la cuenta se creó OK; el phone se puede agregar
