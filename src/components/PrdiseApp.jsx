@@ -6034,9 +6034,10 @@ html{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)
 .adm-feed-body time{font-size:11px;color:rgba(255,255,255,.4)}
 
 /* Bar chart */
-.adm-bar-chart{display:flex;align-items:flex-end;gap:6px;height:160px;padding:14px 0;border-bottom:1px dashed rgba(255,255,255,.08)}
-.adm-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}
-.adm-bar{width:100%;max-width:38px;background:linear-gradient(180deg,#F5A623,#EF6C2B);border-radius:6px 6px 2px 2px;transition:transform .2s}
+.adm-bar-chart{display:flex;align-items:flex-end;gap:6px;height:220px;padding:14px 0 0;border-bottom:1px dashed rgba(255,255,255,.08);position:relative}
+.adm-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-width:0;height:100%}
+.adm-bar-wrap{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;width:100%;min-height:0}
+.adm-bar{width:100%;max-width:38px;background:linear-gradient(180deg,#F5A623,#EF6C2B);border-radius:6px 6px 2px 2px;transition:transform .2s;min-height:3px}
 .adm-bar:hover{transform:scaleY(1.02)}
 .adm-bar-label{font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 
@@ -6327,56 +6328,80 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card">
                 <div className="adm-card-head">
                   <div className="adm-card-title"><BarChart3 />{lang === "es" ? (dateRange === "7d" ? "Ingresos (últimos 7 días)" : "Ingresos (últimos 30 días, por semana)") : rangeMetrics.chartTitle}</div>
-                  <button className="adm-card-action">{lang === "es" ? "Ver todo" : "View all"}</button>
+                  <button className="adm-card-action" onClick={() => setSection("invoices")}>{lang === "es" ? "Ver facturas →" : "View invoices →"}</button>
                 </div>
                 <div className="adm-bar-chart">
                   {rangeMetrics.chartData.map((d, i) => (
                     <div key={i} className="adm-bar-col">
-                      <div className="adm-bar" style={{ height: `${d.value}%` }} title={fmt(d.revenue)} />
+                      <div className="adm-bar-wrap">
+                        <div className="adm-bar" style={{ height: `${d.value}%` }} title={fmt(d.revenue)} />
+                      </div>
                       <span className="adm-bar-label">{d.day}</span>
                     </div>
                   ))}
                 </div>
               </div>
+              {/* PM 2026-06-12: "Alertas" antes mostraba hardcoded demo data
+                  (A_ALERTS). Ahora se sincroniza con las notificaciones
+                  in-app reales (campana del header). Muestra hasta 5; click
+                  abre el dropdown del bell para acciones. */}
               <div className="adm-card">
                 <div className="adm-card-head">
-                  <div className="adm-card-title"><Bell />{lang === "es" ? "Alertas" : "Alerts"}</div>
+                  <div className="adm-card-title"><Bell />{lang === "es" ? "Notificaciones" : "Notifications"} {unreadCount > 0 && <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "#EF6C2B", color: "#fff", fontWeight: 800 }}>{unreadCount}</span>}</div>
+                  <button className="adm-card-action" onClick={() => setNotifsOpen(true)}>{lang === "es" ? "Abrir todas →" : "Open all →"}</button>
                 </div>
-                {A_ALERTS.map((a) => (
-                  <div key={a.id} className="adm-feed-item">
-                    <div className="adm-feed-dot" style={{ background: a.type === "warning" ? "#F5A623" : a.type === "info" ? "#29ABE2" : "#8DC63F" }} />
-                    <div className="adm-feed-body">
-                      <p>{lang === "es" ? (a.id === "a1" ? "3 reservas pendientes de confirmación de pago" : a.id === "a2" ? "Informe mensual listo para revisión" : "Respaldo completado exitosamente") : a.msg}</p>
-                      <time>{lang === "es" ? (a.time.replace("min ago", "min atrás").replace("ago", "atrás")) : a.time}</time>
-                    </div>
+                {notifs.length === 0 ? (
+                  <div className="adm-empty">
+                    <Bell />
+                    <p>{lang === "es" ? "Sin notificaciones" : "No notifications"}</p>
+                    <p style={{ fontSize: 11, opacity: .7 }}>{lang === "es" ? "Acá vas a ver las notificaciones del sistema (reservas, pagos, etc.)" : "System notifications (bookings, payments, etc.) will appear here"}</p>
                   </div>
-                ))}
+                ) : (
+                  notifs.slice(0, 5).map((n) => {
+                    const title = lang === "es" ? n.title_es : n.title_en;
+                    const body = lang === "es" ? n.body_es : n.body_en;
+                    return (
+                      <div key={n.id} className="adm-feed-item">
+                        <div className="adm-feed-dot" style={{ background: n.read_at ? "rgba(255,255,255,.2)" : "#EF6C2B" }} />
+                        <div className="adm-feed-body">
+                          <p style={{ fontWeight: n.read_at ? 500 : 700 }}>{title}</p>
+                          {body && <p style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginTop: 2 }}>{body}</p>}
+                          <time>{new Date(n.created_at).toLocaleString(lang === "es" ? "es-PR" : "en-US", { dateStyle: "short", timeStyle: "short" })}</time>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
+            {/* PM 2026-06-12: "Reservas Recientes" cambió a "Facturas
+                Recientes". El modelo de PRDISE hoy (catálogo+referral) no
+                tiene un flow propio de reservas — el equipo coordina por
+                WhatsApp y emite facturas, así que el dashboard refleja eso. */}
             <div className="adm-card">
               <div className="adm-card-head">
-                <div className="adm-card-title"><Briefcase />{lang === "es" ? "Reservas Recientes" : "Recent Bookings"}</div>
-                <button className="adm-card-action" onClick={() => setSection("invoices")}>{lang === "es" ? "Ver todo →" : "View all →"}</button>
+                <div className="adm-card-title"><Briefcase />{lang === "es" ? "Facturas Recientes" : "Recent Invoices"}</div>
+                <button className="adm-card-action" onClick={() => setSection("invoices")}>{lang === "es" ? "Ver todas →" : "View all →"}</button>
               </div>
-              {allBookings.length === 0 ? (
+              {(invoices || []).length === 0 ? (
                 <div className="adm-empty">
-                  <Calendar />
-                  <p>{lang === "es" ? "Sin reservas en vivo aún" : "No live bookings yet"}</p>
-                  <p style={{ fontSize: 11, opacity: .7 }}>{lang === "es" ? "Las reservas de clientes aparecerán aquí cuando ocurran en el sitio público" : "Customer bookings will appear here when they happen on the public site"}</p>
+                  <FileText />
+                  <p>{lang === "es" ? "Sin facturas todavía" : "No invoices yet"}</p>
+                  <p style={{ fontSize: 11, opacity: .7 }}>{lang === "es" ? "Las facturas que emitas aparecerán acá ordenadas por fecha." : "Issued invoices will appear here, most recent first."}</p>
                 </div>
               ) : (
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang==="es"?"Referencia":"Reference"}</th><th>{lang==="es"?"Cliente":"Customer"}</th><th>{lang==="es"?"Tipo":"Type"}</th><th>Total</th><th>{lang==="es"?"Fecha":"Date"}</th></tr></thead>
+                    <thead><tr><th>{lang==="es"?"Número":"Number"}</th><th>{lang==="es"?"Cliente":"Customer"}</th><th>Total</th><th>Status</th><th>{lang==="es"?"Emitida":"Issued"}</th></tr></thead>
                     <tbody>
-                      {allBookings.slice(0, 6).map((b) => (
-                        <tr key={b.ref}>
-                          <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12 }}>{b.ref}</td>
-                          <td>{b.firstName} {b.lastName}</td>
-                          <td><span className="adm-pill published">{b.type}</span></td>
-                          <td style={{ fontWeight: 700 }}>{fmt(b.total)}</td>
-                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{new Date(b.bookedAt).toLocaleDateString()}</td>
+                      {(invoices || []).slice(0, 6).map((inv) => (
+                        <tr key={inv.id} style={{ cursor: "pointer" }} onClick={() => setSection("invoices")}>
+                          <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12 }}>{inv.num}</td>
+                          <td>{inv.customer || inv.email || "—"}</td>
+                          <td style={{ fontWeight: 700 }}>{fmt(inv.total || 0)}</td>
+                          <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status):(inv.status||"").toUpperCase()}</span></td>
+                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{inv.issued || "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -10690,6 +10715,12 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // Pricing mixto + categoría (PM 2026-06-10): aplica a stays/tours/route.
   const defaultPricingUnit = type === "hotel" ? "per_night" : type === "tour" ? "per_person" : "per_unit";
   const [pricingUnit, setPricingUnit] = useState(it.pricingUnit || defaultPricingUnit);
+  // PM 2026-06-12: precio base controlado dentro del bloque "Precio y
+  // categoría". Antes había DOS inputs (uno "Price/night (USD)" arriba y
+  // luego el unit dropdown abajo) — duplicaba la pregunta y el admin se
+  // confundía sobre cuál era el efectivo. Ahora un único precio base con
+  // unidad al lado.
+  const [basePrice, setBasePrice] = useState(it.price != null && it.price !== "" ? String(it.price) : "");
   const [pricingExtras, setPricingExtras] = useState(Array.isArray(it.pricingExtras) ? it.pricingExtras : []);
   const [extraDraft, setExtraDraft] = useState({ label_en: "", label_es: "", price: "", unit: "per_person" });
   const [category, setCategory] = useState(it.category || "");
@@ -10932,7 +10963,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     // Hotel-specific
     if (type === "hotel") {
       if (vals.location) updated.zone = vals.location;
-      if (vals.price___night__usd_) updated.price = vals.price___night__usd_;
+      // PM 2026-06-12: precio leído del input controlado de "Precio y
+      // categoría" (basePrice). El input legacy "Price / night" se eliminó.
+      if (basePrice !== "" && !Number.isNaN(Number(basePrice))) {
+        updated.price = Number(basePrice);
+      }
       if (vals.rooms) updated.bedrooms = vals.rooms;
       if (vals.sleeps) updated.sleeps = vals.sleeps;
       if (services.length) updated.amenities = services;
@@ -10961,7 +10996,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     // Tour-specific
     if (type === "tour") {
       if (vals.location) updated.location = vals.location;
-      if (vals.price___person__usd_) updated.price = vals.price___person__usd_;
+      // Precio: ahora viene del bloque controlado "Precio y categoría".
+      if (basePrice !== "" && !Number.isNaN(Number(basePrice))) {
+        updated.price = Number(basePrice);
+      }
       if (included.length) updated.includes = included;
       if (storyEN || experienceEN || perfectFor.length || highlightsList.length) {
         TOUR_ABOUT[updated.id] = {
@@ -11136,7 +11174,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               </div>
             </div>
 
-            <div className="adm-fg"><label className="adm-fl">Price / night (USD)</label><input type="number" className="adm-fi" defaultValue={it.price || ""} placeholder="0.00" /></div>
+            {/* PM 2026-06-12: el precio se pide más abajo en "Precio y
+                categoría" junto a la unidad (por noche / por persona / etc.).
+                Antes este input solo "por noche" duplicaba la pregunta y
+                hacía pensar que se cobraba siempre por noche. */}
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Stars</label>
                 <select className="adm-fi" defaultValue={it.rating ? Math.round(it.rating) : ""}>
@@ -11225,7 +11266,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               </div>
             </div>
 
-            <div className="adm-fg"><label className="adm-fl">Price / person (USD)</label><input type="number" className="adm-fi" defaultValue={it.price || ""} placeholder="0.00" /></div>
+            {/* PM 2026-06-12: precio unificado en "Precio y categoría" abajo. */}
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Day</label><input className="adm-fi" defaultValue={it.day || ""} placeholder="e.g. Saturday" /></div>
               <div className="adm-fg"><label className="adm-fl">Duration</label><input className="adm-fi" defaultValue={it.duration || ""} placeholder="e.g. 6h" /></div>
@@ -11542,8 +11583,18 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 : "Define the unit of the base price (per person, per hour, etc.) and add optional extras for mixed pricing."}
             </p>
             <div className="adm-fg-row">
-              <div className="adm-fg">
-                <label className="adm-fl">{lang === "es" ? "Unidad del precio base" : "Base price unit"}</label>
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Precio base (USD)" : "Base price (USD)"} *</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  className="adm-fi"
+                  value={basePrice}
+                  onChange={(e) => setBasePrice(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Unidad" : "Unit"}</label>
                 <select className="adm-fi" value={pricingUnit} onChange={(e) => setPricingUnit(e.target.value)}>
                   {type === "hotel" && <option value="per_night">{lang === "es" ? "por noche" : "per night"}</option>}
                   <option value="per_person">{lang === "es" ? "por persona" : "per person"}</option>
@@ -11552,7 +11603,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                   <option value="per_attraction">{lang === "es" ? "por atracción" : "per attraction"}</option>
                 </select>
               </div>
-              <div className="adm-fg">
+              <div className="adm-fg" style={{ flex: 1 }}>
                 <label className="adm-fl">{lang === "es" ? "Categoría" : "Category"}</label>
                 <input className="adm-fi" list={`cat-list-${type}`} value={category} onChange={(e) => setCategory(e.target.value)} placeholder={type === "tour" ? (lang === "es" ? "Aventura, Cultural, Bote…" : "Adventure, Cultural, Boat…") : (lang === "es" ? "Villa, Cabaña, Hostal…" : "Villa, Cabin, Hostel…")} />
                 <datalist id={`cat-list-${type}`}>
