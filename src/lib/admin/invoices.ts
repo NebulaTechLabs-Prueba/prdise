@@ -252,6 +252,18 @@ export async function createInvoiceManual(
   }
   const d = parsed.data;
 
+  // PM 2026-06-11: el método de pago lo elige el admin en el modal. Si elige
+  // "stripe" o "paypal", la invoice queda 'pending' (esperando que el cliente
+  // pague vía el link generado MANUALMENTE después). Si elige "off_system",
+  // queda 'pending' sin link y el admin la marcará como pagada cuando reciba
+  // el pago fuera del sistema (efectivo, transferencia, ATH Móvil, etc.).
+  // No auto-generamos el Stripe Payment Link al crear la invoice.
+  const paymentMethodRaw = String(formData.get("paymentMethod") ?? "off_system").trim();
+  const paymentMethod: "stripe" | "paypal" | "off_system" =
+    paymentMethodRaw === "stripe" || paymentMethodRaw === "paypal"
+      ? paymentMethodRaw
+      : "off_system";
+
   const supabase = await createClient();
 
   // Generar número via count del año actual (admin client para no depender de
@@ -323,58 +335,24 @@ export async function createInvoiceManual(
     };
   }
 
-  // Crear Stripe Payment Link si la SDK está configurada. No-bloqueante: si
-  // falla, dejamos la invoice en 'draft' y reportamos el error al admin para
-  // que reintente desde el UI.
-  let stripePaymentLinkUrl: string | null = null;
-  let stripeError: string | null = null;
-
-  if (isStripeConfigured()) {
-    try {
-      const stripe = getStripe();
-      // Product + Price inline (un solo line item con el total agregado).
-      // Si querés desglosar por línea en Stripe, habría que crear N prices y
-      // pasarlos como line_items[]; por ahora un único line item con la
-      // descripción "Factura {number}" es suficiente para el cobro.
-      const price = await stripe.prices.create({
-        currency: "usd",
-        unit_amount: totalCents,
-        product_data: {
-          name: `Factura ${number} — ${d.customerName}`,
-        },
-      });
-      const link = await stripe.paymentLinks.create({
-        line_items: [{ price: price.id, quantity: 1 }],
-        metadata: {
-          invoice_id: invoice.id,
-          invoice_number: number,
-        },
-      });
-      stripePaymentLinkUrl = link.url;
-
-      // Persistir + promover a 'pending' (esperando pago del cliente).
-      await supabase
-        .from("invoices")
-        .update({
-          stripe_payment_link_url: link.url,
-          stripe_payment_link_id: link.id,
-          status: "pending",
-        })
-        .eq("id", invoice.id);
-    } catch (e) {
-      stripeError = e instanceof Error ? e.message : String(e);
-      console.warn("[createInvoiceManual] Stripe Payment Link failed:", e);
-    }
-  } else {
-    stripeError =
-      "Stripe no está configurado en el servidor. La factura quedó en borrador.";
-  }
+  // PM 2026-06-11: NO se genera automáticamente el link de pago al crear la
+  // factura. El admin lo genera explícitamente desde la lista de facturas
+  // (botón "Regenerar link") cuando esté listo. Esto evita crear links
+  // accidentales durante pruebas o cuando el método elegido es off_system.
+  //
+  // Pasamos la invoice a 'pending' directamente para que aparezca en
+  // "Pendientes" del dashboard (no queda como borrador). El total se
+  // contabiliza recién al marcarla como pagada.
+  await supabase
+    .from("invoices")
+    .update({ status: "pending" })
+    .eq("id", invoice.id);
 
   await writeAuditLog(actorId, "invoice.create_manual", "invoice", invoice.id, {
     number,
     total_cents: totalCents,
     items: d.items.length,
-    stripe_ok: stripePaymentLinkUrl !== null,
+    payment_method: paymentMethod,
   });
 
   return {
@@ -382,8 +360,8 @@ export async function createInvoiceManual(
     data: {
       invoiceId: invoice.id,
       number: invoice.number,
-      stripePaymentLinkUrl,
-      stripeError,
+      stripePaymentLinkUrl: null,
+      stripeError: null,
     },
   };
 }

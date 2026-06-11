@@ -69,6 +69,19 @@ import {
   createManualContact as sbCreateManualContact,
 } from "@/lib/admin/contacts";
 import {
+  listMyNotifications as sbListMyNotifications,
+  markNotificationRead as sbMarkNotificationRead,
+  markAllNotificationsRead as sbMarkAllNotificationsRead,
+  deleteNotification as sbDeleteNotification,
+  createTestNotification as sbCreateTestNotification,
+  saveMyNotificationPrefs as sbSaveMyNotificationPrefs,
+  getMyNotificationPrefs as sbGetMyNotificationPrefs,
+} from "@/lib/admin/notifications";
+import {
+  listPaymentConfigs as sbListPaymentConfigs,
+  savePaymentConfig as sbSavePaymentConfig,
+} from "@/lib/admin/payment_configs";
+import {
   getDashboardSummary as sbGetDashboardSummary,
   getRecentBookings as sbGetRecentBookings,
 } from "@/lib/admin/aggregates";
@@ -4661,6 +4674,58 @@ function AdminPanel({ onClose }) {
 
   const [splashOff, setSplashOff] = useState(() => PRDISE.load("splashOff", false));
   const [transferTab, setTransferTab] = useState("routes");
+  // Sistema de notificaciones (PM 2026-06-11): in-app only, sin email/push.
+  // El bell del header muestra el contador de no leídas; al cargar el panel
+  // suena un beep sutil si hay nuevas (una sola vez por carga).
+  const [notifs, setNotifs] = useState([]);
+  const [notifsOpen, setNotifsOpen] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState({});
+  const [notifPrefsSaved, setNotifPrefsSaved] = useState(false);
+  const soundPlayedRef = useRef(false);
+  const reloadNotifs = async () => {
+    try {
+      const list = await sbListMyNotifications();
+      if (Array.isArray(list)) setNotifs(list);
+    } catch (e) { console.warn("[admin] reloadNotifs:", e); }
+  };
+  useEffect(() => { reloadNotifs(); }, []);
+  useEffect(() => {
+    // Cargar prefs una vez al montar.
+    (async () => {
+      try {
+        const p = await sbGetMyNotificationPrefs();
+        if (p && typeof p === "object") setNotifPrefs(p);
+      } catch { /* ignore */ }
+    })();
+  }, []);
+  const unreadCount = notifs.filter((n) => !n.read_at).length;
+  useEffect(() => {
+    // Sonido único al cargar el admin si hay no leídas. Evitamos repetir si
+    // el usuario marca/des-marca: el ref se setea on first play.
+    if (soundPlayedRef.current) return;
+    if (unreadCount > 0) {
+      try {
+        // Web Audio API — un beep sutil de ~150ms. Evita depender de un
+        // archivo de audio embebido y respeta autoplay policies en navegadores
+        // (se dispara después del primer interaction del usuario al loguear).
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          const ctx = new AC();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = 880;
+          gain.gain.setValueAtTime(0, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.3);
+          soundPlayedRef.current = true;
+        }
+      } catch { /* no-op */ }
+    }
+  }, [unreadCount]);
   // Transfer locations (PM 2026-06-11): CRUD desde admin.
   const [transferLocations, setTransferLocations] = useState([]);
   const [editingLocation, setEditingLocation] = useState(null);
@@ -5472,6 +5537,92 @@ textarea.adm-fi{resize:vertical;min-height:80px}
       <button type="button" onClick={() => setMobileOpen((o) => !o)} className="adm-mob-toggle" aria-label="Menu">
         {mobileOpen ? <X /> : <Menu />}
       </button>
+
+      {/* Bell de notificaciones (PM 2026-06-11). Fijo top-right en todas las
+          secciones del admin. Click → dropdown con últimas no leídas y un
+          link "Marcar todas como leídas". */}
+      <div style={{ position: "fixed", top: 14, right: 18, zIndex: 110 }}>
+        <button
+          type="button"
+          onClick={() => setNotifsOpen((o) => !o)}
+          title={unreadCount > 0 ? (lang === "es" ? `${unreadCount} sin leer` : `${unreadCount} unread`) : (lang === "es" ? "Notificaciones" : "Notifications")}
+          style={{
+            position: "relative", width: 38, height: 38, borderRadius: "50%",
+            background: unreadCount > 0 ? "linear-gradient(135deg,#F5A623,#EF6C2B)" : "rgba(15,24,34,.85)",
+            border: "1px solid rgba(255,255,255,.12)", color: "#fff", cursor: "pointer",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 14px rgba(0,0,0,.35)",
+          }}
+        >
+          <Bell style={{ width: 16, height: 16 }} />
+          {unreadCount > 0 && (
+            <span style={{
+              position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, padding: "0 5px",
+              borderRadius: 99, background: "#EF6C2B", border: "2px solid #0F1822",
+              color: "#fff", fontSize: 10, fontWeight: 800, lineHeight: "14px",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+            }}>{unreadCount > 99 ? "99+" : unreadCount}</span>
+          )}
+        </button>
+
+        {notifsOpen && (
+          <>
+            <div onClick={() => setNotifsOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 109 }} />
+            <div style={{
+              position: "absolute", top: 48, right: 0, width: 360, maxHeight: 440, overflowY: "auto",
+              background: "#0F1822", border: "1px solid rgba(255,255,255,.1)", borderRadius: 14,
+              boxShadow: "0 20px 50px rgba(0,0,0,.6)", zIndex: 110,
+            }}>
+              <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontFamily: "Bebas Neue", fontSize: 14, letterSpacing: ".1em", color: "var(--gold)" }}>
+                  {lang === "es" ? "NOTIFICACIONES" : "NOTIFICATIONS"}
+                </div>
+                {unreadCount > 0 && (
+                  <button onClick={async () => {
+                    const res = await sbMarkAllNotificationsRead();
+                    if (res?.ok) reloadNotifs();
+                  }} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.55)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    {lang === "es" ? "Marcar todas leídas" : "Mark all read"}
+                  </button>
+                )}
+              </div>
+              {notifs.length === 0 ? (
+                <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(255,255,255,.45)", fontSize: 13 }}>
+                  <Bell style={{ width: 28, height: 28, opacity: 0.25, marginBottom: 10 }} />
+                  <div>{lang === "es" ? "Sin notificaciones" : "No notifications yet"}</div>
+                </div>
+              ) : (
+                notifs.map((n) => {
+                  const title = lang === "es" ? n.title_es : n.title_en;
+                  const body = lang === "es" ? n.body_es : n.body_en;
+                  return (
+                    <div key={n.id} style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,.05)", background: n.read_at ? "transparent" : "rgba(245,166,35,.06)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 6, background: n.read_at ? "rgba(255,255,255,.15)" : "#EF6C2B" }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{title}</div>
+                        {body && <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", lineHeight: 1.45, marginBottom: 4 }}>{body}</div>}
+                        <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>
+                          {new Date(n.created_at).toLocaleString(lang === "es" ? "es-PR" : "en-US", { dateStyle: "short", timeStyle: "short" })}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {!n.read_at && (
+                          <button onClick={async () => { const fd = new FormData(); fd.append("id", n.id); const res = await sbMarkNotificationRead(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Marcar como leída" : "Mark as read"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
+                            <Check style={{ width: 12, height: 12 }} />
+                          </button>
+                        )}
+                        <button onClick={async () => { const fd = new FormData(); fd.append("id", n.id); const res = await sbDeleteNotification(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Eliminar" : "Delete"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
+                          <X style={{ width: 12, height: 12 }} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <aside className={`adm-sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="adm-brand"><img src={LOGO_SRC} alt="Living in PRDISE" /></div>
@@ -8898,10 +9049,33 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
             {settingsTab === "notifications" && (
               <>
-                <NotifMatrixCard />
-                {/* QuietHoursCard removida (PM 2026-06-10): no tiene sentido
-                    para un negocio que opera con reservas asíncronas — la
-                    matriz de notificaciones es suficiente. */}
+                <NotifMatrixCard
+                  prefs={notifPrefs}
+                  onChange={(p) => { setNotifPrefs(p); setNotifPrefsSaved(false); }}
+                  savedFlag={notifPrefsSaved}
+                  saving={false}
+                  onSave={async () => {
+                    const fd = new FormData();
+                    fd.append("prefs", JSON.stringify(notifPrefs));
+                    const res = await sbSaveMyNotificationPrefs(fd);
+                    if (res?.ok) {
+                      setNotifPrefsSaved(true);
+                      setTimeout(() => setNotifPrefsSaved(false), 2500);
+                    } else {
+                      alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
+                    }
+                  }}
+                  onTest={async () => {
+                    const res = await sbCreateTestNotification();
+                    if (res?.ok) {
+                      await reloadNotifs();
+                      soundPlayedRef.current = false; // permitir que vuelva a sonar al abrirse el bell.
+                      setNotifsOpen(true);
+                    } else {
+                      alert(res?.error || "Error");
+                    }
+                  }}
+                />
               </>
             )}
 
@@ -10514,8 +10688,12 @@ function PageSizeSelector({ value, options, onChange, label = "Show" }) {
   );
 }
 
-function NotifMatrixCard() {
+function NotifMatrixCard({ prefs, onChange, onSave, saving, savedFlag, onTest }) {
   const { lang } = useLang();
+  // PM 2026-06-11: las notificaciones ahora son SOLO in-app (bell con sonido
+  // al cargar el panel). Se eliminaron las columnas Correo/Push — ahora hay
+  // un solo toggle por evento ("Notificarme") y los prefs persisten en
+  // profiles.notification_prefs.
   const events = [
     { id: "new_booking", label: lang==="es"?"Nueva reserva":"New booking" },
     { id: "cancellation", label: lang==="es"?"Cancelación":"Cancellation" },
@@ -10524,30 +10702,21 @@ function NotifMatrixCard() {
     { id: "overbooking", label: lang==="es"?"Sobreventa":"Overbooking" },
     { id: "new_review", label: lang==="es"?"Nueva reseña":"New review" },
     { id: "daily_report", label: lang==="es"?"Reporte diario":"Daily report" },
+    { id: "new_invoice", label: lang==="es"?"Nueva factura":"New invoice" },
   ];
-  const channels = [
-    { id: "email", label: lang==="es"?"Correo":"Email", Icon: Mail },
-    { id: "push", label: lang==="es"?"Push":"Push", Icon: Bell },
-  ];
-  const defaultChecks = {
-    new_booking_email: true, new_booking_push: true,
-    cancellation_push: true,
-    successful_payment_email: true,
-    failed_payment_push: true,
-    overbooking_email: true, overbooking_push: true,
-    new_review_email: true,
-    daily_report_email: true,
-  };
-  const [checks, setChecks] = useState(defaultChecks);
-  const toggle = (key) => setChecks((p) => ({ ...p, [key]: !p[key] }));
+  // Default: todos activos si la key no está en prefs.
+  const isOn = (id) => prefs?.[id] !== false;
+  const toggle = (id) => onChange({ ...(prefs || {}), [id]: !isOn(id) });
 
   return (
     <div className="adm-card">
       <div className="adm-card-head" style={{ marginBottom: 6 }}>
         <div>
-          <div className="adm-card-title">{lang==="es"?"Eventos × Canales":"Events × Channels Matrix"}</div>
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,.45)", marginTop: 4 }}>
-            {lang==="es"?"Marca los canales donde quieres recibir cada tipo de evento.":"Mark the channels where you want to receive each type of event."}
+          <div className="adm-card-title">{lang==="es"?"Eventos del sistema":"System events"}</div>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginTop: 4, lineHeight: 1.55 }}>
+            {lang==="es"
+              ? "Activá los eventos que querés ver en el bell del panel. Cuando ocurra uno, aparece en la lista de notificaciones con un sonido si no la has marcado como leída."
+              : "Enable the events you want to see in the panel bell. When one happens, it appears in the notifications list with a sound if you haven't marked it as read."}
           </p>
         </div>
       </div>
@@ -10558,48 +10727,50 @@ function NotifMatrixCard() {
               <th style={{ textAlign: "left", padding: "12px 0", fontSize: 11, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>
                 {lang==="es"?"Evento":"Event"}
               </th>
-              {channels.map((ch) => (
-                <th key={ch.id} style={{ textAlign: "center", padding: "12px 8px", fontSize: 11, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "rgba(255,255,255,.35)", width: 90 }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: "center" }}>
-                    <ch.Icon style={{ width: 13, height: 13, opacity: .6 }} />{ch.label}
-                  </span>
-                </th>
-              ))}
+              <th style={{ textAlign: "center", padding: "12px 8px", fontSize: 11, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "rgba(255,255,255,.35)", width: 130 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, justifyContent: "center" }}>
+                  <Bell style={{ width: 13, height: 13, opacity: .6 }} />
+                  {lang === "es" ? "Notificarme" : "Notify me"}
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {events.map((ev) => (
-              <tr key={ev.id} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                <td style={{ padding: "13px 0", fontSize: 14, fontWeight: 600, color: "#fff" }}>
-                  {ev.label}
-                </td>
-                {channels.map((ch) => {
-                  const key = `${ev.id}_${ch.id}`;
-                  const checked = !!checks[key];
-                  return (
-                    <td key={ch.id} style={{ textAlign: "center", padding: "13px 8px" }}>
-                      <button
-                        onClick={() => toggle(key)}
-                        style={{
-                          width: 22, height: 22, borderRadius: 5,
-                          border: checked ? "none" : "2px solid rgba(255,255,255,.18)",
-                          background: checked ? "linear-gradient(135deg,#8DC63F,#6BAF2A)" : "transparent",
-                          cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          transition: "all .2s", padding: 0,
-                        }}
-                      >
-                        {checked && <Check style={{ width: 13, height: 13, color: "#fff", strokeWidth: 3 }} />}
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {events.map((ev) => {
+              const checked = isOn(ev.id);
+              return (
+                <tr key={ev.id} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                  <td style={{ padding: "13px 0", fontSize: 14, fontWeight: 600, color: "#fff" }}>
+                    {ev.label}
+                  </td>
+                  <td style={{ textAlign: "center", padding: "13px 8px" }}>
+                    <button
+                      onClick={() => toggle(ev.id)}
+                      style={{
+                        width: 22, height: 22, borderRadius: 5,
+                        border: checked ? "none" : "2px solid rgba(255,255,255,.18)",
+                        background: checked ? "linear-gradient(135deg,#8DC63F,#6BAF2A)" : "transparent",
+                        cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        transition: "all .2s", padding: 0,
+                      }}
+                    >
+                      {checked && <Check style={{ width: 13, height: 13, color: "#fff", strokeWidth: 3 }} />}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "flex-end" }}>
-        <button className="adm-btn adm-btn-primary" onClick={() => alert(lang==="es"?"Esta matriz de notificaciones se conectará pronto.":"Notification matrix wiring coming soon.")}><Check />Save Preferences</button>
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <button className="adm-btn adm-btn-ghost" onClick={onTest} disabled={saving}>
+          <Bell />{lang === "es" ? "Probar notificación" : "Test notification"}
+        </button>
+        <button className="adm-btn adm-btn-primary" onClick={onSave} disabled={saving}>
+          {saving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+          {saving ? (lang === "es" ? "Guardando…" : "Saving…") : savedFlag ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : (lang === "es" ? "Guardar preferencias" : "Save preferences")}
+        </button>
       </div>
     </div>
   );
@@ -10700,85 +10871,111 @@ const INTEGRATIONS_CONFIG = {
   stripe: {
     name: "Stripe", descES: "Procesar pagos con tarjeta de crédito", descEN: "Process credit card payments", color: "#635BFF",
     fields: [
-      { key: "publishableKey", labelEN: "Publishable Key", labelES: "Clave publicable", placeholder: "pk_live_...", required: true },
-      { key: "secretKey", labelEN: "Secret Key", labelES: "Clave secreta", placeholder: "sk_live_...", required: true, secret: true },
-      { key: "webhookSecret", labelEN: "Webhook Secret", labelES: "Secreto de Webhook", placeholder: "whsec_...", required: true, secret: true },
-      { key: "mode", labelEN: "Mode", labelES: "Modo", type: "select", options: ["Live", "Test"], required: true },
-      { key: "connectedAccountId", labelEN: "Connected Account ID (optional)", labelES: "ID de cuenta conectada (opcional)", placeholder: "acct_..." },
-      { key: "defaultCurrency", labelEN: "Default Currency (optional)", labelES: "Moneda por defecto (opcional)", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
+      { key: "publishable_key", labelEN: "Publishable Key", labelES: "Clave publicable", placeholder: "pk_live_...", required: true },
+      { key: "secret_key", labelEN: "Secret Key", labelES: "Clave secreta", placeholder: "sk_live_...", required: true, secret: true },
+      { key: "webhook_secret", labelEN: "Webhook Secret", labelES: "Secreto de Webhook", placeholder: "whsec_..." , secret: true },
+      { key: "mode", labelEN: "Mode", labelES: "Modo", type: "select", options: ["test", "live"], required: true },
+      { key: "connected_account_id", labelEN: "Connected Account ID (optional)", labelES: "ID de cuenta conectada (opcional)", placeholder: "acct_..." },
+      { key: "default_currency", labelEN: "Default Currency", labelES: "Moneda por defecto", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
     ],
   },
   paypal: {
     name: "PayPal", descES: "Aceptar pagos por PayPal", descEN: "Accept PayPal payments", color: "#0070BA",
     fields: [
-      { key: "clientId", labelEN: "Client ID", labelES: "ID de Cliente", placeholder: "A...", required: true },
-      { key: "clientSecret", labelEN: "Client Secret", labelES: "Secreto de Cliente", placeholder: "E...", required: true, secret: true },
-      { key: "mode", labelEN: "Mode", labelES: "Modo", type: "select", options: ["Live", "Sandbox"], required: true },
-      { key: "email", labelEN: "PayPal Account Email (optional)", labelES: "Correo de cuenta PayPal (opcional)", placeholder: "business@example.com" },
-      { key: "currency", labelEN: "Currency (optional)", labelES: "Moneda (opcional)", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
+      { key: "client_id", labelEN: "Client ID", labelES: "ID de Cliente", placeholder: "A...", required: true },
+      { key: "client_secret", labelEN: "Client Secret", labelES: "Secreto de Cliente", placeholder: "E...", required: true, secret: true },
+      { key: "mode", labelEN: "Mode", labelES: "Modo", type: "select", options: ["test", "live"], required: true },
+      { key: "account_email", labelEN: "PayPal Account Email (optional)", labelES: "Correo de cuenta PayPal (opcional)", placeholder: "business@example.com" },
+      { key: "default_currency", labelEN: "Default Currency", labelES: "Moneda", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
     ],
   },
-  // Integraciones que NO usamos hoy (Mailchimp, GA, WhatsApp Business API,
-  // Slack) fueron removidas del panel admin para no confundir al usuario
-  // operativo (PM 2026-06-10). El envío de mensajes corre por WhatsApp web
-  // (link wa.me) y los pagos por Stripe / PayPal.
+  // PM 2026-06-11: Mailchimp, GA, WhatsApp Business API y Slack se removieron
+  // del panel admin para no confundir al usuario operativo. El envío de
+  // mensajes corre por WhatsApp web (link wa.me) y los pagos por Stripe / PayPal.
 };
 
 function IntegrationsPanel() {
   const { lang } = useLang();
-  // Ninguna integracion esta realmente conectada todavia. Antes el estado
-  // inicial decia true para stripe/GA/whatsapp lo que era engañoso para el
-  // admin. Cuando se implementen las integraciones reales, este estado debe
-  // venir de Supabase (tabla `integrations` o similar).
-  const [connected, setConnected] = useState({ stripe: false, "google-analytics": false, whatsapp: false });
+  // PM 2026-06-11: ahora sí se puede conectar Stripe y PayPal desde el panel.
+  // El estado viene de payment_provider_configs (RLS admin-only). Las keys
+  // se guardan server-side y nunca se exponen al cliente más allá del modal
+  // de configuración del admin que las introdujo.
+  const [configs, setConfigs] = useState({});
   const [openModal, setOpenModal] = useState(null);
-  const [savedData, setSavedData] = useState({});
-
-  const handleConnect = (id, data) => {
-    setConnected({ ...connected, [id]: true });
-    setSavedData({ ...savedData, [id]: data });
-    setOpenModal(null);
+  const reload = async () => {
+    try {
+      const rows = await sbListPaymentConfigs();
+      const map = {};
+      (rows || []).forEach((r) => { map[r.provider] = r; });
+      setConfigs(map);
+    } catch (e) { console.warn("[admin] payment configs:", e); }
   };
-  const handleDisconnect = (id) => {
-    setConnected({ ...connected, [id]: false });
-  };
+  useEffect(() => { reload(); }, []);
 
   return (
     <>
       <div className="adm-card">
         <div className="adm-card-head"><div className="adm-card-title">{lang==="es"?"Servicios Conectados":"Connected Services"}</div></div>
-        {Object.entries(INTEGRATIONS_CONFIG).map(([id, cfg]) => (
-          <div key={id} className="adm-srow">
-            <div className="adm-srow-info" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 9, background: cfg.color + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <div style={{ width: 14, height: 14, borderRadius: 3, background: cfg.color }} />
+        {Object.entries(INTEGRATIONS_CONFIG).map(([id, cfg]) => {
+          const row = configs[id];
+          const isConnected = !!row?.enabled;
+          return (
+            <div key={id} className="adm-srow">
+              <div className="adm-srow-info" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: cfg.color + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 3, background: cfg.color }} />
+                </div>
+                <div>
+                  <h5>
+                    {cfg.name}
+                    {isConnected && (
+                      <span style={{ marginLeft: 8, fontSize: 10, color: "#8DC63F", fontWeight: 800 }}>
+                        ● {lang==="es"?"CONECTADO":"CONNECTED"}
+                        {row?.mode && <span style={{ marginLeft: 6, color: "rgba(255,255,255,.4)", fontWeight: 700 }}>({row.mode === "live" ? "LIVE" : "TEST"})</span>}
+                      </span>
+                    )}
+                  </h5>
+                  <p>{lang==="es"?cfg.descES:cfg.descEN}</p>
+                </div>
               </div>
-              <div>
-                <h5>{cfg.name} {connected[id] && <span style={{ marginLeft: 8, fontSize: 10, color: "#8DC63F", fontWeight: 800 }}>● {lang==="es"?"CONECTADO":"CONNECTED"}</span>}</h5>
-                <p>{lang==="es"?cfg.descES:cfg.descEN}</p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="adm-btn adm-btn-ghost" onClick={() => setOpenModal(id)}>
+                  <Settings />{isConnected ? (lang === "es" ? "Configurar" : "Configure") : (lang === "es" ? "Conectar" : "Connect")}
+                </button>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {/* Boton deshabilitado: backend de integraciones aun no
-                  implementado. Mostrar 'Pronto' en lugar de permitir conectar
-                  con un modal cuyo guardado solo viviria en memoria local
-                  (engañoso). */}
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "6px 12px", borderRadius: 99, background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.45)" }}>
-                {lang==="es"?"Próximamente":"Coming soon"}
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {openModal && (
         <IntegrationModal
           integrationId={openModal}
           config={INTEGRATIONS_CONFIG[openModal]}
-          initialData={savedData[openModal] || {}}
-          isConnected={connected[openModal]}
+          initialData={configs[openModal] || {}}
+          isConnected={!!configs[openModal]?.enabled}
           onClose={() => setOpenModal(null)}
-          onSave={(data) => handleConnect(openModal, data)}
+          onSave={async (data) => {
+            const fd = new FormData();
+            fd.append("provider", openModal);
+            fd.append("enabled", data.enabled ? "true" : "false");
+            fd.append("mode", data.mode || "test");
+            if (openModal === "stripe") {
+              fd.append("publishable_key", data.publishable_key || "");
+              fd.append("secret_key", data.secret_key || "");
+              fd.append("webhook_secret", data.webhook_secret || "");
+              fd.append("connected_account_id", data.connected_account_id || "");
+            } else {
+              fd.append("client_id", data.client_id || "");
+              fd.append("client_secret", data.client_secret || "");
+              fd.append("account_email", data.account_email || "");
+            }
+            fd.append("default_currency", data.default_currency || "USD");
+            const res = await sbSavePaymentConfig(fd);
+            if (!res?.ok) { alert(res?.error || "Error"); return; }
+            setOpenModal(null);
+            reload();
+          }}
         />
       )}
     </>
@@ -10796,14 +10993,19 @@ function IntegrationModal({ integrationId, config, initialData, isConnected, onC
 
   const handleSave = () => {
     setError("");
-    for (const f of config.fields) {
-      if (f.required && !data[f.key]?.trim()) {
-        setError(lang==="es" ? `"${labelOf(f)}" es requerido.` : `"${labelOf(f)}" is required.`);
-        return;
+    // Si la integración va a quedar activa, validar campos required. Si
+    // queda inactiva, el admin puede guardar config parcial para volver
+    // después sin perder lo tipeado.
+    if (data.enabled) {
+      for (const f of config.fields) {
+        if (f.required && !String(data[f.key] || "").trim()) {
+          setError(lang==="es" ? `"${labelOf(f)}" es requerido para activar la integración.` : `"${labelOf(f)}" is required to enable this integration.`);
+          return;
+        }
       }
     }
     setSaved(true);
-    setTimeout(() => onSave(data), 700);
+    setTimeout(() => onSave(data), 600);
   };
 
   return (
@@ -10820,6 +11022,21 @@ function IntegrationModal({ integrationId, config, initialData, isConnected, onC
           </div>
         </div>
         <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 18, marginTop: 18 }}>
+          {/* Habilitar/deshabilitar la integración. Si guardás con
+              enabled=true sin llenar las keys requeridas, el server rechaza. */}
+          <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: data.enabled ? "rgba(141,198,63,.1)" : "rgba(255,255,255,.04)", border: data.enabled ? "1px solid rgba(141,198,63,.3)" : "1px solid rgba(255,255,255,.08)", cursor: "pointer", marginBottom: 14 }}>
+            <input type="checkbox" checked={!!data.enabled} onChange={(e) => setData({ ...data, enabled: e.target.checked })} />
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }}>
+                {lang === "es" ? "Activar esta integración" : "Enable this integration"}
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                {lang === "es"
+                  ? "Cuando esté activada, esta integración se usará al generar links de pago en facturas."
+                  : "When enabled, this integration is used when generating payment links on invoices."}
+              </div>
+            </div>
+          </label>
           {config.fields.map((f) => (
             <div key={f.key} className="adm-fg">
               <label className="adm-fl">
@@ -11231,6 +11448,10 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   // ── Invoice state ────────────────────────────────────────────────────────
   const [notes, setNotes] = useState("");
   const [dueAt, setDueAt] = useState("");
+  // Método de pago (PM 2026-06-11): el admin elige cómo se cobrará. El link
+  // de pago NO se genera automáticamente — se genera al hacer click desde la
+  // lista de facturas cuando el admin esté listo.
+  const [paymentMethod, setPaymentMethod] = useState("off_system");
   // Cada item: { description, quantity, unitPrice, tourId?, stayId?, transferRouteId? }
   const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: "" }]);
   const [error, setError] = useState("");
@@ -11406,6 +11627,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       if (customerWhatsapp.trim()) fd.append("customerWhatsapp", customerWhatsapp.trim());
       if (notes.trim()) fd.append("notes", notes.trim());
       if (dueAt) fd.append("dueAt", dueAt);
+      fd.append("paymentMethod", paymentMethod);
       fd.append("items", JSON.stringify(itemsPayload));
 
       const res = await sbCreateInvoiceManual(fd);
@@ -11635,6 +11857,43 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12, marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.08)" }}>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", color: "rgba(255,255,255,.5)", textTransform: "uppercase" }}>Total</span>
             <span style={{ fontSize: 24, fontFamily: "Bebas Neue", color: "#F5A623", letterSpacing: ".02em" }}>${subtotal.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="adm-modal-section">
+          <div className="adm-modal-section-h"><CreditCard />{T("Método de pago", "Payment method")}</div>
+          <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 10, lineHeight: 1.5 }}>
+            {T(
+              "Elegí cómo cobrarás esta factura. El link de pago NO se genera al crear — se genera después cuando estés listo.",
+              "Choose how this invoice will be paid. The payment link is NOT generated on creation — generate it later when you're ready."
+            )}
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            {[
+              { id: "stripe", label: "Stripe", desc: T("Tarjeta de crédito", "Credit card"), color: "#635BFF" },
+              { id: "paypal", label: "PayPal", desc: T("Cuenta PayPal", "PayPal account"), color: "#0070BA" },
+              { id: "off_system", label: T("Fuera del sistema", "Off-system"), desc: T("Efectivo, ATH, transferencia", "Cash, ATH, transfer"), color: "#8DC63F" },
+            ].map((m) => {
+              const sel = paymentMethod === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPaymentMethod(m.id)}
+                  style={{
+                    textAlign: "left", padding: 12, borderRadius: 10, cursor: "pointer",
+                    background: sel ? "rgba(245,166,35,.1)" : "rgba(255,255,255,.03)",
+                    border: sel ? "1.5px solid rgba(245,166,35,.5)" : "1px solid rgba(255,255,255,.08)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: m.color }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{m.label}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{m.desc}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
 

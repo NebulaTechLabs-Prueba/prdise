@@ -694,6 +694,53 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          body_en: string | null
+          body_es: string | null
+          created_at: string
+          id: string
+          kind: string
+          link: string | null
+          read_at: string | null
+          recipient_id: string
+          title_en: string
+          title_es: string
+        }
+        Insert: {
+          body_en?: string | null
+          body_es?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          link?: string | null
+          read_at?: string | null
+          recipient_id: string
+          title_en: string
+          title_es: string
+        }
+        Update: {
+          body_en?: string | null
+          body_es?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          link?: string | null
+          read_at?: string | null
+          recipient_id?: string
+          title_en?: string
+          title_es?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_referrals: {
         Row: {
           id: string
@@ -804,6 +851,65 @@ export type Database = {
           {
             foreignKeyName: "partners_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_provider_configs: {
+        Row: {
+          account_email: string | null
+          client_id: string | null
+          client_secret: string | null
+          configured_at: string | null
+          configured_by: string | null
+          connected_account_id: string | null
+          default_currency: string | null
+          enabled: boolean
+          mode: string
+          provider: string
+          publishable_key: string | null
+          secret_key: string | null
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          account_email?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          configured_at?: string | null
+          configured_by?: string | null
+          connected_account_id?: string | null
+          default_currency?: string | null
+          enabled?: boolean
+          mode?: string
+          provider: string
+          publishable_key?: string | null
+          secret_key?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          account_email?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          configured_at?: string | null
+          configured_by?: string | null
+          connected_account_id?: string | null
+          default_currency?: string | null
+          enabled?: boolean
+          mode?: string
+          provider?: string
+          publishable_key?: string | null
+          secret_key?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_provider_configs_configured_by_fkey"
+            columns: ["configured_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -993,6 +1099,7 @@ export type Database = {
           id: string
           lang_pref: Database["public"]["Enums"]["language_code"]
           last_name: string | null
+          notification_prefs: Json
           phone: string | null
           points_balance: number
           points_spent: number
@@ -1017,6 +1124,7 @@ export type Database = {
           id: string
           lang_pref?: Database["public"]["Enums"]["language_code"]
           last_name?: string | null
+          notification_prefs?: Json
           phone?: string | null
           points_balance?: number
           points_spent?: number
@@ -1041,6 +1149,7 @@ export type Database = {
           id?: string
           lang_pref?: Database["public"]["Enums"]["language_code"]
           last_name?: string | null
+          notification_prefs?: Json
           phone?: string | null
           points_balance?: number
           points_spent?: number
