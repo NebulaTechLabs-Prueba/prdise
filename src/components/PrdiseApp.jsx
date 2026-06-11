@@ -5037,6 +5037,24 @@ function AdminPanel({ onClose }) {
   useEffect(() => {
     if (!customerDetailId) { setCustomerDetail(null); return; }
     let cancel = false;
+    // PM 2026-06-12: clientes "ghost" (sin perfil registrado) tienen un id
+    // sintético tipo "ghost-email@..." — el server action espera UUID y
+    // fallaba. Para ghost armamos el detalle directo desde la fila local
+    // y mostramos solo los datos derivados de facturas.
+    if (customerDetailId.startsWith("ghost-")) {
+      const ghost = (customers || []).find((c) => c.id === customerDetailId);
+      if (ghost) {
+        setCustomerDetail({
+          ...ghost,
+          recentInvoices: [],
+          recentBookings: [],
+        });
+      } else {
+        setCustomerDetail(null);
+      }
+      setCustomerDetailLoading(false);
+      return;
+    }
     (async () => {
       setCustomerDetailLoading(true);
       setCustomerDetail(null);
@@ -5048,7 +5066,7 @@ function AdminPanel({ onClose }) {
       }
     })();
     return () => { cancel = true; };
-  }, [customerDetailId]);
+  }, [customerDetailId, customers]);
   const [posts, setPosts] = useState(A_POSTS);
   const [postsFilter, setPostsFilter] = useState("all");
   const [postsPage, setPostsPage] = useState(1);
@@ -5592,31 +5610,45 @@ function AdminPanel({ onClose }) {
   const rangeMetrics = useMemo(() => {
     const s = dashboardSummary;
     const fmtPct = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`;
+    // PM 2026-06-12: si dashboardSummary aún no llegó, computamos desde
+    // invoices + customers locales para no mostrar "—" todo el tiempo.
+    const paidInvs = (invoices || []).filter((i) => i.status === "paid");
+    const cancelledInvs = (invoices || []).filter((i) => i.status === "cancelled");
+    const totalInvsNonDraft = (invoices || []).filter((i) => i.status && i.status !== "draft").length;
+    const computedRevenueCents = Math.round(paidInvs.reduce((acc, i) => acc + ((i.total || 0) * 100), 0));
+    const computedBookings = paidInvs.length;
+    const avgBookingCents = computedBookings > 0 ? computedRevenueCents / computedBookings : 0;
+    const recurringCustomers = (customers || []).filter((c) => (c.invoicesPaid || 0) > 1).length;
+    const cancelPct = totalInvsNonDraft > 0
+      ? Math.round((cancelledInvs.length / totalInvsNonDraft) * 100)
+      : null;
     return {
-      revenue: s?.revenueCents != null ? s.revenueCents / 100 : 0,
+      revenue: s?.revenueCents != null ? s.revenueCents / 100 : computedRevenueCents / 100,
       revenueDelta: fmtPct(s?.deltas?.revenuePct),
-      bookings: s?.bookingsCount ?? 0,
+      bookings: s?.bookingsCount ?? computedBookings,
       bookingsDelta: fmtPct(s?.deltas?.bookingsPct),
-      newUsers: s?.newUsersCount ?? 0,
+      newUsers: s?.newUsersCount ?? (customers || []).length,
       newUsersDelta: fmtPct(s?.deltas?.newUsersPct),
       chartData: [],
       chartTitle: dateRange === "7d"
         ? (lang === "es" ? "Ingresos (últimos 7 días)" : "Revenue (last 7 days)")
         : (lang === "es" ? "Ingresos (últimos 30 días)" : "Revenue (last 30 days)"),
       analytics: {
-        conversion: "—",
-        conversionDelta: "—",
-        avgBooking: s?.bookingsCount && s?.revenueCents != null && s.bookingsCount > 0
-          ? `$${(s.revenueCents / s.bookingsCount / 100).toFixed(2)}`
+        avgBooking: avgBookingCents > 0 ? `$${(avgBookingCents / 100).toFixed(2)}` : "—",
+        avgBookingDelta: computedBookings > 0
+          ? `${computedBookings} ${lang === "es" ? "facturas pagadas" : "paid invoices"}`
           : "—",
-        avgBookingDelta: "—",
-        repeat: "—",
-        repeatDelta: "—",
-        cancel: "—",
-        cancelDelta: "—",
+        repeat: recurringCustomers > 0 ? String(recurringCustomers) : "—",
+        repeatDelta: (customers || []).length > 0
+          ? `${Math.round((recurringCustomers / (customers || []).length) * 100)}% ${lang === "es" ? "de clientes" : "of customers"}`
+          : "—",
+        cancel: cancelPct != null ? `${cancelPct}%` : "—",
+        cancelDelta: cancelledInvs.length > 0
+          ? `${cancelledInvs.length} ${lang === "es" ? "canceladas" : "cancelled"}`
+          : "—",
       },
     };
-  }, [dashboardSummary, dateRange, lang]);
+  }, [dashboardSummary, dateRange, lang, invoices, customers]);
   // Compat con referencias antiguas: allBookings ahora es las recent bookings.
   const allBookings = recentBookings;
 
@@ -6328,24 +6360,23 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 }}><Database />{t("adm_export")}</button>
               </div>
             </div>
+            {/* PM 2026-06-12: removida "Tasa de Conversión" — el modelo
+                catálogo+referral no tiene un funnel medible (visitantes →
+                checkout). Las 3 cards restantes computan desde invoices y
+                customers locales en rangeMetrics.analytics. */}
             <div className="adm-stats">
-              <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Tasa de Conversión" : "Conversion Rate"}<InfoTip text={lang === "es" ? "Porcentaje de visitantes que completan una reserva. Calculado: (reservas ÷ visitantes) × 100." : "Percentage of website visitors who complete a booking. Calculated: (bookings ÷ unique visitors) × 100. Source: Analytics tracking."} /></span><div className="adm-stat-ico"><TrendingUp /></div></div>
-                <div className="adm-stat-val">{rangeMetrics.analytics.conversion}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.analytics.conversionDelta}</div>
-              </div>
               <div className="adm-stat green">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Reserva Promedio" : "Avg Booking"}<InfoTip text={lang === "es" ? "Valor promedio por reserva. Calculado: ingresos totales ÷ número de reservas." : "Average transaction value per booking. Calculated: total revenue ÷ number of bookings."} /></span><div className="adm-stat-ico"><CreditCard /></div></div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Factura Promedio" : "Avg Invoice"}<InfoTip text={lang === "es" ? "Monto promedio por factura pagada. Calculado: ingresos pagados ÷ # facturas pagadas." : "Average paid invoice amount. Calculated: paid revenue ÷ # paid invoices."} /></span><div className="adm-stat-ico"><CreditCard /></div></div>
                 <div className="adm-stat-val">{rangeMetrics.analytics.avgBooking}</div>
                 <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.analytics.avgBookingDelta}</div>
               </div>
               <div className="adm-stat sky">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Clientes Recurrentes" : "Repeat Customers"}<InfoTip text={lang === "es" ? "Porcentaje de clientes con 2+ reservas." : "Percentage of customers with 2+ bookings."} /></span><div className="adm-stat-ico"><Users /></div></div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Clientes Recurrentes" : "Repeat Customers"}<InfoTip text={lang === "es" ? "Clientes con 2+ facturas pagadas." : "Customers with 2+ paid invoices."} /></span><div className="adm-stat-ico"><Users /></div></div>
                 <div className="adm-stat-val">{rangeMetrics.analytics.repeat}</div>
                 <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.analytics.repeatDelta}</div>
               </div>
               <div className="adm-stat orange">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Tasa de Cancelación" : "Cancel Rate"}<InfoTip text={lang === "es" ? "Porcentaje de reservas canceladas o reembolsadas." : "Percentage of bookings cancelled or refunded."} /></span><div className="adm-stat-ico"><TrendingDown /></div></div>
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang === "es" ? "Tasa de Cancelación" : "Cancel Rate"}<InfoTip text={lang === "es" ? "% de facturas canceladas sobre el total de no-borradores." : "% of cancelled invoices over non-draft total."} /></span><div className="adm-stat-ico"><TrendingDown /></div></div>
                 <div className="adm-stat-val">{rangeMetrics.analytics.cancel}</div>
                 <div className="adm-stat-trend up"><TrendingDown />{rangeMetrics.analytics.cancelDelta}</div>
               </div>
@@ -9828,6 +9859,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             )}
             {!customerDetailLoading && customerDetail && (() => {
               const d = customerDetail;
+              const isGhost = d.role === "ghost" || (d.id || "").startsWith("ghost-");
               const fullName = [d.firstName, d.lastName].filter(Boolean).join(" ") || d.email || "—";
               const totalUSD = (d.totalInvestedCents || 0) / 100;
               const freqLabel = d.mostFrequentServiceType
@@ -9842,7 +9874,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       {(fullName[0] || "?").toUpperCase()}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: 0, marginBottom: 4 }}>{fullName.toUpperCase()}</h3>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                        <h3 style={{ margin: 0 }}>{fullName.toUpperCase()}</h3>
+                        {isGhost && (
+                          <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 99, background: "rgba(245,166,35,.15)", color: "#F5A623", border: "1px solid rgba(245,166,35,.35)" }}>
+                            {lang === "es" ? "Sin perfil registrado" : "No registered profile"}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)" }}>
                         {d.email || "—"}{d.phone ? <> · <span style={{ color: "rgba(255,255,255,.7)" }}>{d.phone}</span></> : null}
                       </div>
