@@ -26,6 +26,10 @@ import {
   resendSignupOtp as sbResendSignupOtp,
 } from "@/lib/auth/actions";
 import { submitContactMessage as sbSubmitContact } from "@/lib/contact/actions";
+import {
+  listMyInvoices as sbListMyInvoices,
+  rateInvoice as sbRateInvoice,
+} from "@/lib/account/invoices";
 import { completeBooking as sbCompleteBooking } from "@/lib/admin/bookings";
 import {
   createStay as sbCreateStay, updateStay as sbUpdateStay, deleteStay as sbDeleteStay,
@@ -3032,6 +3036,198 @@ function TransferResultsPage() {
 //   - "Mis Facturas": stub read-only (Fase 2 lista facturas reales)
 //   - "Seguridad": cambiar contraseña, cerrar sesion en todos los dispositivos,
 //     desactivar cuenta.
+function MyInvoicesPanel() {
+  const { lang } = useLang();
+  const [invs, setInvs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [rating, setRating] = useState(null); // { invoice, score, comment, saving }
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const list = await sbListMyInvoices();
+      setInvs(Array.isArray(list) ? list : []);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { reload(); }, []);
+
+  // PM 2026-06-11: solo facturas con status === "paid" se pueden calificar.
+  // El score que el cliente da se propaga server-side a `reviews` por cada
+  // servicio (tour/stay/transfer) que el invoice incluya.
+  const statusLabel = (s) => {
+    if (s === "paid") return lang === "es" ? "PAGADA" : "PAID";
+    if (s === "sent") return lang === "es" ? "ENVIADA" : "SENT";
+    if (s === "pending") return lang === "es" ? "PENDIENTE" : "PENDING";
+    if (s === "overdue") return lang === "es" ? "VENCIDA" : "OVERDUE";
+    if (s === "draft") return lang === "es" ? "BORRADOR" : "DRAFT";
+    if (s === "cancelled") return lang === "es" ? "CANCELADA" : "CANCELLED";
+    return (s || "").toUpperCase();
+  };
+
+  return (
+    <div className="acc-panel">
+      <h3>{lang === "es" ? "Mis Facturas" : "My Invoices"}</h3>
+      {loading ? (
+        <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,.4)" }}>
+          <Loader2 style={{ width: 24, height: 24, animation: "spin 1s linear infinite" }} />
+        </div>
+      ) : invs.length === 0 ? (
+        <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 14, background: "rgba(255,255,255,.02)" }}>
+          <FileText style={{ width: 38, height: 38, color: "rgba(255,255,255,.3)", marginBottom: 10 }} />
+          <h4 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
+            {lang === "es" ? "Aún no hay facturas" : "No invoices yet"}
+          </h4>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", maxWidth: 480, margin: "0 auto", lineHeight: 1.5 }}>
+            {lang === "es"
+              ? "Cuando el equipo PRDISE te emita una factura tras coordinar tu servicio, va a aparecer acá."
+              : "Once the PRDISE team issues an invoice after coordinating your service, it will show up here."}
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {invs.map((inv) => {
+            const canRate = inv.status === "paid" && inv.rating == null;
+            const totalUsd = (inv.totalCents || 0) / 100;
+            return (
+              <div key={inv.id} style={{ padding: "16px 18px", borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "monospace", marginBottom: 4 }}>{inv.number}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span className={`adm-pill ${inv.status}`} style={{ fontSize: 10 }}>{statusLabel(inv.status)}</span>
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
+                        {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString(lang === "es" ? "es-PR" : "en-US") : "—"}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#F5A623", fontFamily: "monospace" }}>${totalUsd.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {inv.rating != null ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 10, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.3)" }} title={lang === "es" ? "Ya calificaste esta factura" : "Already rated"}>
+                        {Array.from({ length: 5 }, (_, i) => (
+                          <Star key={i} style={{ width: 13, height: 13, fill: i < inv.rating ? "#F5A623" : "transparent", color: "#F5A623" }} />
+                        ))}
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--gold)", marginLeft: 2 }}>{inv.rating}/5</span>
+                      </div>
+                    ) : canRate ? (
+                      <button
+                        onClick={() => setRating({ invoice: inv, score: 0, comment: "", saving: false })}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, background: "linear-gradient(135deg,#F5A623,#EF6C2B)", border: "none", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: ".05em", textTransform: "uppercase" }}
+                      >
+                        <Star style={{ width: 13, height: 13 }} />{lang === "es" ? "Calificar" : "Rate"}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", display: "inline-flex", alignItems: "center", gap: 5 }} title={lang === "es" ? "Solo facturas pagadas pueden calificarse" : "Only paid invoices can be rated"}>
+                        <Star style={{ width: 12, height: 12, opacity: 0.4 }} />
+                        {lang === "es" ? "Calificable al pagar" : "Rate after payment"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {inv.items.length > 0 && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.05)", fontSize: 11.5, color: "rgba(255,255,255,.55)" }}>
+                    {inv.items.map((it, i) => (
+                      <div key={i}>• {it.description} · ×{it.quantity}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Rate modal */}
+      {rating && (
+        <div className="adm-modal-bg" onClick={() => rating.saving || setRating(null)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <button className="adm-modal-close" onClick={() => rating.saving || setRating(null)}><X /></button>
+            <h3 style={{ marginBottom: 4 }}>
+              {lang === "es" ? "CALIFICA TU EXPERIENCIA" : "RATE YOUR EXPERIENCE"}
+            </h3>
+            <p className="adm-modal-sub">
+              {lang === "es"
+                ? "Tu nota aplica a todos los servicios incluidos en esta factura."
+                : "Your score applies to every service included in this invoice."}
+            </p>
+            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 14, lineHeight: 1.5 }}>
+              {lang === "es" ? "Factura " : "Invoice "}
+              <strong style={{ fontFamily: "monospace", color: "var(--gold)" }}>{rating.invoice.number}</strong>
+              {" · "}
+              {rating.invoice.items.length} {lang === "es" ? (rating.invoice.items.length === 1 ? "servicio" : "servicios") : (rating.invoice.items.length === 1 ? "service" : "services")}
+            </p>
+
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "10px 0 18px" }}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setRating({ ...rating, score: n })}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4 }}
+                  title={`${n}/5`}
+                >
+                  <Star
+                    style={{
+                      width: 36, height: 36,
+                      fill: n <= rating.score ? "#F5A623" : "transparent",
+                      color: n <= rating.score ? "#F5A623" : "rgba(255,255,255,.3)",
+                      transition: "all .15s",
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <div className="adm-fg">
+              <label className="adm-fl">{lang === "es" ? "Comentario (opcional)" : "Comment (optional)"}</label>
+              <textarea
+                className="adm-fi"
+                rows={3}
+                value={rating.comment}
+                onChange={(e) => setRating({ ...rating, comment: e.target.value })}
+                placeholder={lang === "es" ? "Contanos cómo fue tu experiencia…" : "Tell us how your experience was…"}
+              />
+            </div>
+
+            <div className="adm-modal-actions">
+              <button className="adm-btn adm-btn-ghost" onClick={() => setRating(null)} disabled={rating.saving}>
+                {lang === "es" ? "Cancelar" : "Cancel"}
+              </button>
+              <button
+                className="adm-btn adm-btn-primary"
+                disabled={rating.saving || rating.score < 1}
+                onClick={async () => {
+                  if (rating.score < 1) return;
+                  setRating({ ...rating, saving: true });
+                  try {
+                    const fd = new FormData();
+                    fd.append("invoiceId", rating.invoice.id);
+                    fd.append("rating", String(rating.score));
+                    if (rating.comment.trim()) fd.append("comment", rating.comment.trim());
+                    const res = await sbRateInvoice(fd);
+                    if (!res?.ok) { alert(res?.error || "Error"); setRating({ ...rating, saving: false }); return; }
+                    setRating(null);
+                    reload();
+                  } catch (e) {
+                    alert(e?.message || String(e));
+                    setRating({ ...rating, saving: false });
+                  }
+                }}
+              >
+                {rating.saving
+                  ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
+                  : <Check />}
+                {rating.saving
+                  ? (lang === "es" ? "Enviando…" : "Sending…")
+                  : (lang === "es" ? "Enviar calificación" : "Submit rating")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AccountPage() {
   const [tab, setTab] = useState("info");
   const { t, lang } = useLang();
@@ -3227,22 +3423,9 @@ function AccountPage() {
           </div>
         )}
 
-        {/* ── INVOICES TAB (stub) ── */}
+        {/* ── INVOICES TAB ── */}
         {tab === "invoices" && (
-          <div className="acc-panel">
-            <h3>{lang === "es" ? "Mis Facturas" : "My Invoices"}</h3>
-            <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 14, background: "rgba(255,255,255,.02)" }}>
-              <FileText style={{ width: 42, height: 42, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
-              <h4 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".06em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
-                {lang === "es" ? "Próximamente" : "Coming soon"}
-              </h4>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", maxWidth: 480, margin: "0 auto", lineHeight: 1.5 }}>
-                {lang === "es"
-                  ? "Aquí verás las facturas que el equipo PRDISE te envíe tras coordinar tu servicio por WhatsApp. Cada factura incluirá un enlace de pago seguro."
-                  : "You'll see invoices issued by the PRDISE team after coordinating your service via WhatsApp. Each invoice will include a secure payment link."}
-              </p>
-            </div>
-          </div>
+          <MyInvoicesPanel />
         )}
 
         {/* ── SECURITY TAB ── */}

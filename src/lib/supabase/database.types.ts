@@ -676,6 +676,8 @@ export type Database = {
           paid_at: string | null
           payment_ref: string | null
           pdf_url: string | null
+          rated_at: string | null
+          rating: number | null
           status: string
           stripe_payment_link_id: string | null
           stripe_payment_link_url: string | null
@@ -700,6 +702,8 @@ export type Database = {
           paid_at?: string | null
           payment_ref?: string | null
           pdf_url?: string | null
+          rated_at?: string | null
+          rating?: number | null
           status?: string
           stripe_payment_link_id?: string | null
           stripe_payment_link_url?: string | null
@@ -724,6 +728,8 @@ export type Database = {
           paid_at?: string | null
           payment_ref?: string | null
           pdf_url?: string | null
+          rated_at?: string | null
+          rating?: number | null
           status?: string
           stripe_payment_link_id?: string | null
           stripe_payment_link_url?: string | null
