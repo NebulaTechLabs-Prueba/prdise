@@ -5618,7 +5618,10 @@ function AdminPanel({ onClose }) {
     let res = { ok: false, error: "" };
     try {
       const fd = new FormData();
-      fd.append("id", id);
+      // PM 2026-06-11: las server actions esperan UUID en `id` (no el slug).
+      // mapStayToHotel y mapTourToTour exponen el UUID como `dbId`. Si el
+      // dbId no está disponible (item creado en local), fallback al id.
+      fd.append("id", item.dbId || id);
       fd.append("active", nextActive ? "true" : "false");
       const priceCents = String(Math.round((item.price || 0) * 100));
       if (type === "hotels") {
@@ -5660,10 +5663,12 @@ function AdminPanel({ onClose }) {
     if (!confirm("Delete this item? This cannot be undone.")) return;
     const setter = type === "hotels" ? setHotels : type === "tours" ? setTours : setVehicles;
     const list = type === "hotels" ? hotels : type === "tours" ? tours : vehicles;
+    const item = list.find((it) => it.id === id);
     let res = { ok: false, error: "" };
     try {
       const fd = new FormData();
-      fd.append("id", id);
+      // Mismo motivo que en toggleStatus: el server espera UUID en `id`.
+      fd.append("id", item?.dbId || id);
       if (type === "hotels") res = await sbDeleteStay(fd);
       else if (type === "tours") res = await sbDeleteTour(fd);
       else if (type === "vehicles") res = await sbDeleteVehicle(fd);
@@ -6836,54 +6841,52 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-card-head"><div className="adm-card-title"><MapPin />{lang==="es"?"Rutas y Precios":"Routes & Pricing"}</div></div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang==="es"?"Ruta":"Route"}</th><th>{lang==="es"?"Tipo":"Type"}</th><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Precio Base":"Base Price"}</th><th>Peak</th><th>{lang==="es"?"Conductores Asignados":"Assigned Drivers"}</th><th>Auto</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+                    {/* PM 2026-06-11: tabla rediseñada. Antes mostraba campos
+                        que no se pueblan (name, basePrice, peak, vehicle string)
+                        y una columna de Conductores Asignados que no aplica al
+                        modelo: el conductor pertenece al vehículo, no a la
+                        ruta. Ahora derivamos los datos de mapRouteToRoute y
+                        resolvemos el vehículo asignado por FK. */}
+                    <thead><tr>
+                      <th>{lang==="es"?"Ruta":"Route"}</th>
+                      <th>{lang==="es"?"Vehículo":"Vehicle"}</th>
+                      <th>{lang==="es"?"Precio base":"Base price"}</th>
+                      <th>{lang==="es"?"Distancia / Duración":"Distance / Duration"}</th>
+                      <th>{lang==="es"?"Popular":"Featured"}</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: "right" }}>Actions</th>
+                    </tr></thead>
                     <tbody>
-                      {paginate(routes, routesPage, routesPerPage).map((r) => (
+                      {routes.length === 0 && (
+                        <tr><td colSpan={7} style={{ textAlign: "center", padding: 30, color: "rgba(255,255,255,.4)" }}>
+                          {lang === "es" ? "Sin rutas todavía. Crea la primera con \"Nueva ruta\" arriba." : "No routes yet. Click \"New route\" above."}
+                        </td></tr>
+                      )}
+                      {paginate(routes, routesPage, routesPerPage).map((r) => {
+                        const veh = (vehicles || []).find((v) => v.id === r.vehicleId || v.dbId === r.vehicleId);
+                        const vehLabel = veh ? `${veh.name} · ${veh.seats || 0} pax · ${veh.bags || 0} ${lang === "es" ? "maletas" : "bags"}` : (lang === "es" ? "— Sin vehículo —" : "— No vehicle —");
+                        return (
                         <tr key={r.id}>
-                          <td style={{ fontWeight: 600 }}>{r.name}</td>
-                          <td><span className="adm-pill info">{r.type}</span></td>
-                          <td style={{ color: "rgba(255,255,255,.7)", fontSize: 12 }}>{r.vehicle}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700 }}>${r.basePrice}</td>
-                          <td style={{ color: r.peak > 0 ? "#F5A623" : "rgba(255,255,255,.4)", fontSize: 12 }}>{r.peak > 0 ? `+${r.peak}%` : "—"}</td>
                           <td>
-                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 180 }}>
-                              {(r.assignedDrivers || []).map(dId => {
-                                const dr = drivers.find(x => x.id === dId);
-                                return dr ? (
-                                  <span key={dId} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", borderRadius: 99, background: "rgba(41,171,226,.1)", color: "#29ABE2", fontSize: 10, fontWeight: 700 }}>
-                                    {dr.name.split(" ")[0]}
-                                    <button onClick={() => setRoutes(routes.map(x => x.id === r.id ? { ...x, assignedDrivers: x.assignedDrivers.filter(id => id !== dId) } : x))} style={{ background: "none", border: "none", color: "#29ABE2", cursor: "pointer", padding: 0, fontSize: 11, lineHeight: 1 }}>×</button>
-                                  </span>
-                                ) : null;
-                              })}
-                              <select onChange={(e) => {
-                                const val = e.target.value;
-                                if (val && !(r.assignedDrivers || []).includes(val)) {
-                                  setRoutes(routes.map(x => x.id === r.id ? { ...x, assignedDrivers: [...(x.assignedDrivers || []), val] } : x));
-                                }
-                                e.target.value = "";
-                              }} className="sort-select" style={{ padding: "4px 28px 4px 8px", borderRadius: 6, fontSize: 10, maxWidth: 80, minWidth: 65 }}>
-                                <option value="">+ Add</option>
-                                {drivers.filter(d => !(r.assignedDrivers || []).includes(d.id)).map(d => (
-                                  <option key={d.id} value={d.id}>{d.name.split(" ")[0]} {d.name.split(" ")[1]?.[0] || ""}</option>
-                                ))}
-                              </select>
-                            </div>
+                            <div style={{ fontWeight: 700, color: "#fff" }}>{r.from || "—"} <span style={{ color: "rgba(255,255,255,.4)" }}>→</span> {r.to || "—"}</div>
+                          </td>
+                          <td style={{ color: veh ? "rgba(255,255,255,.8)" : "rgba(245,166,35,.7)", fontSize: 12 }}>{vehLabel}</td>
+                          <td style={{ color: "#F5A623", fontWeight: 700, fontFamily: "monospace" }}>${r.price || 0}</td>
+                          <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>
+                            {r.distanceKm ? `${r.distanceKm} km` : "—"}{r.durationMinutes ? ` · ${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}min` : ""}
                           </td>
                           <td>
-                            <button onClick={() => setRoutes(routes.map(x => x.id === r.id ? { ...x, autoAssign: !x.autoAssign } : x))} title={r.autoAssign ? "Auto-assign ON — new bookings will be auto-assigned" : "Auto-assign OFF — manual assignment only"}
-                              style={{ background: "transparent", border: `1px solid ${r.autoAssign ? "rgba(141,198,63,.4)" : "rgba(255,255,255,.1)"}`, borderRadius: 6, padding: "4px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, transition: "all .2s" }}>
-                              <Zap style={{ width: 11, height: 11, color: r.autoAssign ? "#8DC63F" : "rgba(255,255,255,.3)" }} />
-                              <span style={{ fontSize: 10, fontWeight: 700, color: r.autoAssign ? "#8DC63F" : "rgba(255,255,255,.35)" }}>{r.autoAssign ? "ON" : "OFF"}</span>
-                            </button>
+                            {r.featured
+                              ? <span className="adm-pill" style={{ background: "rgba(245,166,35,.15)", color: "#F5A623", fontSize: 10 }}>★ POPULAR</span>
+                              : <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>}
                           </td>
-                          <td><span className={`adm-pill ${r.status === "active" ? "published" : "hidden"}`}>{r.status}</span></td>
+                          <td><span className={`adm-pill ${r.active !== false ? "published" : "hidden"}`}>{r.active !== false ? (lang === "es" ? "ACTIVA" : "ACTIVE") : (lang === "es" ? "INACTIVA" : "INACTIVE")}</span></td>
                           <td>
                             <div className="adm-row-actions">
                               <button className="adm-icon-btn" onClick={async () => {
                                 const prev = routes;
-                                const newActive = r.status !== "active";
-                                setRoutes(routes.map(x => x.id === r.id ? { ...x, status: newActive ? "active" : "inactive" } : x));
+                                const newActive = r.active === false;
+                                setRoutes(routes.map(x => x.id === r.id ? { ...x, active: newActive } : x));
                                 try {
                                   const fd = new FormData();
                                   fd.append("id", r.id);
@@ -6896,10 +6899,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   // defaultea a false y resetearíamos la
                                   // marca de "popular" al togglear activo).
                                   fd.append("featured", r.featured ? "true" : "false");
+                                  if (r.vehicleId) fd.append("vehicle_id", r.vehicleId);
                                   const res = await sbUpdateRoute(fd);
                                   if (!res?.ok) { setRoutes(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
                                 } catch (e) { setRoutes(prev); alert("Error: " + e.message); }
-                              }}>{r.status === "active" ? <EyeOff /> : <Eye />}</button>
+                              }}>{r.active !== false ? <EyeOff /> : <Eye />}</button>
                               <button className="adm-icon-btn" onClick={() => setEditing({ type: "route", item: r })}><Pencil /></button>
                               <button className="adm-icon-btn danger" onClick={async () => {
                                 if (!confirm(lang==="es"?"¿Eliminar esta ruta?":"Delete this route?")) return;
@@ -6914,7 +6918,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -7123,8 +7128,21 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card">
                 <div className="adm-card-head">
                   <div className="adm-card-title"><Users />{lang === "es" ? "Lista de Conductores" : "Drivers Roster"}</div>
-                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingDriver({ id: "new", name: "", phone: "", email: "", vehicle: "", plate: "", license: "", emergencyPhone: "", trips: 0, rating: 5.0, status: "available", webVisible: true })}><Plus />{lang === "es" ? "Agregar Conductor" : "Add Driver"}</button>
+                  {/* PM 2026-06-11: agregar conductor = agregar empleado. Para
+                      evitar duplicar entidades, el botón "Agregar" salta a la
+                      sección de Empleados y Roles donde el admin crea el
+                      usuario; al editar un conductor existente, sí seguimos
+                      mostrando el modal específico para campos como licencia
+                      y vehículo asignado. */}
+                  <button className="adm-btn adm-btn-primary" onClick={() => { setSection("settings"); setSettingsTab("team"); setEditingUser({ id: "new", name: "", email: "", phone: "", role: lang === "es" ? "Administrador" : "Administrator", roleRaw: "admin", customRoleId: null, status: "active", department: lang === "es" ? "Operaciones" : "Operations", position: lang === "es" ? "Conductor" : "Driver", country: "" }); }}>
+                    <Plus />{lang === "es" ? "Agregar como empleado" : "Add as employee"}
+                  </button>
                 </div>
+                <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", margin: "0 0 12px", lineHeight: 1.55 }}>
+                  {lang === "es"
+                    ? "Los conductores son empleados con cargo \"Conductor\" en Empleados y Roles. Al agregar uno nuevo, te llevamos a esa sección para que crees la cuenta correspondiente."
+                    : "Drivers are employees with the \"Driver\" position in Employees & Roles. When adding a new one, we take you there to create the matching account."}
+                </p>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
                     <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Contacto":"Contact"}</th><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>{lang==="es"?"Calificación":"Rating"}</th><th>Web</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
@@ -10743,7 +10761,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     // Ensure required defaults for new services (avoid undefined causing crashes on public page)
     if (isNew) {
       if (!updated.id) updated.id = `${type}-${Date.now().toString(36)}`;
-      if (!updated.name) updated.name = updated.nameEN || nameEN || (type === "hotel" ? "New Stay" : type === "tour" ? "New Tour" : "New Item");
+      // Solo hoteles/tours/posts tienen "name"; las rutas se identifican por
+      // "from → to" así que no le seteamos placeholder "New Item".
+      if (!updated.name && (type === "hotel" || type === "tour" || type === "post")) {
+        updated.name = updated.nameEN || nameEN || (type === "hotel" ? "New Stay" : type === "tour" ? "New Tour" : "New Post");
+      }
       if (!updated.img) updated.img = imageUrl || (imageList[0]) || "https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800";
       if (!updated.gallery) updated.gallery = imageList.length ? imageList : (updated.img ? [updated.img] : []);
       if (!updated.desc) updated.desc = "";
