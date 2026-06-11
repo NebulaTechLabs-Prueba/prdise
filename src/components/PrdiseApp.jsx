@@ -379,9 +379,14 @@ async function loadInitialData() {
       import("@/lib/queries/settings"),
     ]);
     const sb = createClient();
+    // PM 2026-06-11: pasamos `activeOnly: false` para traer también los stays
+    // y tours INACTIVOS (oculto/borrador). El admin necesita verlos en su panel
+    // para gestionarlos; las páginas públicas ya filtran por status del lado
+    // del cliente (HomePage, /tours, /stays). Antes el conteo desplegaba 32
+    // en vez de los 33 reales del DB porque uno estaba con active=false.
     const [stays, tours, routes, locations, vehicles, posts, partners, settings] = await Promise.all([
-      getStays(sb),
-      getTours(sb),
+      getStays(sb, { activeOnly: false }),
+      getTours(sb, { activeOnly: false }),
       getTransferRoutes(sb),
       getTransferLocations(sb),
       getVehicles(sb),
