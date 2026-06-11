@@ -1637,6 +1637,82 @@ export type Database = {
           },
         ]
       }
+      transfer_booking_legs: {
+        Row: {
+          bags: number
+          booking_id: string
+          created_at: string
+          from_point: string
+          id: string
+          leg_order: number
+          notes: string | null
+          pax: number
+          price_cents: number
+          route_template_id: string | null
+          scheduled_date: string | null
+          scheduled_time: string | null
+          to_point: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          bags?: number
+          booking_id: string
+          created_at?: string
+          from_point: string
+          id?: string
+          leg_order?: number
+          notes?: string | null
+          pax?: number
+          price_cents?: number
+          route_template_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          to_point: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          bags?: number
+          booking_id?: string
+          created_at?: string
+          from_point?: string
+          id?: string
+          leg_order?: number
+          notes?: string | null
+          pax?: number
+          price_cents?: number
+          route_template_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          to_point?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfer_booking_legs_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_booking_legs_route_template_id_fkey"
+            columns: ["route_template_id"]
+            isOneToOne: false
+            referencedRelation: "transfer_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_booking_legs_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transfer_locations: {
         Row: {
           active: boolean
@@ -1684,6 +1760,7 @@ export type Database = {
           pricing_unit: string | null
           to_location: string
           updated_at: string
+          vehicle_id: string | null
         }
         Insert: {
           active?: boolean
@@ -1698,6 +1775,7 @@ export type Database = {
           pricing_unit?: string | null
           to_location: string
           updated_at?: string
+          vehicle_id?: string | null
         }
         Update: {
           active?: boolean
@@ -1712,8 +1790,17 @@ export type Database = {
           pricing_unit?: string | null
           to_location?: string
           updated_at?: string
+          vehicle_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "transfer_routes_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_permissions: {
         Row: {

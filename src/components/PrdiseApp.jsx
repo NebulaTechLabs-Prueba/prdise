@@ -311,6 +311,8 @@ function mapRouteToRoute(r) {
     featured: r.featured === true,
     active: r.active !== false,
     pricingUnit: r.pricing_unit || "per_unit",
+    // PM 2026-06-11: vehicle FK opcional en DB pero requerido en UI nueva.
+    vehicleId: r.vehicle_id || null,
   };
 }
 
@@ -9779,6 +9781,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               // `featured` marca la ruta como popular para promoción en
               // /transfers > "Popular Routes". Solo featured = true aparece.
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
+              // PM 2026-06-11: vehicle FK requerido para nuevas rutas.
+              if (ownedUpdate.vehicleId) fd.append("vehicle_id", ownedUpdate.vehicleId);
               const action = editing.isNew ? sbCreateRoute : sbUpdateRoute;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
@@ -9910,6 +9914,8 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [routeDuration, setRouteDuration] = useState(it.durationMinutes ?? "");
   const [routeFeatured, setRouteFeatured] = useState(!!it.featured);
   const [routePricingUnit, setRoutePricingUnit] = useState(it.pricingUnit || "per_unit");
+  // PM 2026-06-11: cada ruta-template debe tener un vehículo asignado.
+  const [routeVehicleId, setRouteVehicleId] = useState(it.vehicleId || "");
   // Pricing mixto + categoría (PM 2026-06-10): aplica a stays/tours/route.
   const defaultPricingUnit = type === "hotel" ? "per_night" : type === "tour" ? "per_person" : "per_unit";
   const [pricingUnit, setPricingUnit] = useState(it.pricingUnit || defaultPricingUnit);
@@ -10216,11 +10222,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.durationMinutes = routeDuration === "" ? null : (parseInt(routeDuration, 10) || null);
       updated.featured = !!routeFeatured;
       updated.pricingUnit = routePricingUnit || "per_unit";
+      updated.vehicleId = routeVehicleId || null;
       // Validación cliente: el server también valida pero acá damos feedback
       // inmediato sin un round-trip.
       if (!updated.from) { alert(lang === "es" ? "El campo 'Desde' es obligatorio." : "'From' is required."); return; }
       if (!updated.to) { alert(lang === "es" ? "El campo 'Hasta' es obligatorio." : "'To' is required."); return; }
       if (!routePrice || updated.price <= 0) { alert(lang === "es" ? "Ingresá un precio base mayor a cero." : "Enter a base price greater than zero."); return; }
+      if (!routeVehicleId) { alert(lang === "es" ? "Asigná un vehículo a la ruta antes de guardar." : "Assign a vehicle to the route before saving."); return; }
     }
     // Pricing mixto + categoría — aplica a stays/tours (route ya tiene su propio
     // pricingUnit gestionado arriba).
@@ -10536,6 +10544,27 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Distancia (km)" : "Distance (km)"}</label><input type="number" step="0.1" min="0" className="adm-fi" value={routeDistance} onChange={(e) => setRouteDistance(e.target.value)} placeholder={lang === "es" ? "Opcional" : "Optional"} /></div>
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Duración (min)" : "Duration (min)"}</label><input type="number" min="0" className="adm-fi" value={routeDuration} onChange={(e) => setRouteDuration(e.target.value)} placeholder={lang === "es" ? "Opcional" : "Optional"} /></div>
+            </div>
+            {/* PM 2026-06-11: cada ruta exige un vehículo asignado. Listamos
+                la flota activa con su capacidad de pax + equipaje para que el
+                admin elija el que mejor encaje. */}
+            <div className="adm-fg">
+              <label className="adm-fl">
+                {lang === "es" ? "Vehículo asignado" : "Assigned vehicle"} <span style={{ color: "#EF6C2B" }}>*</span>
+              </label>
+              <select className="adm-fi" value={routeVehicleId} onChange={(e) => setRouteVehicleId(e.target.value)}>
+                <option value="">{lang === "es" ? "— Seleccioná un vehículo —" : "— Choose a vehicle —"}</option>
+                {(Array.isArray(VEHICLES) ? VEHICLES : []).filter(v => v.active !== false).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} · {v.seats || 0} pax · {v.bags || 0} {lang === "es" ? "maletas" : "bags"}
+                  </option>
+                ))}
+              </select>
+              {(!VEHICLES || VEHICLES.length === 0) && (
+                <div style={{ fontSize: 10.5, color: "rgba(245,166,35,.85)", marginTop: 4 }}>
+                  ⚠ {lang === "es" ? "No hay vehículos cargados. Creá uno en \"Vehículos\" antes de crear esta ruta." : "No vehicles loaded. Create one in \"Vehicles\" first."}
+                </div>
+              )}
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", marginTop: 6 }}>
               <input type="checkbox" checked={routeFeatured} onChange={(e) => setRouteFeatured(e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />

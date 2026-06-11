@@ -290,6 +290,10 @@ const transferRouteBaseSchema = z.object({
   active: booleanFlagSchema.default(true),
   // Marca de promoción: si true, aparece en "Popular Routes" del público.
   featured: booleanFlagSchema.default(false),
+  // PM 2026-06-11: cada ruta-template debe tener un vehículo asignado.
+  // Nullable en DB para no romper rutas legacy; el formulario nuevo lo
+  // requiere y valida acá si está vacío.
+  vehicle_id: uuidSchema.optional().nullable().or(z.literal("")),
 });
 
 export const createTransferRouteSchema = transferRouteBaseSchema;

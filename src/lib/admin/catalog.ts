@@ -492,6 +492,7 @@ export async function createTransferRoute(
     max_pax: formData.get("max_pax"),
     active: asBool(formData, "active"),
     featured: asBool(formData, "featured"),
+    vehicle_id: formData.get("vehicle_id") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -513,6 +514,7 @@ export async function createTransferRoute(
       max_pax: d.max_pax,
       active: d.active,
       featured: d.featured,
+      vehicle_id: d.vehicle_id || null,
     })
     .select("id")
     .single();
@@ -555,6 +557,7 @@ export async function updateTransferRoute(
     max_pax: formData.get("max_pax"),
     active: asBool(formData, "active"),
     featured: asBool(formData, "featured"),
+    vehicle_id: formData.get("vehicle_id") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -576,6 +579,7 @@ export async function updateTransferRoute(
       max_pax: d.max_pax,
       active: d.active,
       featured: d.featured,
+      vehicle_id: d.vehicle_id || null,
     })
     .eq("id", id);
 
