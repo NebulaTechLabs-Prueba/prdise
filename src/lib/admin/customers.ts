@@ -136,17 +136,16 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
     };
   });
 
-  // 5) Clientes "fantasma" (PM 2026-06-12): facturas manuales donde el admin
-  //    tipeó nombre/email sin que el cliente tenga perfil registrado. El
-  //    usuario quiere verlos en la lista también — pueden representar a un
-  //    cliente real que aún no se registró por /register. Los agregamos como
-  //    filas adicionales con datos derivados solo de las facturas.
+  // 5) Clientes "fantasma" (PM 2026-06-12): cualquier factura cuyo
+  //    `customer_email` no coincida con ningún perfil registrado se trata
+  //    como cliente sin cuenta. NO se filtra por user_id IS NULL — incluso
+  //    si la factura está atada a otro perfil pero el admin tipeó otro
+  //    email, ese email merece su fila propia en la lista.
   const profileEmails = new Set(items.map((c) => (c.email || "").toLowerCase().trim()).filter(Boolean));
   type GhostInvoice = { id: string; customer_name: string | null; customer_email: string | null; customer_phone: string | null; total_cents: number; status: string; created_at: string | null };
   const { data: ghostInvs } = await supabase
     .from("invoices")
-    .select("id, customer_name, customer_email, customer_phone, total_cents, status, created_at")
-    .is("user_id", null);
+    .select("id, customer_name, customer_email, customer_phone, total_cents, status, created_at");
   const ghostsByEmail = new Map<string, {
     customer_name: string;
     phone: string | null;

@@ -103,6 +103,7 @@ import {
 import {
   listAllUsers as sbListAllUsers,
   updateUserRole as sbUpdateUserRole,
+  createEmployeeAccount as sbCreateEmployeeAccount,
 } from "@/lib/admin/users";
 import {
   listInvoices as sbListInvoices,
@@ -1920,8 +1921,12 @@ function HotelsList() {
   const [sortBy, setSortBy] = useState("featured");
   const [favs, setFavs] = useState([]);
   useEffect(() => { setFavs(PRDISE.load("favs", [])); }, []);
-  const zones = useMemo(() => [...new Set(HOTELS.map((h) => h.zone))], []);
-  const types = useMemo(() => [...new Set(HOTELS.map((h) => h.type))], []);
+  // PM 2026-06-12: filtros (zona, tipo) solo derivan de stays publicados.
+  // Antes incluían hidden/draft → aparecían opciones "fantasma" que daban 0
+  // resultados (zona Beach + Villa con count 1 pero el stay estaba oculto).
+  const visibleHotels = useMemo(() => HOTELS.filter((h) => !h.status || h.status === "published"), []);
+  const zones = useMemo(() => [...new Set(visibleHotels.map((h) => h.zone))], [visibleHotels]);
+  const types = useMemo(() => [...new Set(visibleHotels.map((h) => h.type))], [visibleHotels]);
   const toggleArr = (k, v) => setFilters((f) => {
     const a = f[k], i = a.indexOf(v);
     return { ...f, [k]: i >= 0 ? a.filter((x) => x !== v) : [...a, v] };
@@ -1962,7 +1967,7 @@ function HotelsList() {
                       <label key={it} className="panel-check">
                         <input type="checkbox" checked={filters[g.key].includes(it)} onChange={() => toggleArr(g.key, it)} />
                         <span style={{flex:1}}>{it}</span>
-                        <span className="count">{HOTELS.filter((h) => h[g.field] === it).length}</span>
+                        <span className="count">{visibleHotels.filter((h) => h[g.field] === it).length}</span>
                       </label>
                     ))}
                   </div>
@@ -4978,6 +4983,11 @@ function AdminPanel({ onClose }) {
   useEffect(() => { PRDISE.save("userServicePerms", userServicePerms); }, [userServicePerms]);
   const [drivers, setDrivers] = useState(A_DRIVERS);
   const [editingDriver, setEditingDriver] = useState(null);
+  // PM 2026-06-12: cuando se crea un empleado nuevo, el server devuelve un
+  // password temporal una sola vez. Lo guardamos acá para mostrarlo en un
+  // modal con botón "Enviar por WhatsApp" (Brevo SMTP bloqueado a nivel
+  // cuenta, así que es el canal real).
+  const [newEmployeeCredentials, setNewEmployeeCredentials] = useState(null);
   const [editingBooking, setEditingBooking] = useState(null);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -5802,7 +5812,10 @@ html{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)
 .adm-stat-trend svg{width:11px;height:11px}
 
 /* Two-column layouts */
-.adm-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+.adm-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;margin-bottom:18px;min-width:0}
+.adm-grid-2>.adm-card{min-width:0}
+.adm-grid-2 .adm-tbl-wrap{overflow-x:auto;max-width:100%}
+.adm-grid-2 .adm-tbl td{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:18px}
 .adm-grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px}
 @media(max-width:1100px){.adm-grid-2,.adm-grid-3,.adm-grid-2-1{grid-template-columns:1fr}}
@@ -8117,13 +8130,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
                   <div style={{ width: 260 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12, color: "rgba(15,24,34,.6)" }}>
+                    {/* PM 2026-06-12: removida la línea de "Impuestos $0.00".
+                        PRDISE hoy no soporta tax ni cargos extra a nivel
+                        factura — mostrar $0 confundía al cliente y al admin.
+                        Cuando se implemente, va acá entre Subtotal y Total. */}
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0 12px", fontSize: 12, color: "rgba(15,24,34,.6)", borderBottom: "1px solid rgba(15,24,34,.1)" }}>
                       <span>Subtotal</span>
                       <span style={{ fontFamily: "monospace" }}>${Number(viewingInvoice.total || 0).toFixed(2)}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 12, color: "rgba(15,24,34,.6)", borderBottom: "1px solid rgba(15,24,34,.1)" }}>
-                      <span>{lang === "es" ? "Impuestos" : "Tax"}</span>
-                      <span style={{ fontFamily: "monospace" }}>$0.00</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 0", fontSize: 16, fontWeight: 700, color: "#0F1822" }}>
                       <span>Total</span>
@@ -9744,6 +9757,64 @@ textarea.adm-fi{resize:vertical;min-height:80px}
         )}
       </main>
 
+      {/* Empleado nuevo — modal con credenciales temporales (PM 2026-06-12) */}
+      {newEmployeeCredentials && (
+        <div className="adm-modal-bg" onClick={() => setNewEmployeeCredentials(null)}>
+          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <button className="adm-modal-close" onClick={() => setNewEmployeeCredentials(null)}><X /></button>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(141,198,63,.15)", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <CheckCircle style={{ width: 28, height: 28, color: "#8DC63F" }} />
+            </div>
+            <h3 style={{ textAlign: "center", marginBottom: 6 }}>{lang === "es" ? "CUENTA CREADA" : "ACCOUNT CREATED"}</h3>
+            <p className="adm-modal-sub" style={{ textAlign: "center" }}>
+              {lang === "es"
+                ? `${newEmployeeCredentials.name} ya tiene acceso al panel. Compartile estas credenciales.`
+                : `${newEmployeeCredentials.name} now has panel access. Share these credentials.`}
+            </p>
+            <div style={{ padding: 14, borderRadius: 12, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.3)", margin: "14px 0" }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", color: "var(--gold)", textTransform: "uppercase", marginBottom: 4 }}>
+                {lang === "es" ? "Email" : "Email"}
+              </div>
+              <div style={{ fontFamily: "monospace", fontSize: 13, color: "#fff", marginBottom: 10, wordBreak: "break-all" }}>{newEmployeeCredentials.email}</div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", color: "var(--gold)", textTransform: "uppercase", marginBottom: 4 }}>
+                {lang === "es" ? "Contraseña temporal" : "Temporary password"}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <code style={{ fontFamily: "monospace", fontSize: 14, padding: "6px 10px", borderRadius: 8, background: "rgba(0,0,0,.4)", color: "#fff", letterSpacing: ".05em" }}>
+                  {newEmployeeCredentials.password}
+                </code>
+                <button type="button" onClick={() => { navigator.clipboard.writeText(newEmployeeCredentials.password); alert(lang === "es" ? "Copiado" : "Copied"); }}
+                  className="adm-btn adm-btn-ghost" style={{ padding: "6px 12px" }}>
+                  <Copy />{lang === "es" ? "Copiar" : "Copy"}
+                </button>
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginBottom: 14, lineHeight: 1.55 }}>
+              {lang === "es"
+                ? "Esta es la única vez que verás este password. Brevo SMTP está bloqueado a nivel cuenta, así que no se envió email — envialo por WhatsApp ahora. El empleado puede cambiarlo desde /account → Seguridad."
+                : "This is the only time you'll see this password. Brevo SMTP is blocked at the account level, so no email was sent — send it via WhatsApp now. The employee can change it from /account → Security."}
+            </p>
+            <div className="adm-modal-actions">
+              <button className="adm-btn adm-btn-ghost" onClick={() => setNewEmployeeCredentials(null)}>
+                {lang === "es" ? "Cerrar" : "Close"}
+              </button>
+              {newEmployeeCredentials.phone && (
+                <a
+                  href={`https://wa.me/${(newEmployeeCredentials.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(lang === "es"
+                    ? `Hola ${newEmployeeCredentials.name}, tu cuenta en el panel admin de PRDISE está lista. Email: ${newEmployeeCredentials.email} · Password temporal: ${newEmployeeCredentials.password} · Iniciá sesión en http://46.225.63.21/#/login y cambiá tu password desde /account.`
+                    : `Hi ${newEmployeeCredentials.name}, your PRDISE admin panel account is ready. Email: ${newEmployeeCredentials.email} · Temp password: ${newEmployeeCredentials.password} · Sign in at http://46.225.63.21/#/login and change your password from /account.`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="adm-btn adm-btn-primary"
+                  style={{ textDecoration: "none", background: "linear-gradient(135deg,#25D366,#128C7E)", border: "none" }}
+                >
+                  <MessageCircle />{lang === "es" ? "Enviar por WhatsApp" : "Send via WhatsApp"}
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Customer detail modal (PM 2026-06-11) — abre al click en fila de Clientes */}
       {customerDetailId && (
         <div className="adm-modal-bg" onClick={() => setCustomerDetailId(null)}>
@@ -10347,21 +10418,53 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "user") {
-              // Edición de usuario: dos persistencias separadas — el rol base
-              // (enum admin/user) via updateUserRole, y el custom_role_id
-              // (overlay opcional) via assignCustomRoleToUser. Ambas son
-              // admin-only. Si el rol base no cambió, omitimos updateUserRole
-              // (devuelve error "ya tiene ese rol").
-              const targetUserId = ownedUpdate.id;
               const original = editing.item || {};
               const newRole = ownedUpdate.roleRaw || original.roleRaw || "user";
               const newCustomRoleId = ownedUpdate.customRoleId ?? null;
-              const baseRoleChanged = newRole !== original.roleRaw;
-              const customRoleChanged = (newCustomRoleId || null) !== (original.customRoleId || null);
 
-              if (!targetUserId) {
-                saveResult = { ok: false, error: "User ID requerido" };
+              if (editing.isNew || ownedUpdate.id === "new" || !ownedUpdate.id) {
+                // PM 2026-06-12: crear empleado = crear cuenta en el sistema.
+                // El server genera password temporal (Brevo bloqueado, no
+                // mandamos email). Devolvemos el password al admin UNA VEZ
+                // para que lo envíe por WhatsApp.
+                const fdEmp = new FormData();
+                const fullName = (ownedUpdate.name || "").trim();
+                const [first, ...rest] = fullName.split(/\s+/);
+                fdEmp.append("email", (ownedUpdate.email || "").trim());
+                fdEmp.append("firstName", first || fullName || "Empleado");
+                fdEmp.append("lastName", rest.length ? rest.join(" ") : "—");
+                if (ownedUpdate.phone) fdEmp.append("phone", ownedUpdate.phone);
+                fdEmp.append("role", newRole);
+                if (ownedUpdate.department) fdEmp.append("department", ownedUpdate.department);
+                if (ownedUpdate.position) fdEmp.append("position", ownedUpdate.position);
+                const emp = await sbCreateEmployeeAccount(fdEmp);
+                if (!emp?.ok) {
+                  saveResult = emp;
+                } else {
+                  saveResult = { ok: true };
+                  ownedUpdate.id = emp.data.userId;
+                  // Si era nuevo y devolvió password, mostrarlo al admin una vez.
+                  if (emp.data.isNew && emp.data.password) {
+                    setNewEmployeeCredentials({
+                      email: emp.data.email,
+                      password: emp.data.password,
+                      name: fullName || emp.data.email,
+                      phone: ownedUpdate.phone || "",
+                    });
+                  }
+                  // Si pidió custom_role_id, lo aplicamos en segundo paso.
+                  if (newCustomRoleId) {
+                    const fdCR = new FormData();
+                    fdCR.append("user_id", emp.data.userId);
+                    fdCR.append("role_id", newCustomRoleId);
+                    await sbAssignCustomRoleToUser(fdCR);
+                  }
+                }
               } else {
+                // Edición: actualizar rol base + custom role overlay.
+                const targetUserId = ownedUpdate.id;
+                const baseRoleChanged = newRole !== original.roleRaw;
+                const customRoleChanged = (newCustomRoleId || null) !== (original.customRoleId || null);
                 saveResult = { ok: true };
                 if (baseRoleChanged) {
                   const fdRole = new FormData();
