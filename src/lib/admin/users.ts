@@ -148,24 +148,17 @@ export async function createEmployeeAccount(
   const admin = createAdminClient();
   const actorId = guard.current.user.id;
 
-  // Si ya existe el usuario, devolvemos el ID sin tocar password.
+  // PM 2026-06-12: NO promovemos cuentas existentes. Empleado = cuenta
+  // nueva. Si el correo ya está en el sistema (cliente registrado vía
+  // /register, otro empleado, etc.), rechazamos. El admin debe usar otro
+  // correo o gestionar a esa persona desde su flujo original.
   const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const existing = list?.users.find((u) => (u.email || "").toLowerCase() === emailLower);
   if (existing) {
-    // Promovemos a admin si el form lo pidió y todavía no lo es.
-    await admin
-      .from("profiles")
-      .update({
-        role,
-        ...(firstName ? { first_name: firstName } : {}),
-        ...(lastName ? { last_name: lastName } : {}),
-        ...(phone ? { phone } : {}),
-        ...(department ? { department } : {}),
-        ...(position ? { position } : {}),
-      })
-      .eq("id", existing.id);
-    await writeAuditLog(actorId, "employee.link_existing", "profile", existing.id, { email: emailLower, role });
-    return { ok: true, data: { userId: existing.id, email: emailLower, password: null, isNew: false } };
+    return {
+      ok: false,
+      error: `Ese correo ya está en uso. Empleado debe ser una cuenta nueva — usá otro correo.`,
+    };
   }
 
   // Crear nuevo con password temporal + email_confirm true.
