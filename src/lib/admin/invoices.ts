@@ -701,7 +701,39 @@ export async function searchProfiles(
     }
   }
 
-  const results = Array.from(byId.values()).slice(0, 10);
+  // PM 2026-06-12: clientes "ghost" (sin perfil registrado). Buscamos en
+  // invoices por customer_email / customer_name / customer_phone. El admin
+  // los puede seleccionar igual para emitir otra factura — el id ghost no
+  // es un UUID válido y bloqueará el handleSubmit por defecto. La UI
+  // permite que el admin igual reutilice los datos copiándolos al form.
+  const profileEmailSet = new Set(
+    Array.from(byId.values())
+      .map((r) => (r.email || "").toLowerCase().trim())
+      .filter(Boolean)
+  );
+  const { data: ghostInvs } = await admin
+    .from("invoices")
+    .select("customer_name, customer_email, customer_phone")
+    .or(`customer_name.ilike.${pattern},customer_email.ilike.${pattern},customer_phone.ilike.${pattern}`)
+    .limit(50);
+  const ghostByEmail = new Map<string, ProfileSearchResult>();
+  for (const g of ghostInvs ?? []) {
+    const email = (g.customer_email || "").toLowerCase().trim();
+    if (!email || profileEmailSet.has(email) || ghostByEmail.has(email)) continue;
+    const fullName = (g.customer_name || "").trim();
+    const [firstName, ...rest] = fullName ? fullName.split(/\s+/) : [];
+    ghostByEmail.set(email, {
+      id: `ghost-${email}`,
+      email,
+      first_name: firstName || null,
+      last_name: rest.length ? rest.join(" ") : null,
+      phone: g.customer_phone || null,
+    });
+  }
+  const results = [
+    ...Array.from(byId.values()),
+    ...Array.from(ghostByEmail.values()),
+  ].slice(0, 15);
   return { ok: true, data: { results } };
 }
 

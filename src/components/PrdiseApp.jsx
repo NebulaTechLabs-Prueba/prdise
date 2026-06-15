@@ -205,7 +205,13 @@ function mapStayToHotel(s) {
   return {
     id: s.slug,
     dbId: s.id,
+    // PM 2026-06-12: exponemos cada idioma por separado además del `name`
+    // resuelto (preferencia ES → EN). Antes solo había `name` y el form de
+    // edición tomaba ese valor para AMBOS tabs ES y EN, "perdiendo" lo que
+    // se había guardado en cada idioma. Mismo tratamiento para descripción.
     name: s.title_es || s.title_en || s.slug,
+    nameEN: s.title_en || "",
+    nameES: s.title_es || "",
     zone: s.location || "",
     type: "Villa",
     price: Math.round((s.price_cents || 0) / 100),
@@ -218,6 +224,8 @@ function mapStayToHotel(s) {
     gallery: resolveImgs(imgs),
     amenities: Array.isArray(s.amenities) ? s.amenities : [],
     desc: s.short_desc_es || s.short_desc_en || "",
+    descEN: s.short_desc_en || "",
+    descES: s.short_desc_es || "",
     color: s.featured ? "gold" : "sky",
     lat: Number(s.lat) || 0,
     lng: Number(s.lng) || 0,
@@ -248,6 +256,8 @@ function mapTourToTour(t) {
     id: t.slug,
     dbId: t.id,
     name: t.title_es || t.title_en || t.slug,
+    nameEN: t.title_en || "",
+    nameES: t.title_es || "",
     day: "",
     duration: t.duration_minutes ? `${Math.round(t.duration_minutes / 60)} hours` : "",
     price: Math.round((t.price_cents || 0) / 100),
@@ -262,6 +272,8 @@ function mapTourToTour(t) {
     bring: [],
     itinerary: [],
     desc: t.short_desc_es || t.short_desc_en || "",
+    descEN: t.short_desc_en || "",
+    descES: t.short_desc_es || "",
     color: t.featured ? "gold" : "green",
     location: t.location || "",
     lat: Number(t.lat) || 0,
@@ -389,7 +401,10 @@ async function loadInitialData() {
     const [stays, tours, routes, locations, vehicles, posts, partners, settings] = await Promise.all([
       getStays(sb, { activeOnly: false }),
       getTours(sb, { activeOnly: false }),
-      getTransferRoutes(sb),
+      // PM 2026-06-12: rutas inactivas también se cargan para que el admin
+      // las pueda gestionar (toggle, edición). Las páginas públicas filtran
+      // por r.active del lado del cliente.
+      getTransferRoutes(sb, { activeOnly: false }),
       getTransferLocations(sb),
       getVehicles(sb),
       getPublishedPosts(sb, {}),
@@ -8810,7 +8825,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </tr></thead>
                     <tbody>
                       {customers.map((c) => {
-                        const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "—";
+                        // PM 2026-06-12: si no hay nombre, mostrar "(Sin nombre)"
+                        // y el email aparte. Antes caía al email como nombre,
+                        // confundiendo al admin sobre la identidad del cliente.
+                        const fullNameRaw = [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
+                        const fullName = fullNameRaw || (lang === "es" ? "(Sin nombre)" : "(No name)");
                         const totalUSD = (c.totalInvestedCents || 0) / 100;
                         const freq = c.mostFrequentServiceType
                           ? (lang === "es"
@@ -9940,7 +9959,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             {!customerDetailLoading && customerDetail && (() => {
               const d = customerDetail;
               const isGhost = d.role === "ghost" || (d.id || "").startsWith("ghost-");
-              const fullName = [d.firstName, d.lastName].filter(Boolean).join(" ") || d.email || "—";
+              const fullNameRaw = [d.firstName, d.lastName].filter(Boolean).join(" ").trim();
+              const fullName = fullNameRaw || (lang === "es" ? "(Sin nombre)" : "(No name)");
               const totalUSD = (d.totalInvestedCents || 0) / 100;
               // PM 2026-06-12: si tiene serviceCount > 0 pero no hay categoría
               // resuelta (todas las líneas son custom sin FK al catálogo),
@@ -10675,10 +10695,15 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [scheduleDate, setScheduleDate] = useState(it.scheduleDate || "");
   const [scheduleTime, setScheduleTime] = useState(it.scheduleTime || "09:00");
   // Bilingual content (ES overrides EN when visitor views in Spanish)
-  const [nameEN, setNameEN] = useState(it.name || "");
-  const [nameES, setNameES] = useState(it.nameES || "");
-  const [descEN, setDescEN] = useState(it.desc || "");
-  const [descES, setDescES] = useState(it.descES || "");
+  // PM 2026-06-12: estados ES/EN inicializados DESDE LOS CAMPOS PROPIOS.
+  // Antes nameEN partía de `it.name` que en realidad es ES||EN resuelto, lo
+  // que pisaba el contenido EN guardado o lo mezclaba. Mismo para desc.
+  // Para legacy posts/items donde el mapping no expone nameEN/descEN,
+  // caemos a `it.name`/`it.desc` para no perder contenido pre-iter18.
+  const [nameEN, setNameEN] = useState(it.nameEN != null ? it.nameEN : (it.name || ""));
+  const [nameES, setNameES] = useState(it.nameES != null ? it.nameES : "");
+  const [descEN, setDescEN] = useState(it.descEN != null ? it.descEN : (it.desc || ""));
+  const [descES, setDescES] = useState(it.descES != null ? it.descES : "");
   const [excerptEN, setExcerptEN] = useState(it.excerpt || "");
   const [excerptES, setExcerptES] = useState(it.excerptES || "");
   const [bodyEN, setBodyEN] = useState(it.body || "");
@@ -12215,6 +12240,23 @@ function AuthToolsPanel({ lang }) {
   const [busy, setBusy] = useState(null); // 'link' | 'force' | 'recovery' | null
   const [result, setResult] = useState(null); // { kind, url?, msg? }
   const [error, setError] = useState("");
+  // PM 2026-06-12: autocomplete no-exclusivo. El admin puede tipear cualquier
+  // correo (no se restringe a resultados) pero si tipea 2+ caracteres,
+  // mostramos sugerencias de usuarios existentes para facilitar la búsqueda.
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggOpen, setSuggOpen] = useState(false);
+  useEffect(() => {
+    if (!email || email.trim().length < 2) { setSuggestions([]); return; }
+    const id = setTimeout(async () => {
+      try {
+        const fd = new FormData();
+        fd.append("q", email.trim());
+        const res = await sbSearchProfiles(fd);
+        setSuggestions(res?.ok ? (res.data?.results ?? []) : []);
+      } catch { setSuggestions([]); }
+    }, 250);
+    return () => clearTimeout(id);
+  }, [email]);
 
   const run = async (kind, fn) => {
     setBusy(kind);
@@ -12254,16 +12296,46 @@ function AuthToolsPanel({ lang }) {
           : "If the automated email did not reach the customer (spam, provider block, or any other reason), generate the confirmation or password-reset link here and send it manually via WhatsApp. You can also confirm the account directly if you have already verified the customer's identity."}
       </p>
 
-      <div className="adm-fg">
+      <div className="adm-fg" style={{ position: "relative" }}>
         <label className="adm-fl">{lang === "es" ? "Email del usuario" : "User email"}</label>
         <input
           className="adm-fi"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => { setEmail(e.target.value); setSuggOpen(true); }}
+          onFocus={() => setSuggOpen(true)}
+          onBlur={() => setTimeout(() => setSuggOpen(false), 150)}
           placeholder="cliente@ejemplo.com"
           autoComplete="off"
         />
+        {suggOpen && suggestions.length > 0 && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, maxHeight: 220, overflowY: "auto", background: "#1A2634", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, boxShadow: "0 10px 32px rgba(0,0,0,.5)", zIndex: 50 }}>
+            {suggestions.map((s) => {
+              const display = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.email || (lang === "es" ? "(sin nombre)" : "(no name)");
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); setEmail(s.email || ""); setSuggOpen(false); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 12px", background: "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,.05)", color: "#fff", cursor: "pointer", fontSize: 12.5 }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(245,166,35,.08)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                >
+                  <div style={{ fontWeight: 600 }}>{display}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
+                    {s.email || "—"}{s.phone ? ` · ${s.phone}` : ""}
+                    {(s.id || "").startsWith("ghost-") && <span style={{ marginLeft: 6, fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "rgba(245,166,35,.18)", color: "#F5A623", fontWeight: 800, letterSpacing: ".05em" }}>{lang === "es" ? "SIN PERFIL" : "NO PROFILE"}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", marginTop: 4, lineHeight: 1.5 }}>
+          {lang === "es"
+            ? "Las sugerencias son solo una ayuda — podés tipear cualquier correo aunque no esté en la lista."
+            : "Suggestions are a helper only — you can type any email even if not in the list."}
+        </p>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>

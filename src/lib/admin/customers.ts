@@ -168,7 +168,11 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
     const email = (inv.customer_email || "").toLowerCase().trim();
     if (!email || profileEmails.has(email)) continue;
     const prev = ghostsByEmail.get(email) ?? {
-      customer_name: inv.customer_name || email,
+      // PM 2026-06-12: NO usar email como fallback del nombre. Confundía al
+      // admin (la fila aparecía con el correo en la columna "Cliente").
+      // Si la factura no tenía customer_name, dejamos vacío y el render
+      // muestra "—" / "(Sin nombre)" claramente.
+      customer_name: inv.customer_name || "",
       phone: inv.customer_phone,
       totalPaid: 0,
       invoicesPaid: 0,
@@ -205,7 +209,12 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
     ghostsByEmail.set(email, prev);
   }
   for (const [email, g] of ghostsByEmail) {
-    const [firstName, ...rest] = g.customer_name.split(/\s+/);
+    // Si el nombre quedó vacío (factura sin customer_name), enviamos
+    // firstName/lastName null y el cliente UI ya muestra "(Sin nombre)"
+    // como fallback amigable.
+    const parts = g.customer_name ? g.customer_name.split(/\s+/) : [];
+    const firstName = parts[0] || "";
+    const rest = parts.slice(1);
     // mostFrequentServiceType: la categoría con más conteo. Tie-break
     // determinístico por orden alfabético del key.
     const entries = Object.entries(g.typeCounts).sort((a, b) =>
