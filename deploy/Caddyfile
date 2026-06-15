@@ -1,0 +1,12 @@
+# PM 2026-06-15: HTTPS habilitado via Caddy auto-TLS.
+# Caddy obtiene y renueva certs Let's Encrypt automaticamente cuando
+# arranca con un hostname real. www -> apex 301 redirect.
+
+livinginprdise.com {
+  encode gzip
+  reverse_proxy localhost:3000
+}
+
+www.livinginprdise.com {
+  redir https://livinginprdise.com{uri} permanent
+}

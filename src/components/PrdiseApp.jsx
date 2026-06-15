@@ -226,6 +226,12 @@ function mapStayToHotel(s) {
     desc: s.short_desc_es || s.short_desc_en || "",
     descEN: s.short_desc_en || "",
     descES: s.short_desc_es || "",
+    // PM 2026-06-15: description_es/_en es el cuerpo largo (historia completa
+    // del stay). Antes este contenido se guardaba solo en memoria (STAY_ABOUT)
+    // → al recargar el detail page aparecía vacío. Ahora viene de DB.
+    body: s.description_es || s.description_en || "",
+    bodyES: s.description_es || "",
+    bodyEN: s.description_en || "",
     color: s.featured ? "gold" : "sky",
     lat: Number(s.lat) || 0,
     lng: Number(s.lng) || 0,
@@ -274,6 +280,11 @@ function mapTourToTour(t) {
     desc: t.short_desc_es || t.short_desc_en || "",
     descEN: t.short_desc_en || "",
     descES: t.short_desc_es || "",
+    // PM 2026-06-15: ver mapStayToHotel — description_es/_en es el cuerpo
+    // largo del tour, ahora se persiste/lee desde DB.
+    body: t.description_es || t.description_en || "",
+    bodyES: t.description_es || "",
+    bodyEN: t.description_en || "",
     color: t.featured ? "gold" : "green",
     location: t.location || "",
     lat: Number(t.lat) || 0,
@@ -793,6 +804,109 @@ function buildWhatsAppHref({ user, lang, service }) {
         : "\nCould you confirm the price, availability and next steps?");
   const text = `${intro}${details}${ask}`;
   return `https://wa.me/${getSetting("whatsapp_phone")}?text=${encodeURIComponent(text)}`;
+}
+
+// PM 2026-06-15: helper para construir mensaje + href de SMS. Reutiliza el
+// mismo texto que armó buildWhatsAppHref para mantener consistencia entre
+// canales. El número de SMS sale de site_settings.contact_phone_tel.
+function buildSmsHref({ user, lang, service }) {
+  const isEs = lang === "es";
+  const greeting = isEs ? "Hola, soy" : "Hi, I'm";
+  const name = (user?.firstName || user?.name || "").trim();
+  const kindLabel = isEs
+    ? ({ stay: "una estadía", tour: "un tour", transfer: "un traslado" }[service?.kind] || "un servicio")
+    : ({ stay: "a stay", tour: "a tour", transfer: "a transfer" }[service?.kind] || "a service");
+  const priceVal = Number(service?.priceUsd);
+  const hasPrice = Number.isFinite(priceVal) && priceVal > 0;
+  const priceStr = hasPrice
+    ? (isEs ? ` (referencia $${priceVal.toFixed(0)} USD)` : ` (reference $${priceVal.toFixed(0)} USD)`)
+    : "";
+  const intro = isEs
+    ? `${greeting}${name ? " " + name : ""}. Me interesa ${kindLabel}: ${service?.name || ""}${priceStr}.`
+    : `${greeting}${name ? " " + name : ""}. I'm interested in ${kindLabel}: ${service?.name || ""}${priceStr}.`;
+  const details = service?.details
+    ? (isEs ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
+    : "";
+  const ask = hasPrice
+    ? (isEs ? "\n¿Disponibilidad y siguiente paso?" : "\nAvailability and next steps?")
+    : (isEs ? "\n¿Precio, disponibilidad y siguiente paso?" : "\nPrice, availability and next steps?");
+  const text = `${intro}${details}${ask}`;
+  const phone = getSetting("contact_phone_tel") || `+${getSetting("whatsapp_phone")}`;
+  return `sms:${phone}?body=${encodeURIComponent(text)}`;
+}
+
+// PM 2026-06-15: CTA que despliega 2 opciones de contacto (WhatsApp + SMS)
+// al hacer hover/click. Reemplaza los <a> inline a wa.me en los detail
+// pages de stay/tour y en transfer-results. La intención es darle al
+// cliente la opción de elegir su medio preferido sin obligar a WhatsApp.
+function ContactSplitButton({ user, lang, service, color = "gold", className = "", style = {} }) {
+  const [open, setOpen] = useState(false);
+  const waHref = buildWhatsAppHref({ user, lang, service });
+  const smsHref = buildSmsHref({ user, lang, service });
+  const labelMain = lang === "es" ? "Consultar" : "Ask us";
+  const colorMap = {
+    gold: { bg: "linear-gradient(135deg,#F5A623,#EF6C2B)", border: "transparent", fg: "#fff" },
+    green: { bg: "rgba(141,198,63,.18)", border: "rgba(141,198,63,.5)", fg: "#8DC63F" },
+    sky: { bg: "rgba(41,171,226,.18)", border: "rgba(41,171,226,.5)", fg: "#29ABE2" },
+  };
+  const c = colorMap[color] || colorMap.gold;
+  return (
+    <div
+      className={`csb-wrap ${className}`}
+      style={{ position: "relative", display: "inline-block", ...style }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "12px 22px", borderRadius: 12, fontWeight: 800, fontSize: 13,
+          letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer",
+          background: c.bg, color: c.fg, border: `1.5px solid ${c.border}`,
+          minWidth: 180, transition: "transform .15s",
+        }}
+      >
+        <MessageCircle style={{ width: 14, height: 14 }} />
+        {labelMain}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
+            background: "var(--ink)", border: "1px solid rgba(255,255,255,.1)",
+            borderRadius: 12, padding: 4, zIndex: 50,
+            boxShadow: "0 12px 32px rgba(0,0,0,.45)",
+            display: "flex", flexDirection: "column", gap: 2,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <a
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 8, textDecoration: "none", color: "#fff", fontSize: 12.5, fontWeight: 600, transition: "background .15s" }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(37,211,102,.18)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+          >
+            <MessageCircle style={{ width: 15, height: 15, color: "#25D366" }} />
+            WhatsApp
+          </a>
+          <a
+            href={smsHref}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 8, textDecoration: "none", color: "#fff", fontSize: 12.5, fontWeight: 600, transition: "background .15s" }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(245,166,35,.18)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+          >
+            <Mail style={{ width: 15, height: 15, color: "#F5A623" }} />
+            {lang === "es" ? "Mensaje (SMS)" : "Text (SMS)"}
+          </a>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function NavLink({ to, children, className, style, external, ...rest }) {
@@ -1545,12 +1659,58 @@ function Footer() {
 }
 
 function WhatsAppChat() {
-  const phone = getSetting("whatsapp_phone");
-  const msg = "Hi! I'm interested in your services in Cabo Rojo, Puerto Rico. Can you help me?";
+  // PM 2026-06-15: el FAB ahora despliega 2 opciones al hacer hover/click:
+  // WhatsApp (chat) y SMS (texto). El número de WhatsApp y el de teléfono
+  // tradicional vienen de site_settings (whatsapp_phone y contact_phone_tel)
+  // para que se puedan administrar sin tocar código.
+  const { lang } = useLang();
+  const [open, setOpen] = useState(false);
+  const waPhone = getSetting("whatsapp_phone");
+  const smsPhone = getSetting("contact_phone_tel") || `+${waPhone}`;
+  const msg = lang === "es"
+    ? "Hola! Me interesan sus servicios en Cabo Rojo, Puerto Rico. ¿Pueden ayudarme?"
+    : "Hi! I'm interested in your services in Cabo Rojo, Puerto Rico. Can you help me?";
+  const waHref = `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+  const smsHref = `sms:${smsPhone}?body=${encodeURIComponent(msg)}`;
+
   return (
-    <a href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer" className="wa-float" aria-label="Chat on WhatsApp" title="Chat on WhatsApp">
-      <MessageCircle />
-    </a>
+    <div
+      className="wa-fab-wrap"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onClick={() => setOpen((o) => !o)}
+    >
+      {open && (
+        <div className="wa-fab-menu" onClick={(e) => e.stopPropagation()}>
+          <a
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="wa-fab-opt wa-fab-opt-wa"
+            title="WhatsApp"
+          >
+            <MessageCircle style={{ width: 16, height: 16 }} />
+            <span>WhatsApp</span>
+          </a>
+          <a
+            href={smsHref}
+            className="wa-fab-opt wa-fab-opt-sms"
+            title={lang === "es" ? "Mensaje de texto" : "Text message"}
+          >
+            <Mail style={{ width: 16, height: 16 }} />
+            <span>{lang === "es" ? "Mensaje (SMS)" : "Text (SMS)"}</span>
+          </a>
+        </div>
+      )}
+      <button
+        type="button"
+        className="wa-float"
+        aria-label={lang === "es" ? "Contactanos" : "Contact us"}
+        title={lang === "es" ? "Contactanos" : "Contact us"}
+      >
+        <MessageCircle />
+      </button>
+    </div>
   );
 }
 
@@ -2240,32 +2400,53 @@ function HotelDetail({ params }) {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Users style={{ width: 14, height: 14, color: "var(--gold)" }} />Sleeps {hotel.sleeps}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Home style={{ width: 14, height: 14, color: "var(--gold)" }} />{hotel.bedrooms} BR · {hotel.bathrooms} BA</span>
               </div>
-              <div className="detail-section">
-                <h3>{t("aboutThisStay")}</h3>
-                <p>{L(hotel.desc, hotel.descES)}</p>
-                {STAY_ABOUT[hotel.id] && (
-                  <>
-                    <p style={{ marginTop: 12 }}>{L(STAY_ABOUT[hotel.id].story, STAY_ABOUT[hotel.id].storyES)}</p>
-                    <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 8 }}>{t("theArea")}</h4>
-                    <p>{L(STAY_ABOUT[hotel.id].area, STAY_ABOUT[hotel.id].areaES)}</p>
-                    <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 10 }}>{t("perfectFor")}</h4>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-                      {STAY_ABOUT[hotel.id].perfectFor.map((p, i) => (
-                        <span key={i} style={{ fontSize: 12, padding: "5px 11px", borderRadius: 99, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.22)", color: "rgba(255,255,255,.75)" }}>{p}</span>
-                      ))}
-                    </div>
-                    <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 18, marginBottom: 10 }}>{t("highlights")}</h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8 }}>
-                      {STAY_ABOUT[hotel.id].highlights.map((h, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,.7)" }}>
-                          <Sparkles style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
-                          <span>{h}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+              {/* PM 2026-06-15: la historia completa (body) viene de DB
+                  via description_es/_en. Si no hay body ni short desc, la
+                  sección se oculta para no dejar la cabecera vacía. */}
+              {(() => {
+                const bodyText = L(hotel.body, hotel.bodyES) || L(hotel.desc, hotel.descES);
+                const about = STAY_ABOUT[hotel.id];
+                if (!bodyText && !about) return null;
+                return (
+                  <div className="detail-section">
+                    <h3>{t("aboutThisStay")}</h3>
+                    {bodyText && <p style={{ whiteSpace: "pre-wrap" }}>{bodyText}</p>}
+                    {about && (
+                      <>
+                        {(about.area || about.areaES) && (
+                          <>
+                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 8 }}>{t("theArea")}</h4>
+                            <p style={{ whiteSpace: "pre-wrap" }}>{L(about.area, about.areaES)}</p>
+                          </>
+                        )}
+                        {(about.perfectFor || []).length > 0 && (
+                          <>
+                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 10 }}>{t("perfectFor")}</h4>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                              {about.perfectFor.map((p, i) => (
+                                <span key={i} style={{ fontSize: 12, padding: "5px 11px", borderRadius: 99, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.22)", color: "rgba(255,255,255,.75)" }}>{p}</span>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        {(about.highlights || []).length > 0 && (
+                          <>
+                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 18, marginBottom: 10 }}>{t("highlights")}</h4>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8 }}>
+                              {about.highlights.map((h, i) => (
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,.7)" }}>
+                                  <Sparkles style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
+                                  <span>{h}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="detail-section">
                 <h3>{t("amenities")}</h3>
                 <div className="amen-grid">
@@ -2361,28 +2542,24 @@ function HotelDetail({ params }) {
                     consulta por WhatsApp → admin gestiona y emite invoice
                     Stripe desde la misma página. Las URLs de aliados no se
                     exponen al cliente. */}
-                <a
-                  href={buildWhatsAppHref({
-                    user,
-                    lang,
-                    service: {
+                <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                  <ContactSplitButton
+                    user={user}
+                    lang={lang}
+                    color="green"
+                    style={{ width: "100%" }}
+                    service={{
                       kind: "stay",
                       name: hotel.name,
                       priceUsd: pricing?.total ?? hotel.price,
                       details: checkin
                         ? `${checkin}${checkout ? ` → ${checkout}` : ""} · ${guests} ${lang === "es" ? "huésped(es)" : "guest(s)"}`
                         : undefined,
-                    },
-                  })}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10, padding: "12px 16px", borderRadius: 12, background: "rgba(37,211,102,.12)", border: "1px solid rgba(37,211,102,.35)", color: "#25D366", fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: ".02em" }}
-                >
-                  <MessageCircle style={{ width: 16, height: 16 }} />
-                  {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
-                </a>
+                    }}
+                  />
+                </div>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {lang==="es"?"Coordinamos tu reserva por WhatsApp y te enviamos el link de pago.":"We coordinate your booking via WhatsApp and send you the payment link."}
+                  {lang==="es"?"Coordinamos tu reserva por WhatsApp o SMS y te enviamos el link de pago.":"We coordinate your booking via WhatsApp/SMS and send you the payment link."}
                 </p>
               </div>
             </aside>
@@ -2481,53 +2658,79 @@ function TourDetail({ params }) {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Users style={{ width: 14, height: 14, color: "var(--gold)" }} />Max {tour.capacity}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.difficulty}</span>
               </div>
-              <div className="detail-section">
-                <h3>{t("aboutThisTour")}</h3>
-                <p>{L(tour.desc, tour.descES)}</p>
-                {TOUR_ABOUT[tour.id] && (
-                  <>
-                    <p style={{ marginTop: 12 }}>{L(TOUR_ABOUT[tour.id].story, TOUR_ABOUT[tour.id].storyES)}</p>
-                    <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 8 }}>{t("theExperience")}</h4>
-                    <p>{L(TOUR_ABOUT[tour.id].experience, TOUR_ABOUT[tour.id].experienceES)}</p>
-                    <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 10 }}>{t("highlights")}</h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8, marginBottom: 14 }}>
-                      {TOUR_ABOUT[tour.id].highlights.map((h, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,.7)" }}>
-                          <Sparkles style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
-                          <span>{h}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {TOUR_ABOUT[tour.id].notes && (
-                      <div style={{ padding: 14, borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)", display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8 }}>
-                        <Info style={{ width: 15, height: 15, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
-                        <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.65 }}>{TOUR_ABOUT[tour.id].notes}</p>
-                      </div>
+              {/* PM 2026-06-15: el "About this tour" prefiere el body
+                  largo persistido en DB (description_es/_en mapeado a
+                  body/bodyES/bodyEN). Si no hay body, cae al short desc
+                  para no dejar la sección vacía. Si tampoco hay desc,
+                  se oculta la sección entera. */}
+              {(() => {
+                const bodyText = L(tour.body, tour.bodyES) || L(tour.desc, tour.descES);
+                if (!bodyText && !TOUR_ABOUT[tour.id]) return null;
+                return (
+                  <div className="detail-section">
+                    <h3>{t("aboutThisTour")}</h3>
+                    {bodyText && <p style={{ whiteSpace: "pre-wrap" }}>{bodyText}</p>}
+                    {TOUR_ABOUT[tour.id] && (
+                      <>
+                        {TOUR_ABOUT[tour.id].experience && (
+                          <>
+                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 8 }}>{t("theExperience")}</h4>
+                            <p style={{ whiteSpace: "pre-wrap" }}>{L(TOUR_ABOUT[tour.id].experience, TOUR_ABOUT[tour.id].experienceES)}</p>
+                          </>
+                        )}
+                        {(TOUR_ABOUT[tour.id].highlights || []).length > 0 && (
+                          <>
+                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 10 }}>{t("highlights")}</h4>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8, marginBottom: 14 }}>
+                              {TOUR_ABOUT[tour.id].highlights.map((h, i) => (
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,.7)" }}>
+                                  <Sparkles style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
+                                  <span>{h}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        {TOUR_ABOUT[tour.id].notes && (
+                          <div style={{ padding: 14, borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)", display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8 }}>
+                            <Info style={{ width: 15, height: 15, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
+                            <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.65 }}>{TOUR_ABOUT[tour.id].notes}</p>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
-              <div className="detail-section">
-                <h3>{t("itinerary")}</h3>
-                {(tour.itinerary || []).map((i, idx) => (
-                  <div key={idx} className="iti-item">
-                    <div className="iti-time">{i.time}</div>
-                    <div className="iti-stop">{i.stop}</div>
                   </div>
-                ))}
-              </div>
-              <div className="detail-section">
-                <h3>{t("whatsIncluded")}</h3>
-                {(tour.includes || []).map((i) => (
-                  <div key={i} className="list-line"><Check style={{ color: "var(--green)" }} />{i}</div>
-                ))}
-              </div>
-              <div className="detail-section">
-                <h3>{t("whatToBring")}</h3>
-                {(tour.bring || []).map((i) => (
-                  <div key={i} className="list-line"><Info style={{ color: "var(--gold)" }} />{i}</div>
-                ))}
-              </div>
+                );
+              })()}
+              {/* Itinerary y What to Bring solo aparecen si hay items.
+                  Antes mostraban la cabecera con un cuerpo vacío. */}
+              {(tour.itinerary || []).length > 0 && (
+                <div className="detail-section">
+                  <h3>{t("itinerary")}</h3>
+                  {tour.itinerary.map((i, idx) => (
+                    <div key={idx} className="iti-item">
+                      <div className="iti-time">{i.time}</div>
+                      <div className="iti-stop">{i.stop}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(tour.includes || []).length > 0 && (
+                <div className="detail-section">
+                  <h3>{t("whatsIncluded")}</h3>
+                  {tour.includes.map((i) => (
+                    <div key={i} className="list-line"><Check style={{ color: "var(--green)" }} />{i}</div>
+                  ))}
+                </div>
+              )}
+              {(tour.bring || []).length > 0 && (
+                <div className="detail-section">
+                  <h3>{t("whatToBring")}</h3>
+                  {tour.bring.map((i) => (
+                    <div key={i} className="list-line"><Info style={{ color: "var(--gold)" }} />{i}</div>
+                  ))}
+                </div>
+              )}
               {/* Sección "Meeting Point" con mapa GPS removida (PM 2026-06-09).
                   El catálogo del cliente no provee coordenadas confiables y el
                   mapa con (0,0) se veía como un pin perdido. Si en el futuro
@@ -2604,28 +2807,24 @@ function TourDetail({ params }) {
                 {/* PM 2026-06-10: CERO FUGA. El botón "Reservar en <partner>"
                     se eliminó. Toda conversión se concentra en PRDISE vía
                     WhatsApp + invoice Stripe. */}
-                <a
-                  href={buildWhatsAppHref({
-                    user,
-                    lang,
-                    service: {
+                <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                  <ContactSplitButton
+                    user={user}
+                    lang={lang}
+                    color="green"
+                    style={{ width: "100%" }}
+                    service={{
                       kind: "tour",
                       name: tour.name,
                       priceUsd: pricing.total || tour.price,
                       details: date
                         ? `${date} · ${travelers} ${lang === "es" ? "viajero(s)" : "traveler(s)"}`
                         : undefined,
-                    },
-                  })}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10, padding: "12px 16px", borderRadius: 12, background: "rgba(37,211,102,.12)", border: "1px solid rgba(37,211,102,.35)", color: "#25D366", fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: ".02em" }}
-                >
-                  <MessageCircle style={{ width: 16, height: 16 }} />
-                  {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
-                </a>
+                    }}
+                  />
+                </div>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {lang==="es"?"Coordinamos tu reserva por WhatsApp y te enviamos el link de pago.":"We coordinate your booking via WhatsApp and send you the payment link."} {t("smallGroups")} · Max {tour.capacity} people
+                  {lang==="es"?"Coordinamos tu reserva por WhatsApp o SMS y te enviamos el link de pago.":"We coordinate your booking via WhatsApp/SMS and send you the payment link."} {t("smallGroups")} · Max {tour.capacity} people
                 </p>
               </div>
             </aside>
@@ -3008,16 +3207,12 @@ function TransferResultsPage() {
               const detailsCombined = trips.length > 0
                 ? [`${lang === "es" ? "R1" : "T1"}: ${primaryLine}`, ...tripLines].join("\n")
                 : primaryLine;
-              const waHref = buildWhatsAppHref({
-                user,
-                lang,
-                service: {
-                  kind: "transfer",
-                  name: v.name,
-                  priceUsd: total,
-                  details: detailsCombined,
-                },
-              });
+              const serviceForCta = {
+                kind: "transfer",
+                name: v.name,
+                priceUsd: total,
+                details: detailsCombined,
+              };
               return (
                 <div key={v.id} className="veh-row">
                   <div className="veh-pic">{VEHICLE_ICONS[v.id]}</div>
@@ -3034,16 +3229,7 @@ function TransferResultsPage() {
                   <div className="veh-cta">
                     <span className="veh-price">{fmt(total).replace(/\.00$/, "")}</span>
                     <span className="veh-price-sub">total fare</span>
-                    <a
-                      href={waHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="veh-select"
-                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, textDecoration: "none" }}
-                    >
-                      <MessageCircle style={{ width: 13, height: 13 }} />
-                      {lang === "es" ? "Consultar por WhatsApp" : "Ask on WhatsApp"}
-                    </a>
+                    <ContactSplitButton user={user} lang={lang} color="gold" service={serviceForCta} />
                   </div>
                 </div>
               );
@@ -3534,32 +3720,141 @@ function AccountPage() {
 /* ═══════════════ SERVICES / ABOUT / CONTACT ═══════════════ */
 function ServicesPage() {
   const { t, lang } = useLang();
-  const services = [
-    { Icon: Compass, title: t("guidedTours"), desc: t("guidedToursD"), color: "gold" },
-    { Icon: Home, title: t("vacationRentals"), desc: t("vacationRentalsD"), color: "orange" },
-    { Icon: Car, title: t("transfersSvc"), desc: t("transfersSvcD"), color: "green" },
-    { Icon: Waves, title: t("waterAct"), desc: t("waterActD"), color: "sky" },
-    { Icon: Mountain, title: t("adventureTours"), desc: t("adventureToursD"), color: "gold" },
-    { Icon: Sun, title: t("customPkg"), desc: t("customPkgD"), color: "orange" },
-    { Icon: Calendar, title: t("eventPlan"), desc: t("eventPlanD"), color: "green" },
-    { Icon: Sparkles, title: t("conciergeSvc"), desc: t("conciergeSvcD"), color: "sky" },
-  ];
+  const L = (en, es) => (lang === "es" && es) ? es : en;
+  // PM 2026-06-15: la página de Servicios ahora muestra TODOS los servicios
+  // reales del catálogo (stays + tours + transfers populares) en grupos
+  // claros, no solo tarjetas decorativas de categorías abstractas. El
+  // cliente ve qué se ofrece en concreto y puede ir al detalle.
+  const publishedStays = HOTELS.filter((h) => !h.status || h.status === "published");
+  const publishedTours = TOURS.filter((tr) => !tr.status || tr.status === "published");
+  const activeRoutes = ROUTES.filter((r) => r.active !== false);
+  const totalCount = publishedStays.length + publishedTours.length + activeRoutes.length;
   return (
     <>
       <PageHero tag={t("services")} title={t("svcTag")} titleEm="" subtitle="" />
       <div className="inner-page">
         <div className="inner-wrap">
-          <div className="svc-simple-grid">
-            {services.map((s, i) => (
-              <div key={i} className="svc-tile">
-                <div className="svc-tile-ico" style={{ background: COLORS[s.color] + "22", color: COLORS[s.color] }}>
-                  <s.Icon />
-                </div>
-                <h3>{s.title}</h3>
-                <p>{s.desc}</p>
+
+          {/* Resumen del catálogo */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 36 }}>
+            <NavLink to="/stays" style={{ padding: "18px 20px", borderRadius: 14, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", textDecoration: "none", display: "flex", alignItems: "center", gap: 12 }}>
+              <Home style={{ width: 28, height: 28, color: "var(--gold)" }} />
+              <div>
+                <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#fff", letterSpacing: ".04em", lineHeight: 1 }}>{publishedStays.length}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", textTransform: "uppercase", letterSpacing: ".1em", marginTop: 4 }}>{lang === "es" ? "Estadías" : "Stays"}</div>
               </div>
-            ))}
+            </NavLink>
+            <NavLink to="/tours" style={{ padding: "18px 20px", borderRadius: 14, background: "rgba(141,198,63,.06)", border: "1px solid rgba(141,198,63,.2)", textDecoration: "none", display: "flex", alignItems: "center", gap: 12 }}>
+              <Compass style={{ width: 28, height: 28, color: "#8DC63F" }} />
+              <div>
+                <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#fff", letterSpacing: ".04em", lineHeight: 1 }}>{publishedTours.length}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", textTransform: "uppercase", letterSpacing: ".1em", marginTop: 4 }}>Tours</div>
+              </div>
+            </NavLink>
+            <NavLink to="/transfer-search" style={{ padding: "18px 20px", borderRadius: 14, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)", textDecoration: "none", display: "flex", alignItems: "center", gap: 12 }}>
+              <Car style={{ width: 28, height: 28, color: "#29ABE2" }} />
+              <div>
+                <div style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "#fff", letterSpacing: ".04em", lineHeight: 1 }}>{activeRoutes.length}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", textTransform: "uppercase", letterSpacing: ".1em", marginTop: 4 }}>{lang === "es" ? "Traslados" : "Transfers"}</div>
+              </div>
+            </NavLink>
           </div>
+
+          {/* Estadías */}
+          {publishedStays.length > 0 && (
+            <section style={{ marginBottom: 48 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
+                <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".06em", margin: 0 }}>{lang === "es" ? "ESTADÍAS" : "STAYS"} <span style={{ color: "rgba(255,255,255,.4)", fontSize: 18 }}>({publishedStays.length})</span></h2>
+                <NavLink to="/stays" style={{ fontSize: 12, color: "var(--gold)", textDecoration: "none", fontWeight: 700 }}>{lang === "es" ? "Ver todas →" : "View all →"}</NavLink>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 18 }}>
+                {publishedStays.slice(0, 6).map((h) => (
+                  <NavLink key={h.id} to={`/stay?id=${h.id}`} style={{ borderRadius: 14, overflow: "hidden", textDecoration: "none", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", display: "flex", flexDirection: "column" }}>
+                    <div style={{ height: 160, overflow: "hidden", position: "relative" }}>
+                      <img src={h.img} alt={h.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <span style={{ position: "absolute", top: 10, right: 10, padding: "4px 10px", borderRadius: 99, background: "rgba(245,166,35,.95)", color: "#0c1318", fontSize: 10, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>{h.zone || (lang === "es" ? "Estadía" : "Stay")}</span>
+                    </div>
+                    <div style={{ padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
+                      <h3 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".03em", margin: 0, marginBottom: 4 }}>{L(h.name, h.nameES).toUpperCase()}</h3>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", lineHeight: 1.5, marginBottom: 10, flex: 1, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{L(h.desc, h.descES)}</p>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                        {h.price > 0 ? <>
+                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".02em" }}>${h.price}</span>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "/ noche" : "/ night"}</span>
+                        </> : <span style={{ color: "var(--gold)", fontSize: 13, fontWeight: 700 }}>{t("onRequest")}</span>}
+                      </div>
+                    </div>
+                  </NavLink>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Tours */}
+          {publishedTours.length > 0 && (
+            <section style={{ marginBottom: 48 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
+                <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".06em", margin: 0 }}>TOURS <span style={{ color: "rgba(255,255,255,.4)", fontSize: 18 }}>({publishedTours.length})</span></h2>
+                <NavLink to="/tours" style={{ fontSize: 12, color: "#8DC63F", textDecoration: "none", fontWeight: 700 }}>{lang === "es" ? "Ver todos →" : "View all →"}</NavLink>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 18 }}>
+                {publishedTours.slice(0, 6).map((tr) => (
+                  <NavLink key={tr.id} to={`/tour?id=${tr.id}`} style={{ borderRadius: 14, overflow: "hidden", textDecoration: "none", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", display: "flex", flexDirection: "column" }}>
+                    <div style={{ height: 160, overflow: "hidden", position: "relative" }}>
+                      <img src={tr.img} alt={tr.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      {tr.day && <span style={{ position: "absolute", top: 10, right: 10, padding: "4px 10px", borderRadius: 99, background: "rgba(141,198,63,.95)", color: "#0c1318", fontSize: 10, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>{tr.day}</span>}
+                    </div>
+                    <div style={{ padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
+                      <h3 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".03em", margin: 0, marginBottom: 4 }}>{L(tr.name, tr.nameES).toUpperCase()}</h3>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", lineHeight: 1.5, marginBottom: 10, flex: 1, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{L(tr.desc, tr.descES)}</p>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                        {tr.price > 0 ? <>
+                          <span style={{ color: "#8DC63F", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".02em" }}>${tr.price}</span>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>{t("perPerson")}</span>
+                        </> : <span style={{ color: "#8DC63F", fontSize: 13, fontWeight: 700 }}>{t("onRequest")}</span>}
+                      </div>
+                    </div>
+                  </NavLink>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Transfers — listamos rutas populares como entrada al buscador */}
+          {activeRoutes.length > 0 && (
+            <section style={{ marginBottom: 48 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
+                <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".06em", margin: 0 }}>{lang === "es" ? "TRASLADOS" : "TRANSFERS"} <span style={{ color: "rgba(255,255,255,.4)", fontSize: 18 }}>({activeRoutes.length})</span></h2>
+                <NavLink to="/transfer-search" style={{ fontSize: 12, color: "#29ABE2", textDecoration: "none", fontWeight: 700 }}>{lang === "es" ? "Buscar traslado →" : "Search transfer →"}</NavLink>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
+                {activeRoutes.slice(0, 8).map((r) => (
+                  <NavLink key={r.id} to={`/transfer-search?from=${encodeURIComponent(r.from || "")}&to=${encodeURIComponent(r.to || "")}`} style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(41,171,226,.04)", border: "1px solid rgba(41,171,226,.18)", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.from} <span style={{ color: "rgba(255,255,255,.4)" }}>→</span> {r.to}</div>
+                      <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 2 }}>{r.distanceKm ? `${r.distanceKm} km` : ""}{r.durationMinutes ? ` · ${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}min` : ""}</div>
+                    </div>
+                    {r.price > 0 && <span style={{ color: "#29ABE2", fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".02em", flexShrink: 0 }}>${r.price}</span>}
+                  </NavLink>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Empty state — solo si NO hay ningún servicio cargado */}
+          {totalCount === 0 && (
+            <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.15)", borderRadius: 16, background: "rgba(255,255,255,.02)" }}>
+              <Sparkles style={{ width: 32, height: 32, color: "rgba(255,255,255,.3)", marginBottom: 12 }} />
+              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "rgba(255,255,255,.7)", marginBottom: 6 }}>
+                {lang === "es" ? "Próximamente" : "Coming soon"}
+              </h3>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 420, margin: "0 auto" }}>
+                {lang === "es"
+                  ? "Estamos cargando los servicios. Vuelve pronto."
+                  : "Loading services. Check back soon."}
+              </p>
+            </div>
+          )}
 
           {/* NEWS SECTION — Editorial Magazine Layout. Si hay al menos 1
               post publicado en Supabase, se renderiza el layout: featured =
@@ -10460,6 +10755,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("title_en", enName);
               fd.append("short_desc_es", esDesc);
               fd.append("short_desc_en", enDesc);
+              // PM 2026-06-15: persistir "Historia completa" en DB
+              // (description_es/_en). Antes se quedaba solo en STAY_ABOUT.
+              if (ownedUpdate.bodyES != null) fd.append("description_es", ownedUpdate.bodyES);
+              if (ownedUpdate.bodyEN != null) fd.append("description_en", ownedUpdate.bodyEN);
               fd.append("price_cents", priceCents);
               fd.append("max_guests", String(ownedUpdate.sleeps || 1));
               fd.append("bedrooms", String(ownedUpdate.bedrooms || 0));
@@ -10502,6 +10801,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("title_en", enName);
               fd.append("short_desc_es", esDesc);
               fd.append("short_desc_en", enDesc);
+              // PM 2026-06-15: persistir "Historia completa" en DB.
+              if (ownedUpdate.bodyES != null) fd.append("description_es", ownedUpdate.bodyES);
+              if (ownedUpdate.bodyEN != null) fd.append("description_en", ownedUpdate.bodyEN);
               fd.append("price_cents", priceCents);
               fd.append("duration_minutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
               fd.append("max_pax", String(ownedUpdate.capacity || 10));
@@ -10708,10 +11010,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [excerptES, setExcerptES] = useState(it.excerptES || "");
   const [bodyEN, setBodyEN] = useState(it.body || "");
   const [bodyES, setBodyES] = useState(it.bodyES || "");
-  // Extended content fields (from STAY_ABOUT / TOUR_ABOUT)
+  // Extended content fields. PM 2026-06-15: para stays/tours, "Historia
+  // Completa" ahora se persiste en DB (description_es/_en). El fallback a
+  // STAY_ABOUT/TOUR_ABOUT in-memory queda solo por compatibilidad con datos
+  // legacy que el admin haya escrito y aún no recargado.
   const about = type === "hotel" ? (STAY_ABOUT[it.id] || {}) : type === "tour" ? (TOUR_ABOUT[it.id] || {}) : {};
-  const [storyEN, setStoryEN] = useState(about.story || "");
-  const [storyES, setStoryES] = useState(about.storyES || "");
+  const [storyEN, setStoryEN] = useState((it.bodyEN != null && it.bodyEN !== "" ? it.bodyEN : about.story) || "");
+  const [storyES, setStoryES] = useState((it.bodyES != null && it.bodyES !== "" ? it.bodyES : about.storyES) || "");
   const [areaEN, setAreaEN] = useState(about.area || "");
   const [areaES, setAreaES] = useState(about.areaES || "");
   const [experienceEN, setExperienceEN] = useState(about.experience || "");
@@ -11007,7 +11312,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       if (checkOutVal !== undefined) updated.checkOutTime = checkOutVal;
       if (cancelVal !== undefined) updated.cancellationPolicy = cancelVal;
       if (rulesVal !== undefined) updated.houseRules = rulesVal;
-      // Extended content → update STAY_ABOUT
+      // PM 2026-06-15: story persistido a DB como description_es/_en.
+      // Se exponen como body/bodyES/bodyEN en el item para que el
+      // FormData del save los envíe.
+      updated.bodyES = storyES || "";
+      updated.bodyEN = storyEN || "";
+      updated.body = storyES || storyEN || "";
+      // Extended content (área, perfectFor, highlights) sigue en
+      // STAY_ABOUT in-memory porque no hay columnas DB para esos campos.
       if (storyEN || areaEN || perfectFor.length || highlightsList.length) {
         STAY_ABOUT[updated.id] = {
           ...(STAY_ABOUT[updated.id] || {}),
@@ -11026,6 +11338,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         updated.price = Number(basePrice);
       }
       if (included.length) updated.includes = included;
+      // PM 2026-06-15: ver stay-specific — story → DB (description).
+      updated.bodyES = storyES || "";
+      updated.bodyEN = storyEN || "";
+      updated.body = storyES || storyEN || "";
       if (storyEN || experienceEN || perfectFor.length || highlightsList.length) {
         TOUR_ABOUT[updated.id] = {
           ...(TOUR_ABOUT[updated.id] || {}),
