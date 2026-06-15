@@ -3884,23 +3884,130 @@ function ServicesPage() {
             </section>
           )}
 
-          {/* Transfers — listamos rutas populares como entrada al buscador */}
+          {/* Transfers — PM 2026-06-15: bloque rediseñado como "spotlight"
+              con hero banner sky-gradient + 3 rutas populares (featured) +
+              CTA grande al buscador. El cliente entiende rápido qué ofrece
+              el servicio en vez de ver una tabla aburrida de rutas. */}
           {activeRoutes.length > 0 && (
-            <section style={{ marginBottom: 48 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
-                <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".06em", margin: 0 }}>{lang === "es" ? "TRASLADOS" : "TRANSFERS"} <span style={{ color: "rgba(255,255,255,.4)", fontSize: 18 }}>({activeRoutes.length})</span></h2>
-                <NavLink to="/transfer-search" style={{ fontSize: 12, color: "#29ABE2", textDecoration: "none", fontWeight: 700 }}>{lang === "es" ? "Buscar traslado →" : "Search transfer →"}</NavLink>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
-                {activeRoutes.slice(0, 8).map((r) => (
-                  <NavLink key={r.id} to={`/transfer-search?from=${encodeURIComponent(r.from || "")}&to=${encodeURIComponent(r.to || "")}`} style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(41,171,226,.04)", border: "1px solid rgba(41,171,226,.18)", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.from} <span style={{ color: "rgba(255,255,255,.4)" }}>→</span> {r.to}</div>
-                      <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 2 }}>{r.distanceKm ? `${r.distanceKm} km` : ""}{r.durationMinutes ? ` · ${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}min` : ""}</div>
+            <section style={{ marginBottom: 56 }}>
+              <div
+                style={{
+                  position: "relative",
+                  borderRadius: 22,
+                  overflow: "hidden",
+                  background: "linear-gradient(135deg, rgba(41,171,226,.15), rgba(15,24,34,.95) 60%)",
+                  border: "1px solid rgba(41,171,226,.25)",
+                  padding: "32px 28px",
+                }}
+              >
+                {/* Decorative blobs */}
+                <div style={{ position: "absolute", top: -60, right: -40, width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle, rgba(41,171,226,.25), transparent 70%)", pointerEvents: "none" }} />
+                <div style={{ position: "absolute", bottom: -50, left: -30, width: 180, height: 180, borderRadius: "50%", background: "radial-gradient(circle, rgba(141,198,63,.18), transparent 70%)", pointerEvents: "none" }} />
+
+                <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 20, alignItems: "center", marginBottom: 24, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 12px", borderRadius: 99, background: "rgba(41,171,226,.18)", border: "1px solid rgba(41,171,226,.4)", marginBottom: 12 }}>
+                      <Car style={{ width: 14, height: 14, color: "#29ABE2" }} />
+                      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#29ABE2" }}>{lang === "es" ? "Traslados a tu medida" : "Transfers your way"}</span>
                     </div>
-                    {r.price > 0 && <span style={{ color: "#29ABE2", fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".02em", flexShrink: 0 }}>${r.price}</span>}
+                    <h2 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(1.8rem, 4vw, 2.6rem)", letterSpacing: ".04em", lineHeight: 1.1, marginBottom: 8, color: "#fff" }}>
+                      {lang === "es" ? <>LLEGÁ A TU DESTINO <em style={{ color: "#29ABE2", fontStyle: "normal" }}>SIN VUELTAS</em></> : <>GET WHERE YOU NEED <em style={{ color: "#29ABE2", fontStyle: "normal" }}>WITHOUT THE HASSLE</em></>}
+                    </h2>
+                    <p style={{ fontSize: 14, color: "rgba(255,255,255,.7)", maxWidth: 540, lineHeight: 1.55, margin: 0 }}>
+                      {lang === "es"
+                        ? "Aeropuerto, hotel, playas, atracciones — armamos el recorrido con vos. Recorridos simples o de varios tramos, vehículo según pax y equipaje."
+                        : "Airport, hotel, beaches, attractions — we build the trip with you. One-way or multi-leg, vehicle matched to passengers and luggage."}
+                    </p>
+                  </div>
+                  <NavLink
+                    to="/transfer-search"
+                    style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      padding: "14px 26px", borderRadius: 12,
+                      background: "linear-gradient(135deg, #29ABE2, #1A7FA8)",
+                      color: "#fff", textDecoration: "none", fontSize: 13, fontWeight: 800,
+                      letterSpacing: ".1em", textTransform: "uppercase",
+                      boxShadow: "0 8px 24px rgba(41,171,226,.35)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Search style={{ width: 14, height: 14 }} />
+                    {lang === "es" ? "Cotizar ahora" : "Get a quote"}
                   </NavLink>
-                ))}
+                </div>
+
+                {/* Mini-stats: rutas, vehículos, destinos */}
+                <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14, marginBottom: 24 }}>
+                  <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>{lang === "es" ? "Rutas activas" : "Active routes"}</div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#29ABE2", letterSpacing: ".02em" }}>{activeRoutes.length}</div>
+                  </div>
+                  <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>{lang === "es" ? "Vehículos" : "Vehicles"}</div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#8DC63F", letterSpacing: ".02em" }}>{(VEHICLES || []).filter(v => v.active !== false).length}</div>
+                  </div>
+                  <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>{lang === "es" ? "Destinos" : "Locations"}</div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#F5A623", letterSpacing: ".02em" }}>{(TRANSFER_LOCATIONS || []).filter(l => l.active !== false).length}</div>
+                  </div>
+                  <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>{lang === "es" ? "Multi-tramo" : "Multi-leg"}</div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#EF6C2B", letterSpacing: ".02em" }}>✓</div>
+                  </div>
+                </div>
+
+                {/* Rutas populares (featured primero, hasta 6) */}
+                {(() => {
+                  const sorted = [...activeRoutes].sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+                  const top = sorted.slice(0, 6);
+                  return (
+                    <div style={{ position: "relative" }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.55)", marginBottom: 12 }}>
+                        {lang === "es" ? "Rutas populares" : "Popular routes"}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
+                        {top.map((r) => (
+                          <NavLink
+                            key={r.id}
+                            to={`/transfer-search?from=${encodeURIComponent(r.from || "")}&to=${encodeURIComponent(r.to || "")}`}
+                            style={{
+                              padding: "14px 16px",
+                              borderRadius: 12,
+                              background: "rgba(15,24,34,.55)",
+                              border: r.featured ? "1px solid rgba(245,166,35,.5)" : "1px solid rgba(255,255,255,.08)",
+                              textDecoration: "none",
+                              display: "flex", flexDirection: "column", gap: 6,
+                              transition: "transform .2s, border-color .2s",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.borderColor = "rgba(41,171,226,.5)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = r.featured ? "rgba(245,166,35,.5)" : "rgba(255,255,255,.08)"; }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <MapPin style={{ width: 12, height: 12, color: "#29ABE2", flexShrink: 0 }} />
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.from}</span>
+                              </span>
+                              {r.featured && <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(245,166,35,.2)", color: "#F5A623", fontWeight: 800, letterSpacing: ".06em" }}>★ POP</span>}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 18, color: "rgba(255,255,255,.55)", fontSize: 11 }}>
+                              <ArrowRight style={{ width: 10, height: 10 }} />
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff", fontWeight: 600 }}>{r.to}</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.05)" }}>
+                              <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)" }}>
+                                {r.distanceKm ? `${r.distanceKm} km` : ""}{r.distanceKm && r.durationMinutes ? " · " : ""}{r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}min` : ""}
+                                {!r.distanceKm && !r.durationMinutes && (lang === "es" ? "Consultar" : "Quote")}
+                              </span>
+                              {r.price > 0
+                                ? <span style={{ color: "#29ABE2", fontFamily: "Bebas Neue", fontSize: 16, letterSpacing: ".02em" }}>${r.price}</span>
+                                : <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>{lang === "es" ? "A consultar" : "On request"}</span>}
+                            </div>
+                          </NavLink>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </section>
           )}
