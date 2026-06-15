@@ -585,6 +585,10 @@ const TX = {
     // Transfer
     transferHeroTitle: "BOOK A", transferHeroBold: "TRANSFER", transferHeroSub: "Private transfers across Puerto Rico. Airport pickups, inter-city rides, custom routes.",
     tripDetails: "Trip Details", specialRequests: "Special Requests (optional)", specialReqPlaceholder: "Child seat, flight number, extra stops...", searchVehicles: "Search Vehicles",
+    // PM 2026-06-15: copy contextual para el form de Transfers. Las palabras
+    // sueltas ("From" / "To" / "Date") no transmitían el "qué se espera del
+    // usuario en este input". Reemplazamos por preguntas en primera persona.
+    xferTripDetails: "Tell us about your trip", xferFrom: "Where do we pick you up?", xferTo: "Where are you headed?", xferDate: "When are you traveling?", xferTime: "What time?", xferPassengers: "How many travelers?", xferLuggage: "How many bags?", xferSpecialRequests: "Anything we should know? (optional)", xferSpecialReqPlaceholder: "Child seat, flight number, extra stops...", xferSelectOrigin: "Choose your pickup point…", xferSelectDest: "Choose your destination…",
     // Stays list
     sortFeatured: "Featured", sortPriceLow: "Price: Low → High", sortPriceHigh: "Price: High → Low", sortRating: "Rating",
     // Hotel detail
@@ -692,6 +696,8 @@ const TX = {
     letsChat: "Hablemos", contactInfo: "Info de Contacto", officeHours: "Horario de Oficina", monFri: "Lun–Vie 8am–8pm", satSun: "Sáb–Dom 9am–6pm", emergSupport: "Soporte de emergencia 24/7",
     transferHeroTitle: "RESERVA UN", transferHeroBold: "TRASLADO", transferHeroSub: "Traslados privados por todo Puerto Rico. Recogida en aeropuerto, viajes interurbanos, rutas personalizadas.",
     tripDetails: "Detalles del Viaje", specialRequests: "Solicitudes Especiales (opcional)", specialReqPlaceholder: "Asiento de niño, número de vuelo, paradas extra...", searchVehicles: "Buscar Vehículos",
+    // PM 2026-06-15: copy contextual — ver coments. en EN.
+    xferTripDetails: "Contános tu viaje", xferFrom: "¿Dónde te recogemos?", xferTo: "¿A dónde te llevamos?", xferDate: "¿Qué día viajás?", xferTime: "¿A qué hora?", xferPassengers: "¿Cuántos viajan?", xferLuggage: "¿Cuántas maletas llevan?", xferSpecialRequests: "¿Algo que debamos saber? (opcional)", xferSpecialReqPlaceholder: "Asiento de niño, número de vuelo, paradas extra...", xferSelectOrigin: "Elegí tu punto de recogida…", xferSelectDest: "Elegí tu destino…",
     sortFeatured: "Destacados", sortPriceLow: "Precio: Menor → Mayor", sortPriceHigh: "Precio: Mayor → Menor", sortRating: "Calificación",
     aboutThisStay: "SOBRE ESTA ESTADÍA", theArea: "LA ZONA", perfectFor: "IDEAL PARA", highlights: "DESTACADOS",
     amenities: "AMENIDADES", policies: "POLÍTICAS", checkInAfter: "Entrada después de las", checkOutBefore: "Salida antes de las", guestReviews: "RESEÑAS DE HUÉSPEDES",
@@ -2481,6 +2487,30 @@ function HotelDetail({ params }) {
                   El catálogo no provee coordenadas reales y el iframe con
                   (0,0) no aportaba valor. La zona/área sigue mostrándose
                   arriba del listing. Restaurar cuando admin cargue lat/lng. */}
+              {/* PM 2026-06-15: pricingExtras (add-ons opcionales) — paridad
+                  con TourDetail. El form de stay ya permitía editarlos pero
+                  el detail page no los mostraba, dejando datos "huérfanos"
+                  en DB que el admin no veía reflejados en el público. */}
+              {(hotel.pricingExtras || []).length > 0 && (
+                <div className="detail-section">
+                  <h3>{lang === "es" ? "EXTRAS OPCIONALES" : "OPTIONAL ADD-ONS"}</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
+                    {hotel.pricingExtras.map((ex, i) => (
+                      <div key={i} style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
+                          {(lang === "es" ? ex.label_es : ex.label_en) || ex.label_en || ex.label_es}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 18 }}>+${ex.price}</span>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>
+                            {ex.unit === "per_night" ? (lang === "es" ? "/ noche" : "/ night") : ex.unit === "per_person" ? (lang === "es" ? "/ persona" : "/ person") : ex.unit === "per_hour" ? (lang === "es" ? "/ hora" : "/ hour") : (lang === "es" ? "/ unidad" : "/ unit")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {(STAY_REVIEWS[hotel.id] || []).length > 0 && (
                 <div className="detail-section">
                   <h3>Guest Reviews</h3>
@@ -2553,12 +2583,15 @@ function HotelDetail({ params }) {
                     consulta por WhatsApp → admin gestiona y emite invoice
                     Stripe desde la misma página. Las URLs de aliados no se
                     exponen al cliente. */}
+                {/* PM 2026-06-15: botón centrado en el sidebar. Antes pasaba
+                    style={width:"100%"} al wrapper inline-block, lo que estiraba
+                    el contenedor pero dejaba el pill (minWidth 180) anclado
+                    a la izquierda. */}
                 <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
                   <ContactSplitButton
                     user={user}
                     lang={lang}
                     color="green"
-                    style={{ width: "100%" }}
                     service={{
                       kind: "stay",
                       name: hotel.name,
@@ -2846,12 +2879,13 @@ function TourDetail({ params }) {
                 {/* PM 2026-06-10: CERO FUGA. El botón "Reservar en <partner>"
                     se eliminó. Toda conversión se concentra en PRDISE vía
                     WhatsApp + invoice Stripe. */}
+                {/* PM 2026-06-15: ver HotelDetail — sin width:100% para que
+                    el pill quede centrado en lugar de anclado a la izquierda. */}
                 <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
                   <ContactSplitButton
                     user={user}
                     lang={lang}
                     color="green"
-                    style={{ width: "100%" }}
                     service={{
                       kind: "tour",
                       name: tour.name,
@@ -2971,12 +3005,16 @@ function TransferSearchPage() {
         <div className="inner-wrap">
 
           <div className="search-form">
-            <h3>{t("tripDetails").toUpperCase()}</h3>
+            {/* PM 2026-06-15: copy contextual en preguntas — labels puntuales
+                ("Desde" / "Hasta" / "Fecha") no transmitían la intención del
+                campo. Las claves xfer* viven aparte de from/to/date para no
+                afectar el sidebar de tours, que usa los mismos sustantivos. */}
+            <h3>{t("xferTripDetails").toUpperCase()}</h3>
             <div className="f-row">
               <div>
-                <label className="f-lab">{t("from")} *</label>
+                <label className="f-lab">{t("xferFrom")} *</label>
                 <select className={`f-in ${errors.from?"err":""}`} value={form.from} onChange={(e) => upd("from", e.target.value)}>
-                  <option value="">{t("selectOrigin")}</option>
+                  <option value="">{t("xferSelectOrigin")}</option>
                   {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === form.to}>{o}</option>)}
                 </select>
                 {errors.from && <p className="err-msg">{errors.from}</p>}
@@ -2992,9 +3030,9 @@ function TransferSearchPage() {
                 {errors.fromCustom && <p className="err-msg">{errors.fromCustom}</p>}
               </div>
               <div>
-                <label className="f-lab">{t("to")} *</label>
+                <label className="f-lab">{t("xferTo")} *</label>
                 <select className={`f-in ${errors.to?"err":""}`} value={form.to} onChange={(e) => upd("to", e.target.value)}>
-                  <option value="">{t("selectDest")}</option>
+                  <option value="">{t("xferSelectDest")}</option>
                   {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === form.from}>{d}</option>)}
                 </select>
                 {errors.to && <p className="err-msg">{errors.to}</p>}
@@ -3012,31 +3050,31 @@ function TransferSearchPage() {
             </div>
             <div className="f-row">
               <div>
-                <label className="f-lab">{t("date")}</label>
+                <label className="f-lab">{t("xferDate")}</label>
                 <DatePicker value={form.date} onChange={(v) => upd("date", v)} min={minDate} />
               </div>
               <div>
-                <label className="f-lab">{t("time")}</label>
+                <label className="f-lab">{t("xferTime")}</label>
                 <input type="time" className="f-in" value={form.time} onChange={(e) => upd("time", e.target.value)} />
               </div>
             </div>
             <div className="f-row">
               <div>
-                <label className="f-lab">{t("passengers")}</label>
+                <label className="f-lab">{t("xferPassengers")}</label>
                 <select className="f-in" value={form.pax} onChange={(e) => upd("pax", parseInt(e.target.value))}>
                   {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} pax</option>)}
                 </select>
               </div>
               <div>
-                <label className="f-lab">{t("luggage")}</label>
+                <label className="f-lab">{t("xferLuggage")}</label>
                 <select className="f-in" value={form.bags} onChange={(e) => upd("bags", parseInt(e.target.value))}>
                   {[0, 1, 2, 3, 4, 6, 10].map((n) => <option key={n} value={n}>{n === 0 ? "—" : `${n}`}</option>)}
                 </select>
               </div>
             </div>
             <div className="f-grp">
-              <label className="f-lab">{t("specialRequests")}</label>
-              <textarea className="f-in" value={form.notes} onChange={(e) => upd("notes", e.target.value)} placeholder={t("specialReqPlaceholder")} />
+              <label className="f-lab">{t("xferSpecialRequests")}</label>
+              <textarea className="f-in" value={form.notes} onChange={(e) => upd("notes", e.target.value)} placeholder={t("xferSpecialReqPlaceholder")} />
             </div>
 
             {/* Recorridos adicionales (PM 2026-06-11): un servicio puede
@@ -3060,9 +3098,9 @@ function TransferSearchPage() {
                   </div>
                   <div className="f-row">
                     <div>
-                      <label className="f-lab">{t("from")} *</label>
+                      <label className="f-lab">{t("xferFrom")} *</label>
                       <select className={`f-in ${errors[eKey("from")] ? "err" : ""}`} value={tp.from} onChange={(e) => updTrip(tp.id, "from", e.target.value)}>
-                        <option value="">{t("selectOrigin")}</option>
+                        <option value="">{t("xferSelectOrigin")}</option>
                         {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === tp.to}>{o}</option>)}
                       </select>
                       {errors[eKey("from")] && <p className="err-msg">{errors[eKey("from")]}</p>}
@@ -3078,9 +3116,9 @@ function TransferSearchPage() {
                       {errors[eKey("fromCustom")] && <p className="err-msg">{errors[eKey("fromCustom")]}</p>}
                     </div>
                     <div>
-                      <label className="f-lab">{t("to")} *</label>
+                      <label className="f-lab">{t("xferTo")} *</label>
                       <select className={`f-in ${errors[eKey("to")] ? "err" : ""}`} value={tp.to} onChange={(e) => updTrip(tp.id, "to", e.target.value)}>
-                        <option value="">{t("selectDest")}</option>
+                        <option value="">{t("xferSelectDest")}</option>
                         {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === tp.from}>{d}</option>)}
                       </select>
                       {errors[eKey("to")] && <p className="err-msg">{errors[eKey("to")]}</p>}
@@ -3098,24 +3136,24 @@ function TransferSearchPage() {
                   </div>
                   <div className="f-row">
                     <div>
-                      <label className="f-lab">{t("date")}</label>
+                      <label className="f-lab">{t("xferDate")}</label>
                       <DatePicker value={tp.date} onChange={(v) => updTrip(tp.id, "date", v)} min={minDate} />
                       {errors[eKey("date")] && <p className="err-msg">{errors[eKey("date")]}</p>}
                     </div>
                     <div>
-                      <label className="f-lab">{t("time")}</label>
+                      <label className="f-lab">{t("xferTime")}</label>
                       <input type="time" className="f-in" value={tp.time} onChange={(e) => updTrip(tp.id, "time", e.target.value)} />
                     </div>
                   </div>
                   <div className="f-row">
                     <div>
-                      <label className="f-lab">{t("passengers")}</label>
+                      <label className="f-lab">{t("xferPassengers")}</label>
                       <select className="f-in" value={tp.pax} onChange={(e) => updTrip(tp.id, "pax", parseInt(e.target.value))}>
                         {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} pax</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="f-lab">{t("luggage")}</label>
+                      <label className="f-lab">{t("xferLuggage")}</label>
                       <select className="f-in" value={tp.bags} onChange={(e) => updTrip(tp.id, "bags", parseInt(e.target.value))}>
                         {[0, 1, 2, 3, 4, 6, 10].map((n) => <option key={n} value={n}>{n === 0 ? "—" : `${n}`}</option>)}
                       </select>
@@ -10979,6 +11017,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("duration_minutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
               fd.append("max_pax", String(ownedUpdate.capacity || 10));
               fd.append("location", ownedUpdate.location || "");
+              // PM 2026-06-15: difficulty + meeting_point — el server action ya los
+              // aceptaba (catalog.ts updateTour), pero el front nunca los enviaba.
+              // El form ahora los expone como inputs editables.
+              fd.append("difficulty", ownedUpdate.difficulty || "");
+              fd.append("meeting_point", ownedUpdate.meetingPoint || "");
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               // Tour "hidden" debe desactivar el tour para que no salga en el
               // catálogo público (RLS activeOnly). "draft" idem.
@@ -11201,6 +11244,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // Partner (referral) — solo aplica a stays/tours
   const [partnerId, setPartnerId] = useState(it.partnerId || "");
   const [partnerUrl, setPartnerUrl] = useState(it.partnerUrl || "");
+  // PM 2026-06-15: meeting_point del tour. El detail page lo muestra desde
+  // tour.meetingPoint (mapeado a DB meeting_point). Antes el form no lo
+  // exponía, así que el admin no podía editarlo y el "Location" del form
+  // persistía a una columna distinta (`location`).
+  const [meetingPoint, setMeetingPoint] = useState(it.meetingPoint || "");
   // Route form: estado controlado (antes mutaba `it` directo, lo cual rompía
   // sutilmente en algunos casos y dificultaba debugging).
   const [routeFrom, setRouteFrom] = useState(it.from || "");
@@ -11471,6 +11519,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       }
       if (vals.rooms) updated.bedrooms = vals.rooms;
       if (vals.sleeps) updated.sleeps = vals.sleeps;
+      // PM 2026-06-15: baños — el label ES "baños" se normaliza a "ba_os",
+      // el EN "bathrooms" a "bathrooms". Leemos ambas keys según idioma activo.
+      const bathVal = vals.ba_os ?? vals.bathrooms;
+      if (bathVal !== undefined && bathVal !== "") updated.bathrooms = Number(bathVal) || 0;
       if (services.length) updated.amenities = services;
       // Políticas (PM 2026-06-11). El scraper deriva las keys a partir del
       // label normalizado en handleSave; los labels en ES vs EN producen
@@ -11503,12 +11555,25 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     }
     // Tour-specific
     if (type === "tour") {
-      if (vals.location) updated.location = vals.location;
+      // PM 2026-06-15: el label "Location" se renombró a "Zona / Región" (ES)
+      // / "Region" (EN). Leemos las tres variantes posibles para no perder
+      // ediciones de admins según el idioma activo al guardar.
+      const regionVal = vals.zona___regi_n ?? vals.region ?? vals.location;
+      if (regionVal) updated.location = regionVal;
       // Precio: ahora viene del bloque controlado "Precio y categoría".
       if (basePrice !== "" && !Number.isNaN(Number(basePrice))) {
         updated.price = Number(basePrice);
       }
       if (included.length) updated.includes = included;
+      // PM 2026-06-15: estos inputs antes eran scrapeados al objeto `vals`
+      // pero la rama tour nunca los asignaba a `updated` → las ediciones
+      // del admin se perdían silenciosamente al guardar.
+      if (vals.day !== undefined && vals.day !== "") updated.day = vals.day;
+      if (vals.duration !== undefined && vals.duration !== "") updated.duration = vals.duration;
+      if (vals.capacity !== undefined && vals.capacity !== "" && vals.capacity !== 0) updated.capacity = vals.capacity;
+      if (vals.difficulty !== undefined && vals.difficulty !== "") updated.difficulty = vals.difficulty;
+      // Meeting point — persistido a DB.meeting_point.
+      updated.meetingPoint = meetingPoint || "";
       // PM 2026-06-15: ver stay-specific — story → DB (description).
       updated.bodyES = storyES || "";
       updated.bodyEN = storyEN || "";
@@ -11706,6 +11771,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 </select>
               </div>
               <div className="adm-fg"><label className="adm-fl">Sleeps</label><input type="number" className="adm-fi" defaultValue={it.sleeps || ""} placeholder="Max guests" /></div>
+              {/* PM 2026-06-15: el detail page muestra "{bedrooms} BR · {bathrooms} BA".
+                  Antes el form no permitía editar baños y siempre quedaba el valor de DB. */}
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Baños" : "Bathrooms"}</label><input type="number" min="0" step="0.5" className="adm-fi" defaultValue={it.bathrooms ?? ""} placeholder="0" /></div>
             </div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hora de entrada" : "Check-in time"}</label><input className="adm-fi" defaultValue={it.checkInTime || "3:00 PM"} placeholder="3:00 PM" /></div>
@@ -11737,7 +11805,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           <>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Name" : "Nombre"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><input className="adm-fi" value={contentLang === "en" ? nameEN : nameES} onChange={(e) => { if (contentLang === "en") setNameEN(e.target.value); else setNameES(e.target.value); }} placeholder={contentLang === "en" ? "Tour name" : "Nombre del tour (opcional)"} /></div>
-              <div className="adm-fg"><label className="adm-fl">Location</label><input className="adm-fi" defaultValue={it.location || ""} placeholder="Meeting point" /></div>
+              {/* PM 2026-06-15: "Location" = zona/región del tour (Cabo Rojo, Jayuya...).
+                  El punto de encuentro detallado vive aparte, en el textarea de abajo,
+                  porque el detail page lo renderiza desde una columna DB distinta. */}
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Zona / Región" : "Region"}</label><input className="adm-fi" defaultValue={it.location || ""} placeholder={lang === "es" ? "Ej: Cabo Rojo, Jayuya..." : "E.g. Cabo Rojo, Jayuya..."} /></div>
             </div>
             <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Description" : "Descripción"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><textarea className="adm-fi" rows={3} value={contentLang === "en" ? descEN : descES} onChange={(e) => { if (contentLang === "en") setDescEN(e.target.value); else setDescES(e.target.value); }} placeholder={contentLang === "en" ? "Describe the tour experience..." : "Descripción en español (opcional)..."} style={{ resize: "vertical", minHeight: 70 }} /></div>
 
@@ -11799,6 +11870,22 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 <button className="adm-btn adm-btn-ghost" onClick={() => addChip(included, setIncluded, inclInput, setInclInput)} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />Add</button>
               </div>
               {chipRow(included, setIncluded)}
+            </div>
+            {/* PM 2026-06-15: punto de encuentro persistido en DB.meeting_point.
+                El detail page lo renderiza en su propia sección — antes no había
+                input que lo editara y quedaba vacío permanentemente. */}
+            <div className="adm-fg">
+              <label className="adm-fl">{lang === "es" ? "Punto de encuentro" : "Meeting point"}</label>
+              <textarea
+                className="adm-fi"
+                rows={2}
+                value={meetingPoint}
+                onChange={(e) => setMeetingPoint(e.target.value)}
+                placeholder={lang === "es"
+                  ? "Ej: Plaza de Cabo Rojo a las 8:00 AM, frente a la iglesia."
+                  : "E.g. Cabo Rojo plaza at 8:00 AM, in front of the church."}
+                style={{ resize: "vertical", minHeight: 50 }}
+              />
             </div>
             {imageSection}
             {statusBtns}
