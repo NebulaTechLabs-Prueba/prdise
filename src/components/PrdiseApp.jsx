@@ -285,6 +285,10 @@ function mapTourToTour(t) {
     body: t.description_es || t.description_en || "",
     bodyES: t.description_es || "",
     bodyEN: t.description_en || "",
+    // PM 2026-06-15: meeting_point del DB. Antes no se exponía y la
+    // sección "Punto de encuentro" del detail page quedaba sin data
+    // aunque el admin lo cargara.
+    meetingPoint: t.meeting_point || "",
     color: t.featured ? "gold" : "green",
     location: t.location || "",
     lat: Number(t.lat) || 0,
@@ -1208,7 +1212,14 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .foot-socs button:hover{background:rgba(255,255,255,.05)}
 .foot-socs svg{width:15px;height:15px}
 
-.wa-float{position:fixed;bottom:24px;right:24px;z-index:150;width:56px;height:56px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,.45);transition:transform .3s,box-shadow .3s;color:#fff}
+.wa-fab-wrap{position:fixed;bottom:24px;right:24px;z-index:150;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.wa-float{width:56px;height:56px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,.45);transition:transform .3s,box-shadow .3s;color:#fff;border:none;cursor:pointer;padding:0}
+.wa-float:hover{transform:scale(1.08)}
+.wa-fab-menu{display:flex;flex-direction:column;gap:8px;animation:waSlide .2s ease}
+.wa-fab-opt{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:99px;font-size:12.5px;font-weight:700;letter-spacing:.04em;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s,filter .15s}
+.wa-fab-opt:hover{transform:translateX(-3px);filter:brightness(1.08)}
+.wa-fab-opt-wa{background:#25D366;color:#fff}
+.wa-fab-opt-sms{background:#F5A623;color:#0c1318}
 .wa-float:hover{transform:scale(1.08);box-shadow:0 8px 28px rgba(37,211,102,.6)}
 .wa-float svg{width:26px;height:26px;color:#fff}
 
@@ -2731,10 +2742,38 @@ function TourDetail({ params }) {
                   ))}
                 </div>
               )}
-              {/* Sección "Meeting Point" con mapa GPS removida (PM 2026-06-09).
-                  El catálogo del cliente no provee coordenadas confiables y el
-                  mapa con (0,0) se veía como un pin perdido. Si en el futuro
-                  el admin carga lat/lng reales por tour, se puede restaurar. */}
+              {/* PM 2026-06-15: meeting_point del DB. La sección con mapa
+                  GPS se mantiene removida (PM 2026-06-09 — sin lat/lng
+                  reales), pero el texto del punto sí se muestra. */}
+              {tour.meetingPoint && (
+                <div className="detail-section">
+                  <h3>{t("meetingPoint")}</h3>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{tour.meetingPoint}</p>
+                </div>
+              )}
+              {/* Extras de pricing (PM 2026-06-15): add-ons opcionales que
+                  el admin define en el form (snorkel, transporte, lunch).
+                  Antes solo se persistían pero no se mostraban al cliente. */}
+              {(tour.pricingExtras || []).length > 0 && (
+                <div className="detail-section">
+                  <h3>{lang === "es" ? "EXTRAS OPCIONALES" : "OPTIONAL ADD-ONS"}</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 10 }}>
+                    {tour.pricingExtras.map((ex, i) => (
+                      <div key={i} style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
+                          {(lang === "es" ? ex.label_es : ex.label_en) || ex.label_en || ex.label_es}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 18 }}>+${ex.price}</span>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>
+                            {ex.unit === "per_person" ? (lang === "es" ? "/ persona" : "/ person") : ex.unit === "per_hour" ? (lang === "es" ? "/ hora" : "/ hour") : (lang === "es" ? "/ unidad" : "/ unit")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {(TOUR_REVIEWS[tour.id] || []).length > 0 && (
                 <div className="detail-section">
                   <h3>Traveler Reviews</h3>
@@ -3725,6 +3764,18 @@ function ServicesPage() {
   // reales del catálogo (stays + tours + transfers populares) en grupos
   // claros, no solo tarjetas decorativas de categorías abstractas. El
   // cliente ve qué se ofrece en concreto y puede ir al detalle.
+  // Las categorías decorativas se mantienen ARRIBA como hook estético
+  // (PM 2026-06-15 feedback: extrañaba la sección visual).
+  const decorativeCategories = [
+    { Icon: Compass, title: t("guidedTours"), desc: t("guidedToursD"), color: "gold" },
+    { Icon: Home, title: t("vacationRentals"), desc: t("vacationRentalsD"), color: "orange" },
+    { Icon: Car, title: t("transfersSvc"), desc: t("transfersSvcD"), color: "green" },
+    { Icon: Waves, title: t("waterAct"), desc: t("waterActD"), color: "sky" },
+    { Icon: Mountain, title: t("adventureTours"), desc: t("adventureToursD"), color: "gold" },
+    { Icon: Sun, title: t("customPkg"), desc: t("customPkgD"), color: "orange" },
+    { Icon: Calendar, title: t("eventPlan"), desc: t("eventPlanD"), color: "green" },
+    { Icon: Sparkles, title: t("conciergeSvc"), desc: t("conciergeSvcD"), color: "sky" },
+  ];
   const publishedStays = HOTELS.filter((h) => !h.status || h.status === "published");
   const publishedTours = TOURS.filter((tr) => !tr.status || tr.status === "published");
   const activeRoutes = ROUTES.filter((r) => r.active !== false);
@@ -3734,6 +3785,19 @@ function ServicesPage() {
       <PageHero tag={t("services")} title={t("svcTag")} titleEm="" subtitle="" />
       <div className="inner-page">
         <div className="inner-wrap">
+
+          {/* Categorías decorativas (hook estético, sin links) */}
+          <div className="svc-simple-grid" style={{ marginBottom: 40 }}>
+            {decorativeCategories.map((s, i) => (
+              <div key={i} className="svc-tile">
+                <div className="svc-tile-ico" style={{ background: COLORS[s.color] + "22", color: COLORS[s.color] }}>
+                  <s.Icon />
+                </div>
+                <h3>{s.title}</h3>
+                <p>{s.desc}</p>
+              </div>
+            ))}
+          </div>
 
           {/* Resumen del catálogo */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 36 }}>
