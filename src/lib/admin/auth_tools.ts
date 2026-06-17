@@ -60,14 +60,20 @@ export async function generateSignupConfirmLink(
     const admin = createAdminClient();
     // generateLink no envía email; solo devuelve la URL. type='signup' aplica
     // a usuarios creados pero no confirmados todavía.
+    // PM 2026-06-17: usábamos type=signup + password dummy con la suposición
+    // de que Supabase lo ignoraba si el user existía. ESO NO ES CIERTO en
+    // versiones recientes — devuelve "A user with this email address has
+    // already been registered". El endpoint correcto para "darle un link a
+    // un user EXISTENTE no confirmado" es type=magiclink: tolera users
+    // existentes, marca email_confirmed_at automáticamente al usar el link,
+    // y además sesiona al usuario en un solo click (mejor UX que signup).
     const { data, error } = await admin.auth.admin.generateLink({
-      type: "signup",
+      type: "magiclink",
       email,
-      // password obligatorio para signup pero no se usa al confirmar (el user
-      // ya lo tiene seteado). Pasamos uno dummy; Supabase lo ignora si el
-      // user existe.
-      password: "ignored-existing-user-keeps-their-password",
-      options: { redirectTo: `${getAppUrl()}/auth/callback` },
+      // redirectTo al home — supabase-js (browser client) tiene
+      // detectSessionInUrl=true por default y procesa el #access_token del
+      // hash automáticamente al cargar.
+      options: { redirectTo: `${getAppUrl()}/` },
     });
     if (error) {
       return {
@@ -193,7 +199,11 @@ export async function generateRecoveryLink(
     const { data, error } = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
-      options: { redirectTo: `${getAppUrl()}/auth/callback` },
+      // PM 2026-06-17: recovery va DIRECTO a /auth/reset-password (esa página
+      // parsea el hash con setSession y muestra el form). El callback genérico
+      // /auth/callback espera ?code=... (flow PKCE) y rompe en el flow hash de
+      // recovery — falla con auth_callback_failed.
+      options: { redirectTo: `${getAppUrl()}/auth/reset-password` },
     });
     if (error) {
       return { ok: false, error: `No se pudo generar el link: ${error.message}` };
