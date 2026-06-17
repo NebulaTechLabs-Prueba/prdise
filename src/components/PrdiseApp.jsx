@@ -14113,6 +14113,9 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
 
   // ── Línea: import desde catálogo ─────────────────────────────────────────
   // Listas combinadas con tipo para el dropdown. Filtramos a published/active.
+  // PM 2026-06-17: el price del transfer venía hardcoded en 0 — al importar
+  // dejaba el unitPrice vacío y el admin tenía que escribirlo a mano. Ahora
+  // usa r.price (tarifa base de la ruta del catálogo). Sigue editable.
   const catalogOptions = useMemo(() => {
     const tours = (TOURS || []).filter(t => !t.status || t.status === "published").map(t => ({
       kind: "tour", id: t.dbId, label: `Tour · ${t.name}`, price: t.price, desc: t.desc,
@@ -14121,7 +14124,9 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       kind: "stay", id: h.dbId, label: `Stay · ${h.name}`, price: h.price, desc: h.desc,
     }));
     const routes = (ROUTES || []).filter(r => r.active !== false).map(r => ({
-      kind: "transfer", id: r.id, label: `Transfer · ${r.from} → ${r.to}`, price: 0, desc: "",
+      kind: "transfer", id: r.id, label: `Transfer · ${r.from} → ${r.to}`,
+      price: Number(r.price) || 0,
+      desc: "",
     }));
     return [...tours, ...stays, ...routes];
   }, []);
@@ -14441,9 +14446,46 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
             </div>
             );
           })}
-          <button type="button" className="adm-btn adm-btn-ghost" onClick={addItem} style={{ marginTop: 10 }}>
-            <Plus />{T("Agregar línea", "Add line")}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <button type="button" className="adm-btn adm-btn-ghost" onClick={addItem}>
+              <Plus />{T("Agregar línea", "Add line")}
+            </button>
+            {/* PM 2026-06-17: shortcut para tramos de transfer ad-hoc. Agrega
+                una línea pre-poblada con "Transfer · " — el admin completa
+                origen → destino y precio. Útil para multi-trip armado por
+                WhatsApp donde no toda combinación existe en routes. */}
+            <button
+              type="button"
+              className="adm-btn adm-btn-ghost"
+              onClick={() => {
+                setItems((arr) => [...arr, {
+                  description: "Transfer · ",
+                  quantity: 1,
+                  unitPrice: "",
+                  tourId: null, stayId: null, transferRouteId: null,
+                }]);
+              }}
+              style={{ color: "#29ABE2", borderColor: "rgba(41,171,226,.4)" }}
+              title={T("Tramo sin ruta predefinida — completá origen → destino y precio", "Trip without predefined route — fill origin → destination and price")}
+            >
+              <Plus />{T("Tramo de transfer custom", "Custom transfer leg")}
+            </button>
+          </div>
+
+          {/* PM 2026-06-17: hint visible cuando hay >1 línea o cuando ya hay
+              un transfer importado, para que el admin sepa que multi-trip se
+              modela con N líneas (una por tramo). */}
+          {(items.length > 1 || items.some(it => it.transferRouteId || (it.description || "").toLowerCase().includes("transfer"))) && (
+            <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 9, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <Info style={{ width: 13, height: 13, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
+              <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.55 }}>
+                {T(
+                  "Para servicios multi-trip (transfer con varias paradas o días distintos), agregá una línea por cada tramo acordado. Todos los precios son editables.",
+                  "For multi-trip services (transfer with multiple stops or different days), add a line per agreed trip. All prices are editable."
+                )}
+              </p>
+            </div>
+          )}
 
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12, marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.08)" }}>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", color: "rgba(255,255,255,.5)", textTransform: "uppercase" }}>Total</span>
