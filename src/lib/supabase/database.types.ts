@@ -1413,6 +1413,8 @@ export type Database = {
           lat: number | null
           lng: number | null
           location: string | null
+          markup_type: string | null
+          markup_value: number | null
           max_guests: number
           partner_id: string | null
           partner_url: string | null
@@ -1448,6 +1450,8 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           location?: string | null
+          markup_type?: string | null
+          markup_value?: number | null
           max_guests?: number
           partner_id?: string | null
           partner_url?: string | null
@@ -1483,6 +1487,8 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           location?: string | null
+          markup_type?: string | null
+          markup_value?: number | null
           max_guests?: number
           partner_id?: string | null
           partner_url?: string | null
@@ -1539,6 +1545,8 @@ export type Database = {
           lat: number | null
           lng: number | null
           location: string | null
+          markup_type: string | null
+          markup_value: number | null
           max_pax: number
           meeting_point: string | null
           partner_id: string | null
@@ -1571,6 +1579,8 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           location?: string | null
+          markup_type?: string | null
+          markup_value?: number | null
           max_pax?: number
           meeting_point?: string | null
           partner_id?: string | null
@@ -1603,6 +1613,8 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           location?: string | null
+          markup_type?: string | null
+          markup_value?: number | null
           max_pax?: number
           meeting_point?: string | null
           partner_id?: string | null

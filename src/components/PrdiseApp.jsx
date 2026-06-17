@@ -208,8 +208,26 @@ const resolveImg = (val) => {
 };
 const resolveImgs = (vals) => Array.isArray(vals) && vals.length ? vals.map(resolveImg) : [IMG_PALM];
 
+// PM 2026-06-15: aplica el markup admin (% o cantidad en centavos) sobre el
+// price_cents base. Devuelve el precio efectivo en CENTAVOS, redondeado a
+// entero. Si type es null o value es null, devuelve el base sin cambios.
+// El precio efectivo es lo que ve el cliente y lo que se usa para invoice;
+// el base se conserva para auditoría y para que el admin pueda editar el
+// markup sin perder la referencia original.
+function applyMarkupCents(baseCents, type, value) {
+  const base = Number(baseCents) || 0;
+  if (!type || value == null || Number.isNaN(Number(value))) return base;
+  const v = Number(value);
+  if (type === "percent") return Math.max(0, Math.round(base * (1 + v / 100)));
+  if (type === "amount") return Math.max(0, Math.round(base + v));
+  return base;
+}
+
 function mapStayToHotel(s) {
   const imgs = Array.isArray(s.images) ? s.images : [];
+  // PM 2026-06-15: precio efectivo = base + markup admin (porcentaje o cantidad).
+  // Es lo que ve el cliente y lo que va al invoice — el markup no se desglosa.
+  const effectiveCents = applyMarkupCents(s.price_cents, s.markup_type, s.markup_value);
   return {
     id: s.slug,
     dbId: s.id,
@@ -222,7 +240,13 @@ function mapStayToHotel(s) {
     nameES: s.title_es || "",
     zone: s.location || "",
     type: "Villa",
-    price: Math.round((s.price_cents || 0) / 100),
+    // `price` = precio efectivo en USD (con markup aplicado). El público y
+    // el invoice usan este valor. `basePrice` conserva el original para
+    // que el admin pueda editar el markup sin perder la referencia.
+    price: Math.round(effectiveCents / 100),
+    basePrice: Math.round((s.price_cents || 0) / 100),
+    markupType: s.markup_type || null,
+    markupValue: s.markup_value == null ? null : Number(s.markup_value),
     rating: Number(s.rating_avg) || 0,
     reviews: s.rating_count || 0,
     sleeps: s.max_guests || 1,
@@ -266,6 +290,8 @@ function mapStayToHotel(s) {
 
 function mapTourToTour(t) {
   const imgs = Array.isArray(t.images) ? t.images : [];
+  // PM 2026-06-15: ver mapStayToHotel — precio efectivo con markup admin.
+  const effectiveCents = applyMarkupCents(t.price_cents, t.markup_type, t.markup_value);
   return {
     id: t.slug,
     dbId: t.id,
@@ -274,7 +300,10 @@ function mapTourToTour(t) {
     nameES: t.title_es || "",
     day: "",
     duration: t.duration_minutes ? `${Math.round(t.duration_minutes / 60)} hours` : "",
-    price: Math.round((t.price_cents || 0) / 100),
+    price: Math.round(effectiveCents / 100),
+    basePrice: Math.round((t.price_cents || 0) / 100),
+    markupType: t.markup_type || null,
+    markupValue: t.markup_value == null ? null : Number(t.markup_value),
     rating: Number(t.rating_avg) || 0,
     reviews: t.rating_count || 0,
     capacity: t.max_pax || 1,
@@ -10958,7 +10987,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           let saveResult = { ok: false, error: "Tipo no soportado" };
           try {
             const fd = new FormData();
-            const priceCents = String(Math.round((ownedUpdate.price || 0) * 100));
+            // PM 2026-06-15: persistimos el precio BASE (sin markup) en
+            // price_cents. El markup va en sus propias columnas. Mantenemos
+            // fallback a `price` para entidades sin basePrice (transfer, etc.).
+            const baseUsd = ownedUpdate.basePrice != null ? Number(ownedUpdate.basePrice) : Number(ownedUpdate.price || 0);
+            const priceCents = String(Math.round((baseUsd || 0) * 100));
             if (editing.type === "hotel") {
               // Bilingüe: usa nameES/descES si existen, fallback a EN. La
               // public detail page usa L(name, nameES) así que ambas columnas
@@ -10989,6 +11022,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_night");
               fd.append("pricing_extras", JSON.stringify(Array.isArray(ownedUpdate.pricingExtras) ? ownedUpdate.pricingExtras : []));
               fd.append("category", ownedUpdate.category || "");
+              // PM 2026-06-15: sobreprecio admin (% o cantidad en centavos).
+              // Si no aplica, enviamos string vacío para que el server lo lea
+              // como null (readMarkup en catalog.ts lo normaliza).
+              fd.append("markup_type", ownedUpdate.markupType || "");
+              fd.append("markup_value", ownedUpdate.markupValue == null ? "" : String(ownedUpdate.markupValue));
               // Políticas (PM 2026-06-11): persisten en stays.*_policy/rules.
               fd.append("check_in_time", ownedUpdate.checkInTime || "");
               fd.append("check_out_time", ownedUpdate.checkOutTime || "");
@@ -11040,6 +11078,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_person");
               fd.append("pricing_extras", JSON.stringify(Array.isArray(ownedUpdate.pricingExtras) ? ownedUpdate.pricingExtras : []));
               fd.append("category", ownedUpdate.category || "");
+              // PM 2026-06-15: ver bloque stay — markup en columnas dedicadas.
+              fd.append("markup_type", ownedUpdate.markupType || "");
+              fd.append("markup_value", ownedUpdate.markupValue == null ? "" : String(ownedUpdate.markupValue));
               const includesArr = Array.isArray(ownedUpdate.includes) ? ownedUpdate.includes : [];
               fd.append("includes", JSON.stringify(includesArr));
               const coverImg = ownedUpdate.img || "";
@@ -11277,10 +11318,26 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // luego el unit dropdown abajo) — duplicaba la pregunta y el admin se
   // confundía sobre cuál era el efectivo. Ahora un único precio base con
   // unidad al lado.
-  const [basePrice, setBasePrice] = useState(it.price != null && it.price !== "" ? String(it.price) : "");
+  // PM 2026-06-15: leemos `it.basePrice` (precio del partner sin markup), no
+  // `it.price` (que ahora es el efectivo con markup aplicado). Antes del
+  // markup ambos eran iguales — al introducir markup este input mostraba el
+  // efectivo y al re-guardar duplicaba el sobreprecio.
+  const initialBasePrice = it.basePrice != null && it.basePrice !== ""
+    ? String(it.basePrice)
+    : (it.price != null && it.price !== "" ? String(it.price) : "");
+  const [basePrice, setBasePrice] = useState(initialBasePrice);
   const [pricingExtras, setPricingExtras] = useState(Array.isArray(it.pricingExtras) ? it.pricingExtras : []);
   const [extraDraft, setExtraDraft] = useState({ label_en: "", label_es: "", price: "", unit: "per_person" });
   const [category, setCategory] = useState(it.category || "");
+  // PM 2026-06-15: sobreprecio admin. Type vacío = "Sin sobreprecio". Para
+  // percent el valor es el %, para amount son CENTAVOS — el form muestra
+  // dólares y se convierte a centavos al guardar.
+  const [markupType, setMarkupType] = useState(it.markupType || "");
+  const [markupValueInput, setMarkupValueInput] = useState(() => {
+    if (it.markupType === "percent") return it.markupValue != null ? String(it.markupValue) : "";
+    if (it.markupType === "amount") return it.markupValue != null ? String(Number(it.markupValue) / 100) : "";
+    return "";
+  });
   const partnerOptions = useMemo(
     () => (Array.isArray(PARTNERS) ? PARTNERS.filter((p) => p.active && !p.deleted_at) : []),
     []
@@ -11522,9 +11579,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       if (vals.location) updated.zone = vals.location;
       // PM 2026-06-12: precio leído del input controlado de "Precio y
       // categoría" (basePrice). El input legacy "Price / night" se eliminó.
-      if (basePrice !== "" && !Number.isNaN(Number(basePrice))) {
-        updated.price = Number(basePrice);
-      }
+      // PM 2026-06-15: el bloque de markup más abajo se encarga de setear
+      // basePrice, markupType, markupValue y de recomputar price (efectivo).
+      // Acá ya no asignamos `updated.price`.
       if (vals.rooms) updated.bedrooms = vals.rooms;
       if (vals.sleeps) updated.sleeps = vals.sleeps;
       // PM 2026-06-15: baños — el label ES "baños" se normaliza a "ba_os",
@@ -11568,10 +11625,8 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // ediciones de admins según el idioma activo al guardar.
       const regionVal = vals.zona___regi_n ?? vals.region ?? vals.location;
       if (regionVal) updated.location = regionVal;
-      // Precio: ahora viene del bloque controlado "Precio y categoría".
-      if (basePrice !== "" && !Number.isNaN(Number(basePrice))) {
-        updated.price = Number(basePrice);
-      }
+      // PM 2026-06-15: idem hotel — basePrice/markup se setean en el bloque
+      // unificado más abajo; no asignamos `updated.price` acá.
       if (included.length) updated.includes = included;
       // PM 2026-06-15: estos inputs antes eran scrapeados al objeto `vals`
       // pero la rama tour nunca los asignaba a `updated` → las ediciones
@@ -11642,6 +11697,27 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.pricingUnit = pricingUnit;
       updated.pricingExtras = pricingExtras;
       updated.category = category.trim() || null;
+      // PM 2026-06-15: markup admin. El input de "amount" se ingresa en USD —
+      // convertimos a centavos al guardar. Para "percent" se envía tal cual.
+      const baseNum = basePrice !== "" ? Number(basePrice) : 0;
+      const baseCents = Math.round(baseNum * 100);
+      let mtype = null;
+      let mvalue = null;
+      if (markupType === "percent" || markupType === "amount") {
+        const v = Number(markupValueInput);
+        if (Number.isFinite(v)) {
+          mtype = markupType;
+          mvalue = markupType === "amount" ? Math.round(v * 100) : v;
+        }
+      }
+      updated.markupType = mtype;
+      updated.markupValue = mvalue;
+      updated.basePrice = baseNum;
+      // Precio efectivo en memoria → consistente con lo que verá el público
+      // al re-mapear desde DB en el próximo loadInitialData. Sin esto, después
+      // de guardar la lista admin mostraba el base hasta refrescar.
+      const effCents = applyMarkupCents(baseCents, mtype, mvalue);
+      updated.price = Math.round(effCents / 100);
     }
 
     // New items need an ID. Para stays/tours el slug se deriva del nombre
@@ -12274,6 +12350,90 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             </div>
           </div>
         )}
+
+        {/* ══ SOBREPRECIO / MARKUP (stays / tours) ═══════════════════════════
+            PM 2026-06-15: el admin puede agregar un porcentaje o cantidad
+            fija al precio base para cobrar comisión sin facturar al partner.
+            No se desglosa en el invoice; sólo afecta el "precio efectivo"
+            que ve el cliente y que entra como unitario en la factura. */}
+        {(type === "hotel" || type === "tour") && (() => {
+          const baseNum = Number(basePrice) || 0;
+          const valNum = Number(markupValueInput);
+          let effective = baseNum;
+          let delta = 0;
+          if (markupType === "percent" && Number.isFinite(valNum)) {
+            effective = Math.max(0, baseNum * (1 + valNum / 100));
+            delta = effective - baseNum;
+          } else if (markupType === "amount" && Number.isFinite(valNum)) {
+            effective = Math.max(0, baseNum + valNum);
+            delta = valNum;
+          }
+          const sign = delta >= 0 ? "+" : "−";
+          const deltaAbs = Math.abs(delta);
+          return (
+            <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(141,198,63,.06)", border: "1px solid rgba(141,198,63,.25)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <CreditCard style={{ width: 14, height: 14, color: "#8DC63F" }} />
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "#8DC63F" }}>
+                  {lang === "es" ? "Sobreprecio / Comisión" : "Markup / Commission"}
+                </div>
+              </div>
+              <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", lineHeight: 1.5, margin: "0 0 10px 0" }}>
+                {lang === "es"
+                  ? "Cobrá tu comisión directamente al cliente. El cliente ve el precio final ya con el sobreprecio incluido — no se desglosa en el invoice."
+                  : "Charge your commission directly to the customer. They see the final price with markup baked in — it doesn't appear as a separate line in the invoice."}
+              </p>
+              <div className="adm-fg-row">
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{lang === "es" ? "Tipo" : "Type"}</label>
+                  <select
+                    className="adm-fi"
+                    value={markupType}
+                    onChange={(e) => { setMarkupType(e.target.value); if (!e.target.value) setMarkupValueInput(""); }}
+                  >
+                    <option value="">{lang === "es" ? "Sin sobreprecio" : "No markup"}</option>
+                    <option value="percent">{lang === "es" ? "Porcentaje (%)" : "Percentage (%)"}</option>
+                    <option value="amount">{lang === "es" ? "Cantidad fija (USD)" : "Flat amount (USD)"}</option>
+                  </select>
+                </div>
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">
+                    {markupType === "percent" ? (lang === "es" ? "Valor (%)" : "Value (%)")
+                      : markupType === "amount" ? (lang === "es" ? "Valor (USD)" : "Value (USD)")
+                      : (lang === "es" ? "Valor" : "Value")}
+                  </label>
+                  <input
+                    type="number"
+                    step={markupType === "percent" ? "1" : "0.01"}
+                    className="adm-fi"
+                    value={markupValueInput}
+                    onChange={(e) => setMarkupValueInput(e.target.value)}
+                    placeholder={markupType === "percent" ? "20" : markupType === "amount" ? "5.00" : "—"}
+                    disabled={!markupType}
+                  />
+                </div>
+                <div className="adm-fg" style={{ flex: 1.2 }}>
+                  <label className="adm-fl">{lang === "es" ? "Precio final" : "Final price"}</label>
+                  <div style={{ padding: "9px 12px", borderRadius: 8, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.3)", fontFamily: "monospace", fontSize: 14, color: "#fff", display: "flex", alignItems: "baseline", gap: 6 }}>
+                    <span style={{ color: "#8DC63F", fontWeight: 800 }}>${effective.toFixed(2)}</span>
+                    {markupType && Number.isFinite(valNum) && (
+                      <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)" }}>
+                        ({sign}${deltaAbs.toFixed(2)})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {markupType === "percent" && (
+                <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", margin: "6px 0 0 0" }}>
+                  {lang === "es"
+                    ? "Tip: usá valores negativos (ej. -10) para descuentos. Rango permitido: -100 a 1000."
+                    : "Tip: use negative values (e.g. -10) for discounts. Allowed range: -100 to 1000."}
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {(type === "hotel" || type === "tour") && (
           <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)" }}>

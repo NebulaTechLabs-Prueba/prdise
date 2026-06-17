@@ -69,6 +69,29 @@ function readPricingExtras(fd: FormData): unknown {
   try { return JSON.parse(raw); } catch { return []; }
 }
 
+/**
+ * PM 2026-06-15: lee markup_type + markup_value. Valores vacíos / "none" /
+ * null normalizan a (null, null) para que el form pueda enviar "limpiar
+ * markup" simplemente dejando el campo vacío. La validación cruzada vive en
+ * el schema (validateMarkup).
+ */
+function readMarkup(fd: FormData): { markup_type: "percent" | "amount" | null; markup_value: number | null } {
+  const rawType = fd.get("markup_type");
+  const type = typeof rawType === "string" ? rawType.trim().toLowerCase() : "";
+  if (type !== "percent" && type !== "amount") {
+    return { markup_type: null, markup_value: null };
+  }
+  const rawVal = fd.get("markup_value");
+  if (typeof rawVal !== "string" || rawVal.trim() === "") {
+    return { markup_type: type as "percent" | "amount", markup_value: null };
+  }
+  const n = Number(rawVal);
+  return {
+    markup_type: type as "percent" | "amount",
+    markup_value: Number.isFinite(n) ? n : null,
+  };
+}
+
 // ===========================================================================
 // STAYS
 // ===========================================================================
@@ -105,6 +128,7 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     check_out_time: formData.get("check_out_time") ?? "",
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
+    ...readMarkup(formData),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -140,6 +164,8 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      markup_type: d.markup_type ?? null,
+      markup_value: d.markup_value ?? null,
       ...(("check_in_time" in d) ? {
         check_in_time: (d as { check_in_time?: string }).check_in_time || null,
         check_out_time: (d as { check_out_time?: string }).check_out_time || null,
@@ -197,6 +223,7 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     check_out_time: formData.get("check_out_time") ?? "",
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
+    ...readMarkup(formData),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -232,6 +259,8 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      markup_type: d.markup_type ?? null,
+      markup_value: d.markup_value ?? null,
       ...(("check_in_time" in d) ? {
         check_in_time: (d as { check_in_time?: string }).check_in_time || null,
         check_out_time: (d as { check_out_time?: string }).check_out_time || null,
@@ -312,6 +341,7 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     pricing_unit: formData.get("pricing_unit") ?? undefined,
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
+    ...readMarkup(formData),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -348,6 +378,8 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      markup_type: d.markup_type ?? null,
+      markup_value: d.markup_value ?? null,
       created_by: actorId,
     })
     .select("id")
@@ -396,6 +428,7 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     pricing_unit: formData.get("pricing_unit") ?? undefined,
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
+    ...readMarkup(formData),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -432,6 +465,8 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      markup_type: d.markup_type ?? null,
+      markup_value: d.markup_value ?? null,
     })
     .eq("id", id);
 

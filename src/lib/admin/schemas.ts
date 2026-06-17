@@ -195,6 +195,41 @@ const tourPricingUnitSchema = z
   .enum(["per_person", "per_hour", "per_unit", "per_attraction", "per_night"])
   .default("per_person");
 
+// PM 2026-06-15: sobreprecio admin reusable. type=null si no aplica; en ese caso
+// markup_value se ignora. Para 'percent', value ∈ [-100, 1000]. Para 'amount',
+// value es centavos (puede ser negativo para descuentos). Validación cruzada
+// type↔value se aplica en cada base schema via .superRefine() — la dejamos
+// declarativa acá como shape de campos para poder mergear con z.object().
+const markupShape = {
+  markup_type: z
+    .enum(["percent", "amount"])
+    .nullable()
+    .optional(),
+  markup_value: z.coerce
+    .number({ invalid_type_error: "Markup inválido" })
+    .nullable()
+    .optional(),
+};
+
+// Cross-field validation reusable. La invocamos como superRefine en stay/tour.
+function validateMarkup(data: { markup_type?: string | null; markup_value?: number | null }, ctx: z.RefinementCtx) {
+  const type = data.markup_type ?? null;
+  const value = data.markup_value;
+  if (type === "percent") {
+    if (value == null || Number.isNaN(value)) {
+      ctx.addIssue({ code: "custom", path: ["markup_value"], message: "Indicá el porcentaje." });
+      return;
+    }
+    if (value < -100 || value > 1000) {
+      ctx.addIssue({ code: "custom", path: ["markup_value"], message: "El porcentaje debe estar entre -100 y 1000." });
+    }
+  } else if (type === "amount") {
+    if (value == null || Number.isNaN(value)) {
+      ctx.addIssue({ code: "custom", path: ["markup_value"], message: "Indicá la cantidad (en centavos)." });
+    }
+  }
+}
+
 const stayBaseSchema = z.object({
   slug: slugSchema,
   title_es: optionalNonEmptyText(160, "Título (ES)"),
@@ -223,10 +258,16 @@ const stayBaseSchema = z.object({
   check_out_time: optionalText(40, "Hora de salida"),
   cancellation_policy: optionalText(2000, "Política de cancelación"),
   house_rules: optionalText(2000, "Normas de la casa"),
+  // PM 2026-06-15: ver markupShape. La validación cruzada type↔value se aplica
+  // a nivel create/update schemas con superRefine — mantener stayBaseSchema
+  // como ZodObject permite seguir usándolo con .extend() en updateStaySchema.
+  ...markupShape,
 }).merge(partnerLinkSchema);
 
-export const createStaySchema = stayBaseSchema;
-export const updateStaySchema = stayBaseSchema.extend({ id: uuidSchema });
+export const createStaySchema = stayBaseSchema.superRefine(validateMarkup);
+export const updateStaySchema = stayBaseSchema
+  .extend({ id: uuidSchema })
+  .superRefine(validateMarkup);
 export const deleteStaySchema = z.object({ id: uuidSchema });
 
 // ─── Catalog: Tours ─────────────────────────────────────────────────────────
@@ -259,10 +300,14 @@ const tourBaseSchema = z.object({
   pricing_unit: tourPricingUnitSchema,
   pricing_extras: pricingExtrasArraySchema,
   category: optionalText(120, "Categoría"),
+  // PM 2026-06-15: ver markupShape.
+  ...markupShape,
 }).merge(partnerLinkSchema);
 
-export const createTourSchema = tourBaseSchema;
-export const updateTourSchema = tourBaseSchema.extend({ id: uuidSchema });
+export const createTourSchema = tourBaseSchema.superRefine(validateMarkup);
+export const updateTourSchema = tourBaseSchema
+  .extend({ id: uuidSchema })
+  .superRefine(validateMarkup);
 export const deleteTourSchema = z.object({ id: uuidSchema });
 
 // ─── Catalog: Transfer Routes ───────────────────────────────────────────────
