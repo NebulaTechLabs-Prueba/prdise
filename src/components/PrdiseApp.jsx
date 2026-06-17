@@ -11739,7 +11739,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
-              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              // PM 2026-06-17: el mapper expone id=slug y dbId=UUID. Server
+              // espera UUID en el campo id ("Identificador inválido" si no).
+              if (!editing.isNew) fd.append("id", ownedUpdate.dbId || ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "tour") {
               const enName = ownedUpdate.name || "";
@@ -11783,7 +11785,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateTour : sbUpdateTour;
-              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              // PM 2026-06-17: ver stay — mandar UUID (dbId), no slug.
+              if (!editing.isNew) fd.append("id", ownedUpdate.dbId || ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "post") {
               const enTitle = ownedUpdate.title || "";
@@ -11804,7 +11807,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("image", ownedUpdate.img || "");
               fd.append("status", ownedUpdate.status || "draft");
               const action = editing.isNew ? sbCreatePost : sbUpdatePost;
-              if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
+              // PM 2026-06-17: ver stay — mandar UUID (dbId), no slug.
+              if (!editing.isNew) fd.append("id", ownedUpdate.dbId || ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "route") {
               fd.append("from_location", ownedUpdate.from || "");
