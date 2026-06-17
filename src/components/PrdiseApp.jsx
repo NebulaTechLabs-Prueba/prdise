@@ -11717,13 +11717,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             const baseUsd = ownedUpdate.basePrice != null ? Number(ownedUpdate.basePrice) : Number(ownedUpdate.price || 0);
             const priceCents = String(Math.round((baseUsd || 0) * 100));
             if (editing.type === "hotel") {
-              // Bilingüe: usa nameES/descES si existen, fallback a EN. La
-              // public detail page usa L(name, nameES) así que ambas columnas
-              // deben tener datos coherentes.
+              // Bilingüe: persistir cada idioma TAL CUAL — sin copiar EN→ES
+              // como fallback. PM 2026-06-17: el fallback contaminaba ES con
+              // texto EN cuando admin solo cargó inglés; al reabrir, el tab
+              // ES mostraba el texto en inglés sin que el cliente lo hubiera
+              // escrito. L() del público sigue cayendo al otro idioma si uno
+              // está vacío, así que la visualización no se pierde.
               const enName = ownedUpdate.name || "";
-              const esName = ownedUpdate.nameES || enName;
+              const esName = ownedUpdate.nameES || "";
               const enDesc = ownedUpdate.desc || "";
-              const esDesc = ownedUpdate.descES || enDesc;
+              const esDesc = ownedUpdate.descES || "";
               fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
               fd.append("title_es", esName);
               fd.append("title_en", enName);
@@ -11773,10 +11776,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (!editing.isNew) fd.append("id", ownedUpdate.dbId || ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "tour") {
+              // PM 2026-06-17: idem hotel — no copiar EN→ES como fallback.
               const enName = ownedUpdate.name || "";
-              const esName = ownedUpdate.nameES || enName;
+              const esName = ownedUpdate.nameES || "";
               const enDesc = ownedUpdate.desc || "";
-              const esDesc = ownedUpdate.descES || enDesc;
+              const esDesc = ownedUpdate.descES || "";
               fd.append("slug", ownedUpdate.id || ownedUpdate.slug || "");
               fd.append("title_es", esName);
               fd.append("title_en", enName);
@@ -11818,12 +11822,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (!editing.isNew) fd.append("id", ownedUpdate.dbId || ownedUpdate.id || "");
               saveResult = await action(fd);
             } else if (editing.type === "post") {
+              // PM 2026-06-17: el fallback ES→EN contaminaba ES con texto
+              // inglés cuando admin solo cargó EN. Reportado por el cliente:
+              // "el formulario en su sección de español está tomando las
+              // palabras exactas en inglés, obligando a borrar y escribir".
               const enTitle = ownedUpdate.title || "";
-              const esTitle = ownedUpdate.titleES || enTitle;
+              const esTitle = ownedUpdate.titleES || "";
               const enExcerpt = ownedUpdate.excerpt || "";
-              const esExcerpt = ownedUpdate.excerptES || enExcerpt;
+              const esExcerpt = ownedUpdate.excerptES || "";
               const enBody = ownedUpdate.body || "";
-              const esBody = ownedUpdate.bodyES || enBody;
+              const esBody = ownedUpdate.bodyES || "";
               fd.append("slug", ownedUpdate.slug || ownedUpdate.id || "");
               fd.append("title_es", esTitle);
               fd.append("title_en", enTitle);
@@ -12153,7 +12161,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           🇵🇷 Español <span style={{ fontSize: 9, color: "rgba(255,255,255,.3)" }}>{t("optional")}</span>
         </button>
       </div>
-      {contentLang === "es" && (nameEN || descEN || storyEN || excerptEN || bodyEN) && (
+      {/* PM 2026-06-17: ocultado para posts a pedido del cliente — el botón
+          queda disponible para hotel/tour donde sigue siendo útil. */}
+      {contentLang === "es" && type !== "post" && (nameEN || descEN || storyEN || excerptEN || bodyEN) && (
         <button type="button" onClick={autoTranslate} disabled={translating} style={{
           width: "100%", marginTop: 8, padding: "10px 16px", borderRadius: 10, cursor: translating ? "wait" : "pointer",
           background: translating ? "rgba(141,198,63,.08)" : "linear-gradient(135deg,rgba(141,198,63,.12),rgba(41,171,226,.12))",
