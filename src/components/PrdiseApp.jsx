@@ -12982,9 +12982,30 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 </select>
               </div>
             </div>
+            {/* PM 2026-06-17: cover + galería con upload directo (paridad con
+                stay/tour). Antes el post form solo aceptaba URL pegado. */}
             <div className="adm-fg">
-              <label className="adm-fl">Cover Image URL (custom — overrides preset)</label>
-              <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://... paste direct image URL" />
+              <label className="adm-fl">{lang === "es" ? "Imagen de portada (URL o archivo)" : "Cover Image (URL or file)"}</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL o usá Subir archivo →" : "Paste URL or use Upload file →"} style={{ flex: 1 }} />
+                <label className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, cursor: uploading ? "wait" : "pointer", opacity: uploading ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {uploading ? <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(141,198,63,.3)", borderTopColor: "#8DC63F", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> : <Plus style={{ width: 12, height: 12 }} />}
+                  {lang === "es" ? "Subir" : "Upload"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    disabled={uploading}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      const url = await uploadImageFile(f, "cover");
+                      if (url) setImageUrl(url);
+                    }}
+                  />
+                </label>
+              </div>
               {imageUrl && (
                 <div style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", height: 80, position: "relative" }}>
                   <img src={imageUrl} alt="Cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; }} />
@@ -12993,13 +13014,32 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                   </div>
                 </div>
               )}
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,.35)", marginTop: 6 }}>{lang === "es" ? "Override sobre el preset de arriba si pegás URL o subís archivo." : "Overrides the preset above when URL or file is provided."}</p>
             </div>
             <div className="adm-fg">
-              <label className="adm-fl">Article Images</label>
+              <label className="adm-fl">{lang === "es" ? "Imágenes del artículo (galería)" : "Article Images (gallery)"}</label>
               <div style={{ display: "flex", gap: 6 }}>
-                <input className="adm-fi" value={newImgUrl} onChange={(e) => setNewImgUrl(e.target.value)} placeholder="Paste image URL and click Add" style={{ flex: 1 }} onKeyDown={(e) => e.key === "Enter" && newImgUrl.trim() && (e.preventDefault(), setImageList([...imageList, newImgUrl.trim()]), setNewImgUrl(""))} />
-                <button className="adm-btn adm-btn-ghost" onClick={() => { if (newImgUrl.trim()) { setImageList([...imageList, newImgUrl.trim()]); setNewImgUrl(""); } }} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />Add</button>
+                <input className="adm-fi" value={newImgUrl} onChange={(e) => setNewImgUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL y dale + Agregar" : "Paste URL and click Add"} style={{ flex: 1 }} onKeyDown={(e) => e.key === "Enter" && newImgUrl.trim() && (e.preventDefault(), setImageList([...imageList, newImgUrl.trim()]), setNewImgUrl(""))} />
+                <button className="adm-btn adm-btn-ghost" onClick={() => { if (newImgUrl.trim()) { setImageList([...imageList, newImgUrl.trim()]); setNewImgUrl(""); } }} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />{lang === "es" ? "Agregar" : "Add"}</button>
+                <label className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, cursor: uploading ? "wait" : "pointer", opacity: uploading ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {uploading ? <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(141,198,63,.3)", borderTopColor: "#8DC63F", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> : <Plus style={{ width: 12, height: 12 }} />}
+                  {lang === "es" ? "Subir" : "Upload"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    disabled={uploading}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      const url = await uploadImageFile(f, `gal${imageList.length}`);
+                      if (url) setImageList([...imageList, url]);
+                    }}
+                  />
+                </label>
               </div>
+              {uploadError && <p style={{ fontSize: 10.5, color: "#EF6C2B", marginTop: 4 }}>{uploadError}</p>}
               {imageList.length > 0 && (
                 <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                   {imageList.map((url, i) => (
@@ -13010,7 +13050,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                   ))}
                 </div>
               )}
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,.35)", marginTop: 6 }}>Add images that appear inside the article body. Paste direct URLs (JPG, PNG, WebP).</p>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,.35)", marginTop: 6 }}>{lang === "es" ? "Aparecen dentro del cuerpo del artículo. URL externa o archivo (≤8MB). JPG/PNG/WebP." : "Appear inside the article body. External URL or file (≤8MB). JPG/PNG/WebP."}</p>
             </div>
             <div className="adm-fg">
               <label className="adm-fl">{contentLang === "en" ? "Excerpt (short summary for cards)" : "Extracto (resumen corto)"}</label>
