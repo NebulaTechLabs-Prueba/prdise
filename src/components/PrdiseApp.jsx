@@ -783,7 +783,26 @@ const TX = {
 
 function useLang() {
   const [lang, setLangState] = useState(() => PRDISE.load("lang", "en"));
-  const setLang = (l) => { PRDISE.save("lang", l); setLangState(l); window.dispatchEvent(new Event("prdise-lang-change")); };
+  // PM 2026-06-17: el idioma no persistía entre sesiones / dispositivos —
+  // solo vivía en localStorage. Ahora también lo replicamos a
+  // profiles.lang_pref (best-effort, no bloqueante) cuando hay sesión
+  // activa, así al loguearse en otro browser el lang se restaura desde DB
+  // (ver el useEffect en el root PrdiseApp que lee profile.lang_pref al
+  // mount).
+  const setLang = (l) => {
+    PRDISE.save("lang", l);
+    setLangState(l);
+    window.dispatchEvent(new Event("prdise-lang-change"));
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const sb = createClient();
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) return;
+        await sb.from("profiles").update({ lang_pref: l }).eq("id", user.id);
+      } catch { /* best-effort */ }
+    })();
+  };
   useEffect(() => {
     const h = () => setLangState(PRDISE.load("lang", "en"));
     window.addEventListener("prdise-lang-change", h);
@@ -14908,6 +14927,42 @@ export default function PrdiseApp() {
   useEffect(() => {
     const t = setTimeout(() => setSplashMinElapsed(true), 3000);
     return () => clearTimeout(t);
+  }, []);
+  // PM 2026-06-17: sync lang desde profiles.lang_pref al mount + cada login.
+  // El admin reportó: "el idioma no persiste, tengo que ajustarlo cada vez
+  // que inicio sesión". Causa: useLang sólo leía localStorage. Acá al
+  // detectar un user authenticated, leemos su lang_pref del DB y si difiere
+  // del local, lo sincronizamos (dispatchEvent que useLang escucha).
+  useEffect(() => {
+    let cancelled = false;
+    let unsub = null;
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const sb = createClient();
+        const sync = async (user) => {
+          if (!user || cancelled) return;
+          const { data: profile } = await sb
+            .from("profiles")
+            .select("lang_pref")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (!profile?.lang_pref || cancelled) return;
+          const cur = PRDISE.load("lang", "en");
+          if (cur !== profile.lang_pref) {
+            PRDISE.save("lang", profile.lang_pref);
+            window.dispatchEvent(new Event("prdise-lang-change"));
+          }
+        };
+        const { data: { user } } = await sb.auth.getUser();
+        await sync(user);
+        const { data: { subscription } } = sb.auth.onAuthStateChange((_evt, sess) => {
+          if (sess?.user) sync(sess.user);
+        });
+        unsub = subscription;
+      } catch { /* fail silently */ }
+    })();
+    return () => { cancelled = true; if (unsub) unsub.unsubscribe(); };
   }, []);
   if (!dataReady || !splashMinElapsed) {
     return <WelcomeSplash />;
