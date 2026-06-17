@@ -5096,7 +5096,15 @@ function RegisterPage() {
     fd.append("token", otp);
     const res = await sbVerifyEmailOtp(fd);
     setOtpLoading(false);
-    if (res?.ok) { setOtpVerified(true); setTimeout(() => { window.location.hash = "#/login"; }, 1800); }
+    if (res?.ok) {
+      // PM 2026-06-17: el cliente ya eligió password en el formulario de
+      // signup — verifyOtp deja una sesión transitoria con amr=[otp], lo que
+      // dispararía el banner "Sesión temporal vía link" del MagicLinkPasswordPrompt.
+      // Marcamos la flag para suprimirlo: no es una sesión sin password.
+      try { sessionStorage.setItem("prdise_pwd_changed", "1"); } catch {}
+      setOtpVerified(true);
+      setTimeout(() => { window.location.hash = "#/login"; }, 1800);
+    }
     else setOtpError(res?.error || "No se pudo verificar el código");
   };
   const handleResendOtp = async () => {
