@@ -197,8 +197,16 @@ const IMG_BY_SLUG = {
   "suv": IMG_VAN_ROAD,
   "van": IMG_VAN_ROAD,
 };
-const resolveImg = (slug) => IMG_BY_SLUG[slug] || IMG_PALM;
-const resolveImgs = (slugs) => Array.isArray(slugs) && slugs.length ? slugs.map(resolveImg) : [IMG_PALM];
+// PM 2026-06-15: si el valor guardado en DB es una URL (http(s):// o ruta
+// absoluta /…) o un data: URI, lo devolvemos tal cual sin tocar — antes el
+// lookup en IMG_BY_SLUG fallaba y devolvía IMG_PALM aunque la URL viniera
+// completa desde Supabase. Sólo se resuelve por slug cuando el valor no
+// parece una URL (back-compat con los pocos slugs internos legacy).
+const resolveImg = (val) => {
+  if (typeof val === "string" && /^(https?:\/\/|\/|data:)/.test(val)) return val;
+  return IMG_BY_SLUG[val] || IMG_PALM;
+};
+const resolveImgs = (vals) => Array.isArray(vals) && vals.length ? vals.map(resolveImg) : [IMG_PALM];
 
 function mapStayToHotel(s) {
   const imgs = Array.isArray(s.images) ? s.images : [];
