@@ -11503,6 +11503,60 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     </div>
   );
 
+  // PM 2026-06-15: upload directo de archivo al bucket public service-images.
+  // El admin puede pegar URL o seleccionar un archivo local; en ambos casos
+  // el resultado final es una URL que va al array `images` de la DB.
+  // El bucket es público (lectura abierta), por lo que la URL devuelta sirve
+  // directo en cards/detail sin signed URLs ni proxies. La policy RLS exige
+  // staff para insert/update/delete (ver migración 20260615190000).
+  // IMPORTANTE: estos hooks + helper DEBEN declararse ANTES de `imageSection`
+  // porque su JSX los referencia. Si quedan después → TDZ error en Hotel/Tour
+  // modals → "Application error: client-side exception" al abrir el modal.
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function uploadImageFile(file, slotHint) {
+    setUploadError("");
+    if (!file) return null;
+    if (!file.type.startsWith("image/")) {
+      setUploadError(lang === "es" ? "Solo se permiten imágenes." : "Only image files allowed.");
+      return null;
+    }
+    const MAX = 8 * 1024 * 1024; // 8MB
+    if (file.size > MAX) {
+      setUploadError(lang === "es" ? "Imagen máxima 8MB." : "Image must be ≤8MB.");
+      return null;
+    }
+    setUploading(true);
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const sb = createClient();
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "jpg";
+      // Path determinístico-ish: servicio + slot + epoch + 4 random chars.
+      // Si el admin re-sube otra imagen al mismo slot, queda como objeto
+      // nuevo (no se pisa) — el anterior queda huérfano en storage hasta
+      // que se haga limpieza separada. Aceptable por simplicidad.
+      const ownerKey = (it?.id || `new-${Date.now().toString(36)}`).slice(0, 60);
+      const slot = (slotHint || "img").replace(/[^a-z0-9]/gi, "");
+      const rand = Math.random().toString(36).slice(2, 6);
+      const path = `${type}/${ownerKey}/${slot}-${Date.now().toString(36)}-${rand}.${ext}`;
+      const { error: upErr } = await sb.storage
+        .from("service-images")
+        .upload(path, file, { cacheControl: "31536000", upsert: false, contentType: file.type });
+      if (upErr) {
+        setUploadError((lang === "es" ? "Error subiendo: " : "Upload error: ") + upErr.message);
+        return null;
+      }
+      const { data } = sb.storage.from("service-images").getPublicUrl(path);
+      return data?.publicUrl || null;
+    } catch (e) {
+      setUploadError((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  }
+
   // Image section for hotels and tours
   // PM 2026-06-15: doble entrada — paste URL externa o seleccionar archivo
   // local (Storage bucket service-images). El admin elige según convenga.
@@ -11579,57 +11633,6 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   ) : null;
 
   const formRef = useRef(null);
-
-  // PM 2026-06-15: upload directo de archivo al bucket public service-images.
-  // El admin puede pegar URL o seleccionar un archivo local; en ambos casos
-  // el resultado final es una URL que va al array `images` de la DB.
-  // El bucket es público (lectura abierta), por lo que la URL devuelta sirve
-  // directo en cards/detail sin signed URLs ni proxies. La policy RLS exige
-  // staff para insert/update/delete (ver migración 20260615190000).
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-
-  async function uploadImageFile(file, slotHint) {
-    setUploadError("");
-    if (!file) return null;
-    if (!file.type.startsWith("image/")) {
-      setUploadError(lang === "es" ? "Solo se permiten imágenes." : "Only image files allowed.");
-      return null;
-    }
-    const MAX = 8 * 1024 * 1024; // 8MB
-    if (file.size > MAX) {
-      setUploadError(lang === "es" ? "Imagen máxima 8MB." : "Image must be ≤8MB.");
-      return null;
-    }
-    setUploading(true);
-    try {
-      const { createClient } = await import("@/lib/supabase/client");
-      const sb = createClient();
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "jpg";
-      // Path determinístico-ish: servicio + slot + epoch + 4 random chars.
-      // Si el admin re-sube otra imagen al mismo slot, queda como objeto
-      // nuevo (no se pisa) — el anterior queda huérfano en storage hasta
-      // que se haga limpieza separada. Aceptable por simplicidad.
-      const ownerKey = (it?.id || `new-${Date.now().toString(36)}`).slice(0, 60);
-      const slot = (slotHint || "img").replace(/[^a-z0-9]/gi, "");
-      const rand = Math.random().toString(36).slice(2, 6);
-      const path = `${type}/${ownerKey}/${slot}-${Date.now().toString(36)}-${rand}.${ext}`;
-      const { error: upErr } = await sb.storage
-        .from("service-images")
-        .upload(path, file, { cacheControl: "31536000", upsert: false, contentType: file.type });
-      if (upErr) {
-        setUploadError((lang === "es" ? "Error subiendo: " : "Upload error: ") + upErr.message);
-        return null;
-      }
-      const { data } = sb.storage.from("service-images").getPublicUrl(path);
-      return data?.publicUrl || null;
-    } catch (e) {
-      setUploadError((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
-      return null;
-    } finally {
-      setUploading(false);
-    }
-  }
 
   const handleSave = () => {
     // Collect all input values from the form
