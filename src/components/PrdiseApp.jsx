@@ -510,6 +510,20 @@ const PRDISE = {
 };
 const fmt = (n) => "$" + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
+// PM 2026-06-17: label de unidad de precio según pricing_unit del servicio.
+// Antes las cards hardcodeaban "/ person" y "/ night" → cuando un servicio
+// estaba configurado como per_unit (fijo por servicio/evento) el cliente
+// veía "$X / person" engañosamente. Caso reportado: WATER BIRTHDAY SPLASH
+// (per_unit) mostraba "$2130 / person" en su card.
+function pricingUnitLabel(unit, lang) {
+  const map = {
+    es: { per_night: "/ noche", per_person: "/ persona", per_hour: "/ hora", per_unit: "/ servicio", per_attraction: "/ atracción" },
+    en: { per_night: "/ night", per_person: "/ person", per_hour: "/ hour", per_unit: "/ service", per_attraction: "/ attraction" },
+  };
+  const table = lang === "es" ? map.es : map.en;
+  return table[unit] || (lang === "es" ? "/ servicio" : "/ service");
+}
+
 // CSV export utility (PM 2026-06-11). Cualquier sección del admin que tenga
 // botón "Exportar" puede invocarlo con un array de objetos plano. Genera un
 // CSV con BOM UTF-8 (para que Excel respete acentos), encabezados derivados
@@ -2269,7 +2283,7 @@ function HomePage() {
                     {tr.price > 0 ? (
                       <>
                         <span className="price" style={{ color: COLORS[tr.color] }}>${tr.price}</span>
-                        <span className="price-sub">{t("perPerson")}</span>
+                        <span className="price-sub">{pricingUnitLabel(tr.pricingUnit || "per_person", lang).toUpperCase()}</span>
                       </>
                     ) : (
                       <span className="price" style={{ color: COLORS[tr.color], fontSize: 18 }}>{t("onRequest")}</span>
@@ -2325,7 +2339,7 @@ function HomePage() {
                         {h.price > 0 ? (
                           <>
                             <span className="price" style={{ color: COLORS[h.color] }}>${h.price}</span>
-                            <span className="price-sub">{lang === "es" ? "/ noche" : "/ night"}</span>
+                            <span className="price-sub">{pricingUnitLabel(h.pricingUnit || "per_night", lang).toUpperCase()}</span>
                           </>
                         ) : (
                           <span className="price" style={{ color: COLORS[h.color], fontSize: 18 }}>{t("onRequest")}</span>
@@ -2507,7 +2521,7 @@ function HotelsList() {
                         <div className="listing-foot">
                           <div>
                             <span className="price">${h.price}</span>
-                            <span className="price-sub">{t("perNight")}</span>
+                            <span className="price-sub">{pricingUnitLabel(h.pricingUnit || "per_night", lang).toUpperCase()}</span>
                           </div>
                           <NavLink to={`/stay?id=${h.id}`} className="listing-btn">View <ArrowRight style={{ width: 12, height: 12 }} /></NavLink>
                         </div>
@@ -2577,7 +2591,7 @@ function ToursList() {
                       {tr.price > 0 ? (
                         <>
                           <span className="price">${tr.price}</span>
-                          <span className="price-sub">{t("perPerson")}</span>
+                          <span className="price-sub">{pricingUnitLabel(tr.pricingUnit || "per_person", lang).toUpperCase()}</span>
                         </>
                       ) : (
                         <span className="price" style={{ fontSize: 18 }}>{t("onRequest")}</span>
@@ -2827,7 +2841,7 @@ function HotelDetail({ params }) {
               <div className="booking-box">
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   <span className="booking-price">${hotel.price}</span>
-                  <span className="price-sub">{t("perNight")}</span>
+                  <span className="price-sub">{pricingUnitLabel(hotel.pricingUnit || "per_night", lang).toUpperCase()}</span>
                 </div>
                 <div className="f-row">
                   <div>
@@ -3125,7 +3139,7 @@ function TourDetail({ params }) {
                   {tour.price > 0 ? (
                     <>
                       <span className="booking-price">${tour.price}</span>
-                      <span className="price-sub">{t("perPersonPrice")}</span>
+                      <span className="price-sub">{pricingUnitLabel(tour.pricingUnit || "per_person", lang).toUpperCase()}</span>
                     </>
                   ) : (
                     <span className="booking-price" style={{ fontSize: 26 }}>{t("onRequest")}</span>
@@ -7654,7 +7668,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-pcard-body">
                     <div className="adm-pcard-head">
                       <h4>{h.name.toUpperCase()}</h4>
-                      <div className="adm-pcard-price">${h.price}<span>/ night</span></div>
+                      <div className="adm-pcard-price">${h.price}<span>{pricingUnitLabel(h.pricingUnit || "per_night", lang)}</span></div>
                     </div>
                     <p className="adm-pcard-loc"><MapPin />{h.zone} · {h.type}</p>
                     <p className="adm-pcard-desc">{h.desc}</p>
@@ -7762,7 +7776,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-pcard-body">
                     <div className="adm-pcard-head">
                       <h4>{t.name.toUpperCase()}</h4>
-                      <div className="adm-pcard-price">${t.price}<span>/ person</span></div>
+                      <div className="adm-pcard-price">${t.price}<span>{pricingUnitLabel(t.pricingUnit || "per_person", lang)}</span></div>
                     </div>
                     <p className="adm-pcard-loc"><MapPin />{t.location}</p>
                     <p className="adm-pcard-desc">{t.desc}</p>
