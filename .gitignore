@@ -74,3 +74,11 @@ desktop.ini
 /docs/*.xlsx
 /docs/*.xls
 /docs/*.csv
+
+# Imágenes de servicios para asignar al catálogo. El admin las dropea aquí
+# con nombre {slug}.{ext}; scripts/assign-service-images.mjs las sube a
+# Supabase Storage y actualiza la DB. Los archivos NO se versionan porque
+# son pesados y la fuente de verdad es Storage. Sí se commitea la carpeta
+# vacía via .gitkeep para que exista en clones limpios.
+/assets/service-images/*
+!/assets/service-images/.gitkeep

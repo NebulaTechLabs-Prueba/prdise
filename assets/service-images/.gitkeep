@@ -1,0 +1,17 @@
+# Drop folder para imágenes de servicios.
+#
+# Convención: 1 archivo por servicio, nombrado como {slug}.{ext}
+# Extensiones soportadas: .jpg .jpeg .png .webp
+#
+# Los slugs están listados en docs/image-prompts.md.
+#
+# Ejemplo:
+#   assets/service-images/katarina-sail-charters-afternoon-sunset-sail.jpg
+#   assets/service-images/turmoline-bgl0.png
+#
+# Después de dropear, correr:
+#   node --env-file=.env.local scripts/assign-service-images.mjs
+#
+# El script sube cada archivo a Supabase Storage (bucket service-images)
+# y actualiza service.images[0] con la URL pública (reemplazando el
+# placeholder Picsum previo). Imprime resumen de matches + huérfanos.
