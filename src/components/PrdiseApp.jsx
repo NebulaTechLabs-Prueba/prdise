@@ -3720,27 +3720,58 @@ function MyInvoicesPanel() {
         </div>
       )}
 
-      {/* Rate modal */}
+      {/* Rate modal — PM 2026-06-17: reescrito con estilos inline porque las
+          clases .adm-modal-bg/.adm-modal se rendereaban inline (sin overlay)
+          en /account, posiblemente por interacción con .acc-panel o stacking
+          context. Inline styles garantizan el behavior. */}
       {rating && (
-        <div className="adm-modal-bg" onClick={() => rating.saving || setRating(null)}>
-          <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <button className="adm-modal-close" onClick={() => rating.saving || setRating(null)}><X /></button>
-            <h3 style={{ marginBottom: 4 }}>
+        <div
+          onClick={() => rating.saving || setRating(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,.75)", backdropFilter: "blur(2px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 460, width: "100%", maxHeight: "90vh", overflowY: "auto",
+              background: "#1A2634", border: "1px solid rgba(255,255,255,.08)",
+              borderRadius: 18, padding: 28, color: "#fff", position: "relative",
+            }}
+          >
+            <button
+              onClick={() => rating.saving || setRating(null)}
+              style={{
+                position: "absolute", top: 14, right: 14,
+                width: 32, height: 32, borderRadius: "50%",
+                background: "rgba(255,255,255,.08)", border: "none",
+                color: "rgba(255,255,255,.7)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+              title={lang === "es" ? "Cerrar" : "Close"}
+            >
+              <X style={{ width: 14, height: 14 }} />
+            </button>
+
+            <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".04em", color: "var(--gold)", marginBottom: 6, paddingRight: 30 }}>
               {lang === "es" ? "CALIFICA TU EXPERIENCIA" : "RATE YOUR EXPERIENCE"}
             </h3>
-            <p className="adm-modal-sub">
+            <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.6)", marginBottom: 4, lineHeight: 1.55 }}>
               {lang === "es"
                 ? "Tu nota aplica a todos los servicios incluidos en esta factura."
                 : "Your score applies to every service included in this invoice."}
             </p>
-            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", marginTop: -4, marginBottom: 14, lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)", marginBottom: 18, lineHeight: 1.5 }}>
               {lang === "es" ? "Factura " : "Invoice "}
               <strong style={{ fontFamily: "monospace", color: "var(--gold)" }}>{rating.invoice.number}</strong>
               {" · "}
               {rating.invoice.items.length} {lang === "es" ? (rating.invoice.items.length === 1 ? "servicio" : "servicios") : (rating.invoice.items.length === 1 ? "service" : "services")}
             </p>
 
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "10px 0 18px" }}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "8px 0 18px" }}>
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
@@ -3761,23 +3792,41 @@ function MyInvoicesPanel() {
               ))}
             </div>
 
-            <div className="adm-fg">
-              <label className="adm-fl">{lang === "es" ? "Comentario (opcional)" : "Comment (optional)"}</label>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(255,255,255,.55)", marginBottom: 6 }}>
+                {lang === "es" ? "Comentario (opcional)" : "Comment (optional)"}
+              </label>
               <textarea
-                className="adm-fi"
                 rows={3}
                 value={rating.comment}
                 onChange={(e) => setRating({ ...rating, comment: e.target.value })}
                 placeholder={lang === "es" ? "Contanos cómo fue tu experiencia…" : "Tell us how your experience was…"}
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: 10,
+                  background: "rgba(255,255,255,.04)",
+                  border: "1px solid rgba(255,255,255,.1)",
+                  color: "#fff", fontFamily: "inherit", fontSize: 13,
+                  resize: "vertical", minHeight: 70,
+                }}
               />
             </div>
 
-            <div className="adm-modal-actions">
-              <button className="adm-btn adm-btn-ghost" onClick={() => setRating(null)} disabled={rating.saving}>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.06)" }}>
+              <button
+                type="button"
+                onClick={() => setRating(null)}
+                disabled={rating.saving}
+                style={{
+                  padding: "10px 18px", borderRadius: 99, border: "1px solid rgba(255,255,255,.1)",
+                  background: "rgba(255,255,255,.05)", color: "rgba(255,255,255,.8)",
+                  fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase",
+                  cursor: rating.saving ? "wait" : "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+                }}
+              >
                 {lang === "es" ? "Cancelar" : "Cancel"}
               </button>
               <button
-                className="adm-btn adm-btn-primary"
+                type="button"
                 disabled={rating.saving || rating.score < 1}
                 onClick={async () => {
                   if (rating.score < 1) return;
@@ -3796,10 +3845,18 @@ function MyInvoicesPanel() {
                     setRating({ ...rating, saving: false });
                   }
                 }}
+                style={{
+                  padding: "10px 18px", borderRadius: 99, border: "none",
+                  background: "linear-gradient(135deg,#F5A623,#EF6C2B)",
+                  color: "#fff", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase",
+                  cursor: (rating.saving || rating.score < 1) ? "not-allowed" : "pointer",
+                  opacity: (rating.saving || rating.score < 1) ? 0.5 : 1,
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                }}
               >
                 {rating.saving
                   ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} />
-                  : <Check />}
+                  : <Check style={{ width: 14, height: 14 }} />}
                 {rating.saving
                   ? (lang === "es" ? "Enviando…" : "Sending…")
                   : (lang === "es" ? "Enviar calificación" : "Submit rating")}
@@ -6288,6 +6345,10 @@ function AdminPanel({ onClose }) {
         link: !!i.stripe_payment_link_url,
         source: "supabase",
         paymentRef: i.payment_ref || "",
+        // PM 2026-06-17: rating del cliente (1-5) + fecha + comentario opcional.
+        rating: i.rating == null ? null : Number(i.rating),
+        ratedAt: i.rated_at || null,
+        ratingComment: i.rating_comment || "",
         lineItems: (i.items || []).map((it) => ({
           type: it.tour_id ? "tour" : it.stay_id ? "stay" : it.transfer_route_id ? "transfer" : "custom",
           name: it.description || "",
@@ -9223,6 +9284,39 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   {lang === "es" ? "Gracias por tu preferencia. Para preguntas, contáctanos a hello@prdise.com" : "Thank you for your business. For questions, contact us at hello@prdise.com"}
                 </div>
               </div>
+
+              {/* PM 2026-06-17: bloque visible cuando el cliente ya calificó.
+                  Antes el rating se persistía pero el admin no lo veía. */}
+              {viewingInvoice.rating != null && (
+                <div style={{ margin: "16px 24px", padding: "16px 18px", borderRadius: 12, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.25)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                    <Star style={{ width: 14, height: 14, color: "var(--gold)" }} />
+                    <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--gold)" }}>
+                      {lang === "es" ? "Calificación del cliente" : "Customer rating"}
+                    </span>
+                    <div style={{ display: "inline-flex", gap: 2, marginLeft: 4 }}>
+                      {Array.from({ length: 5 }, (_, i) => (
+                        <Star key={i} style={{ width: 14, height: 14, fill: i < viewingInvoice.rating ? "#F5A623" : "transparent", color: "#F5A623" }} />
+                      ))}
+                    </div>
+                    <span style={{ fontSize: 12, color: "var(--gold)", fontWeight: 700, marginLeft: 2 }}>{viewingInvoice.rating}/5</span>
+                    {viewingInvoice.ratedAt && (
+                      <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>
+                        {new Date(viewingInvoice.ratedAt).toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { day: "2-digit", month: "short", year: "numeric" })}
+                      </span>
+                    )}
+                  </div>
+                  {viewingInvoice.ratingComment ? (
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,.85)", lineHeight: 1.55, padding: "10px 12px", borderRadius: 8, background: "rgba(255,255,255,.04)", borderLeft: "3px solid var(--gold)", whiteSpace: "pre-wrap" }}>
+                      "{viewingInvoice.ratingComment}"
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.4)", fontStyle: "italic" }}>
+                      {lang === "es" ? "El cliente no dejó comentario." : "Customer didn't leave a comment."}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="adm-modal-actions inv-no-print" style={{ padding: "14px 20px", margin: 0 }}>
                 <button className="adm-btn adm-btn-ghost" onClick={() => {

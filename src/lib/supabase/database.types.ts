@@ -678,6 +678,7 @@ export type Database = {
           pdf_url: string | null
           rated_at: string | null
           rating: number | null
+          rating_comment: string | null
           status: string
           stripe_payment_link_id: string | null
           stripe_payment_link_url: string | null
@@ -704,6 +705,7 @@ export type Database = {
           pdf_url?: string | null
           rated_at?: string | null
           rating?: number | null
+          rating_comment?: string | null
           status?: string
           stripe_payment_link_id?: string | null
           stripe_payment_link_url?: string | null
@@ -730,6 +732,7 @@ export type Database = {
           pdf_url?: string | null
           rated_at?: string | null
           rating?: number | null
+          rating_comment?: string | null
           status?: string
           stripe_payment_link_id?: string | null
           stripe_payment_link_url?: string | null

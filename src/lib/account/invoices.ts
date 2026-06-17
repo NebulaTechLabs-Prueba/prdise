@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/supabase/database.types";
 
 export type MyInvoiceRow = {
@@ -128,15 +129,33 @@ export async function rateInvoice(
 
   // 1) marcar invoice como calificada (idempotente; si race, el siguiente
   //    chequeo fallará por el constraint above).
+  // PM 2026-06-17: usamos admin client porque la RLS de invoices
+  // (invoices_update_staff) NO permite al dueño hacer UPDATE de su propia
+  // factura. La UPDATE bajo el cliente regular afectaba 0 filas sin
+  // levantar error → la calificación se "guardaba" silenciosamente sin
+  // persistir. La seguridad de esta operación está garantizada arriba con
+  // los chequeos de user_id ownership + status='paid' + rating==null.
   const nowIso = new Date().toISOString();
-  const { error: upErr } = await supabase
+  const admin = createAdminClient();
+  const { data: upData, error: upErr } = await admin
     .from("invoices")
-    .update({ rating, rated_at: nowIso })
+    .update({
+      rating,
+      rated_at: nowIso,
+      // PM 2026-06-17: persistimos el comentario directamente en invoices
+      // para que el admin lo vea sin tener que joinear reviews.body.
+      rating_comment: (comment || "").trim() || null,
+    })
     .eq("id", invoiceId)
     .eq("user_id", userId)
-    .is("rating", null);
+    .is("rating", null)
+    .select("id");
   if (upErr) {
     return { ok: false, error: `No se pudo guardar la calificación: ${upErr.message}` };
+  }
+  if (!upData || upData.length === 0) {
+    // Race condition: alguien más ya calificó entre el SELECT y el UPDATE.
+    return { ok: false, error: "Esta factura ya tiene calificación." };
   }
 
   // 2) por cada item con FK al catálogo, insertar review (status published —
@@ -173,7 +192,9 @@ export async function rateInvoice(
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
   if (reviewRows.length > 0) {
-    const { error: revErr } = await supabase.from("reviews").insert(reviewRows);
+    // PM 2026-06-17: idem rating — usamos admin client porque reviews
+    // probablemente tampoco permite insert directo del cliente (RLS).
+    const { error: revErr } = await admin.from("reviews").insert(reviewRows);
     if (revErr) {
       // No revertimos la calificación de la factura — la propagación a
       // `reviews` es secundaria y puede reintentarse en background.
