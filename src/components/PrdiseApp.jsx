@@ -965,6 +965,203 @@ function NavLink({ to, children, className, style, external, ...rest }) {
   return <a href={"#" + to} onClick={(e) => { e.preventDefault(); nav(to); }} className={className} style={style} {...rest}>{children}</a>;
 }
 
+// ═══════════════ MAGIC LINK PASSWORD PROMPT ═══════════════
+// PM 2026-06-17: cuando un cliente entra al sistema vía magic-link (admin
+// generó link de confirmación porque su password original no funcionaba),
+// queda sesionado pero sin password utilizable. La próxima vez que cierre
+// sesión no podrá volver a entrar a menos que pida otro magic-link al admin.
+// Para resolver el ciclo, le mostramos un banner sticky + modal exigiendo
+// que establezca un nuevo password en esta sesión.
+//
+// Detección: el JWT trae `amr` (Authentication Method References) con el
+// método usado. Magic-link aparece como method:"otp". Si solo hay "otp" en
+// el amr, asumimos sesión vía link (no via email+password).
+function MagicLinkPasswordPrompt() {
+  const { lang } = useLang();
+  const [show, setShow] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [pwd, setPwd] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub = null;
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const sb = createClient();
+        const checkSession = (session) => {
+          if (!session?.access_token) { setShow(false); return; }
+          // El user ya cambió password en esta sesión → no volver a molestar.
+          if (sessionStorage.getItem("prdise_pwd_changed") === "1") { setShow(false); return; }
+          try {
+            const payload = JSON.parse(atob(session.access_token.split(".")[1]));
+            const amr = Array.isArray(payload.amr) ? payload.amr : [];
+            const usedOtp = amr.some((m) => m?.method === "otp");
+            const usedPassword = amr.some((m) => m?.method === "password");
+            // Sesión vía magic-link: amr trae otp pero NO password.
+            if (usedOtp && !usedPassword) setShow(true);
+            else setShow(false);
+          } catch { setShow(false); }
+        };
+        const { data: { session } } = await sb.auth.getSession();
+        if (cancelled) return;
+        checkSession(session);
+        const { data: { subscription } } = sb.auth.onAuthStateChange((_event, s) => {
+          if (!cancelled) checkSession(s);
+        });
+        unsub = subscription;
+      } catch { /* fail silently */ }
+    })();
+    return () => { cancelled = true; if (unsub) unsub.unsubscribe(); };
+  }, []);
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    setError("");
+    if (pwd.length < 8) { setError(lang === "es" ? "La contraseña debe tener al menos 8 caracteres." : "Password must be at least 8 characters."); return; }
+    if (pwd !== pwd2) { setError(lang === "es" ? "Las contraseñas no coinciden." : "Passwords do not match."); return; }
+    setSaving(true);
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const sb = createClient();
+      const { error: upErr } = await sb.auth.updateUser({ password: pwd });
+      if (upErr) { setError((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + upErr.message); setSaving(false); return; }
+      sessionStorage.setItem("prdise_pwd_changed", "1");
+      setDone(true);
+      setSaving(false);
+      setTimeout(() => { setShow(false); setOpen(false); }, 1500);
+    } catch (e) {
+      setError(String(e?.message || e));
+      setSaving(false);
+    }
+  };
+
+  if (!show) return null;
+
+  return (
+    <>
+      <div style={{
+        position: "sticky", top: 0, zIndex: 200,
+        background: "linear-gradient(90deg,rgba(245,166,35,.18),rgba(239,108,43,.18))",
+        borderBottom: "1px solid rgba(245,166,35,.4)",
+        backdropFilter: "blur(8px)",
+        padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      }}>
+        <AlertTriangle style={{ width: 16, height: 16, color: "var(--gold)", flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, color: "#fff", flex: 1, minWidth: 220, lineHeight: 1.5 }}>
+          {lang === "es"
+            ? "Iniciaste sesión con un link de un solo uso. Por seguridad, establecé tu contraseña ahora para poder volver a entrar."
+            : "You signed in with a one-time link. For security, set your password now so you can sign in again later."}
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          style={{
+            padding: "7px 14px", borderRadius: 8, border: "none",
+            background: "linear-gradient(135deg,#F5A623,#EF6C2B)",
+            color: "#fff", fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em",
+            textTransform: "uppercase", cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          {lang === "es" ? "Establecer contraseña" : "Set password"}
+        </button>
+      </div>
+
+      {open && (
+        <div
+          onClick={() => { if (!saving) setOpen(false); }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 300,
+            background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={submit}
+            style={{
+              maxWidth: 440, width: "100%",
+              background: "linear-gradient(135deg,#0a1628,#0e1a2e)",
+              border: "1px solid rgba(245,166,35,.3)", borderRadius: 16,
+              padding: "28px 26px", color: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <Lock style={{ width: 18, height: 18, color: "var(--gold)" }} />
+              <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".04em", margin: 0 }}>
+                {lang === "es" ? "Establecé tu contraseña" : "Set your password"}
+              </h3>
+            </div>
+            <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", lineHeight: 1.55, marginBottom: 18 }}>
+              {lang === "es"
+                ? "Para futuros inicios de sesión, necesitás una contraseña. Esta se va a guardar de inmediato."
+                : "You'll need a password for future sign-ins. It will be saved immediately."}
+            </p>
+
+            {done ? (
+              <div style={{ padding: 12, borderRadius: 10, background: "rgba(74,222,128,.1)", border: "1px solid rgba(74,222,128,.3)", color: "#4ade80", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                <Check style={{ width: 14, height: 14 }} />
+                {lang === "es" ? "Contraseña actualizada." : "Password updated."}
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 10, opacity: 0.7, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".1em" }}>
+                    {lang === "es" ? "Nueva contraseña" : "New password"}
+                  </label>
+                  <input
+                    type="password" required minLength={8} autoFocus
+                    value={pwd} onChange={(e) => setPwd(e.target.value)}
+                    style={{ width: "100%", padding: "11px 13px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", fontSize: 13.5, fontFamily: "inherit" }}
+                  />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: "block", fontSize: 10, opacity: 0.7, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".1em" }}>
+                    {lang === "es" ? "Confirmar contraseña" : "Confirm password"}
+                  </label>
+                  <input
+                    type="password" required minLength={8}
+                    value={pwd2} onChange={(e) => setPwd2(e.target.value)}
+                    style={{ width: "100%", padding: "11px 13px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", fontSize: 13.5, fontFamily: "inherit" }}
+                  />
+                </div>
+                {error && (
+                  <div style={{ padding: 10, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12, marginBottom: 12 }}>
+                    {error}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setOpen(false)}
+                    style={{ flex: 1, padding: "12px", borderRadius: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", cursor: saving ? "wait" : "pointer" }}
+                  >
+                    {lang === "es" ? "Más tarde" : "Later"}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    style={{ flex: 2, padding: "12px", borderRadius: 10, background: "linear-gradient(135deg,#F5A623,#EF6C2B)", border: "none", color: "#fff", fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", cursor: saving ? "wait" : "pointer", opacity: saving ? 0.7 : 1 }}
+                  >
+                    {saving ? (lang === "es" ? "Guardando…" : "Saving…") : (lang === "es" ? "Guardar contraseña" : "Save password")}
+                  </button>
+                </div>
+              </>
+            )}
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ═══════════════ DATE PICKER ═══════════════ */
 function DatePicker({ value, onChange, min, placeholder = "Select date" }) {
   const [open, setOpen] = useState(false);
@@ -14455,6 +14652,11 @@ export default function PrdiseApp() {
   return (
     <>
       <GlobalStyles />
+      {/* PM 2026-06-17: banner sticky cuando la sesión activa proviene de un
+          magic-link (admin generó link de confirmación). El componente se
+          self-oculta si la sesión no es magic-link o si el usuario ya
+          estableció password en este browser. */}
+      <MagicLinkPasswordPrompt />
       {!isAdminRoute && <Navbar />}
       {page}
       {!isAdminRoute && <Footer />}
