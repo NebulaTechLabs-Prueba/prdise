@@ -6385,6 +6385,12 @@ function AdminPanel({ onClose }) {
         ratingComment: i.rating_comment || "",
         lineItems: (i.items || []).map((it) => ({
           type: it.tour_id ? "tour" : it.stay_id ? "stay" : it.transfer_route_id ? "transfer" : "custom",
+          // PM 2026-06-17: preservar las FK al catálogo para agregar
+          // bookings/revenue por servicio en el dashboard. Antes el lineItem
+          // descartaba estos IDs y los rankings quedaban siempre en 0.
+          tourId: it.tour_id || null,
+          stayId: it.stay_id || null,
+          transferRouteId: it.transfer_route_id || null,
           name: it.description || "",
           price: (it.unit_cents || 0) / 100,
           qty: it.quantity || 1,
@@ -6403,6 +6409,55 @@ function AdminPanel({ onClose }) {
   // hasta un F5 manual.
   useEffect(() => {
     if (section === "invoices") reloadInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
+  // PM 2026-06-17: agregados de invoices paid por servicio (bookings + revenue).
+  // Antes el dashboard usaba h.bookings/t.bookings que estaban HARDCODED a 0
+  // en los mappers → todas las tablas mostraban 0 reservas y $0 ingresos
+  // aunque hubiera facturas pagadas. Ahora computamos desde invoices reales.
+  const serviceStats = useMemo(() => {
+    const stays = {};
+    const tours = {};
+    const transfers = {};
+    for (const inv of invoices || []) {
+      if (inv.status !== "paid") continue;
+      for (const li of (inv.lineItems || [])) {
+        const bucket = li.tourId ? tours : li.stayId ? stays : li.transferRouteId ? transfers : null;
+        const key = li.tourId || li.stayId || li.transferRouteId;
+        if (!bucket || !key) continue;
+        if (!bucket[key]) bucket[key] = { bookings: 0, revenue: 0 };
+        bucket[key].bookings += Number(li.qty) || 0;
+        bucket[key].revenue += Number(li.lineTotal) || 0;
+      }
+    }
+    return { stays, tours, transfers };
+  }, [invoices]);
+
+  // PM 2026-06-17: refresca el catálogo (tours/stays) cuando el admin entra
+  // al dashboard o a sus listings, para que rating_avg/rating_count
+  // recién actualizado por el trigger se vea sin F5 manual.
+  useEffect(() => {
+    if (section !== "dash" && section !== "hotels" && section !== "tours") return;
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const { getStays, getTours } = await import("@/lib/queries/catalog");
+        const sb = createClient();
+        const [stays, toursRows] = await Promise.all([
+          getStays(sb, { activeOnly: false }),
+          getTours(sb, { activeOnly: false }),
+        ]);
+        HOTELS.length = 0;
+        (stays || []).forEach((s) => HOTELS.push(mapStayToHotel(s)));
+        TOURS.length = 0;
+        (toursRows || []).forEach((t) => TOURS.push(mapTourToTour(t)));
+        setHotels([...HOTELS]);
+        setTours([...TOURS]);
+      } catch (e) {
+        console.warn("[admin] reload catalog:", e);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
 
@@ -7454,12 +7509,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <table className="adm-tbl">
                     <thead><tr><th>{lang === "es" ? "Estadía" : "Stay"}</th><th>{lang === "es" ? "Reservas" : "Bookings"}</th><th>{lang === "es" ? "Ingresos" : "Revenue"}</th><th>{lang === "es" ? "Calificación" : "Rating"}</th></tr></thead>
                     <tbody>
-                      {[...hotels].sort((a, b) => b.bookings - a.bookings).slice(0, 5).map((h) => (
+                      {[...hotels].map(h => {
+                        const st = serviceStats.stays[h.dbId] || { bookings: 0, revenue: 0 };
+                        return { ...h, _bookings: st.bookings, _revenue: st.revenue };
+                      }).sort((a, b) => b._bookings - a._bookings || b._revenue - a._revenue).slice(0, 5).map((h) => (
                         <tr key={h.id}>
                           <td style={{ fontWeight: 600 }}>{h.name}</td>
-                          <td>{h.bookings}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(h.bookings * h.price)}</td>
-                          <td><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{h.rating}</td>
+                          <td>{h._bookings}</td>
+                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(h._revenue)}</td>
+                          <td>{h.rating > 0 ? (<><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{h.rating}</>) : "—"}</td>
                         </tr>
                       ))}
                       {hotels.length === 0 && (
@@ -7475,12 +7533,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <table className="adm-tbl">
                     <thead><tr><th>Tour</th><th>{lang === "es" ? "Reservas" : "Bookings"}</th><th>{lang === "es" ? "Ingresos" : "Revenue"}</th><th>{lang === "es" ? "Calificación" : "Rating"}</th></tr></thead>
                     <tbody>
-                      {[...tours].sort((a, b) => b.bookings - a.bookings).slice(0, 5).map((t) => (
+                      {[...tours].map(t => {
+                        const st = serviceStats.tours[t.dbId] || { bookings: 0, revenue: 0 };
+                        return { ...t, _bookings: st.bookings, _revenue: st.revenue };
+                      }).sort((a, b) => b._bookings - a._bookings || b._revenue - a._revenue).slice(0, 5).map((t) => (
                         <tr key={t.id}>
                           <td style={{ fontWeight: 600 }}>{t.name}</td>
-                          <td>{t.bookings}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t.bookings * t.price)}</td>
-                          <td><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</td>
+                          <td>{t._bookings}</td>
+                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t._revenue)}</td>
+                          <td>{t.rating > 0 ? (<><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</>) : "—"}</td>
                         </tr>
                       ))}
                       {tours.length === 0 && (
@@ -7715,18 +7776,21 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <table className="adm-tbl">
                   <thead><tr><th>Tour</th><th>Day</th><th>Duration</th><th>Capacity</th><th>Price</th><th>Bookings</th><th>Revenue</th><th>Rating</th></tr></thead>
                   <tbody>
-                    {paginate(tours, toursPerfPage, ROWS_PER_PAGE).map((t) => (
+                    {paginate(tours, toursPerfPage, ROWS_PER_PAGE).map((t) => {
+                      const st = serviceStats.tours[t.dbId] || { bookings: 0, revenue: 0 };
+                      return (
                       <tr key={t.id}>
                         <td style={{ fontWeight: 600 }}>{t.name}</td>
                         <td style={{ color: "rgba(255,255,255,.6)" }}>{t.day}</td>
                         <td>{t.duration}</td>
                         <td>{t.capacity} pax</td>
                         <td style={{ color: "#F5A623", fontWeight: 700 }}>${t.price}</td>
-                        <td>{t.bookings}</td>
-                        <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t.bookings * t.price)}</td>
+                        <td>{st.bookings}</td>
+                        <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(st.revenue)}</td>
                         <td>{t.rating > 0 ? <><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</> : "—"}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
