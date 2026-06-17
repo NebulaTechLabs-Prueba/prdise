@@ -357,6 +357,10 @@ const vehicleBaseSchema = z.object({
   price_cents: priceCentsSchema.optional().nullable(),
   image: optionalText(300, "Imagen"),
   active: booleanFlagSchema.default(true),
+  // PM 2026-06-17: features + description editables (antes hardcoded en el
+  // mapper del frontend, todos los vehículos mostraban lo mismo).
+  features: stringArraySchema.default([]),
+  description: optionalText(500, "Descripción"),
 });
 
 export const createVehicleSchema = vehicleBaseSchema;

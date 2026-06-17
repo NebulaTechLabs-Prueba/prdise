@@ -343,9 +343,9 @@ function mapTourToTour(t) {
 
 function mapVehicleToVehicle(v) {
   // El schema `vehicles` de Supabase tiene name, type, max_pax, max_luggage,
-  // price_cents, active. NO tiene plate/driver/trips/status enum — esos
-  // campos del JSX legacy se rellenan con defaults sensatos para que la UI
-  // no crashee (.status.replace() en la tabla del admin requeria string).
+  // price_cents, active, features, description. plate/driver/trips/status
+  // enum NO viven en DB — se rellenan con defaults sensatos para que la UI
+  // legacy no crashee (.status.replace() en la tabla del admin requeria string).
   return {
     id: v.id, // UUID Supabase (necesario para admin CRUD update/delete)
     slug: (v.type || v.name || "").toLowerCase().replace(/\s+/g, "-"),
@@ -355,8 +355,9 @@ function mapVehicleToVehicle(v) {
     bags: v.max_luggage || 2,
     base: Math.round((v.price_cents || 0) / 100),
     perKm: 2.5,
-    desc: "",
-    features: ["A/C", "Pro driver", "Water", "WiFi"],
+    // PM 2026-06-17: desc + features ahora vienen de DB (antes hardcoded).
+    desc: v.description || "",
+    features: Array.isArray(v.features) ? v.features : [],
     active: v.active !== false,
     status: v.active === false ? "out_of_service" : "available",
     plate: "",
@@ -3276,6 +3277,20 @@ function TransferResultsPage() {
   const maxBags = Math.max(search.bags || 0, ...trips.map((tp) => tp.bags || 0));
   const eligible = VEHICLES.filter((v) => v.seats >= maxPax && v.bags >= maxBags);
   const tripCount = 1 + trips.length;
+  // PM 2026-06-17: precio total = suma de TODOS los recorridos (cada uno
+  // cuenta como un viaje completo, ej: round-trip o 3 viajes en días
+  // distintos). Antes el cálculo usaba solo search.km del recorrido primario,
+  // ignorando trips[] → quedaba con el precio inicial sin importar cuántas
+  // paradas/días extra agregara el cliente.
+  const allLegs = [
+    { from: search.from, to: search.to, km: search.km || 0, time_est: search.time_est || "" },
+    ...trips.map((tp) => {
+      const r = ROUTES.find((r) => r.from === tp.from && r.to === tp.to)
+        || ROUTES.find((r) => r.from === tp.to && r.to === tp.from);
+      return { from: tp.from, to: tp.to, km: r?.km ?? 150, time_est: r?.time || "" };
+    }),
+  ];
+  const totalKm = allLegs.reduce((s, l) => s + (Number(l.km) || 0), 0);
   return (
     <>
       <PageHero
@@ -3311,8 +3326,10 @@ function TransferResultsPage() {
                 <NavLink to="/contact" className="cta-pri">Contact Us</NavLink>
               </div>
             ) : eligible.map((v) => {
-              const distanceFee = v.perKm * search.km;
-              const total = v.base + distanceFee;
+              // PM 2026-06-17: total = Σ (base + perKm × km_i) por cada
+              // recorrido. Antes era solo (base + perKm × km_primario), por
+              // eso agregar más paradas o días no cambiaba el precio.
+              const total = allLegs.reduce((s, l) => s + v.base + v.perKm * (l.km || 0), 0);
               // El detalle del mensaje a WhatsApp incluye todos los recorridos
               // del servicio (no solo el principal). El equipo PRDISE recibe
               // el desglose completo para cotizar y coordinar el operativo.
@@ -3332,13 +3349,19 @@ function TransferResultsPage() {
                   <div className="veh-pic">{VEHICLE_ICONS[v.id]}</div>
                   <div className="veh-info">
                     <h3>{v.name}</h3>
-                    <p className="desc">{v.desc}</p>
+                    {v.desc && <p className="desc">{v.desc}</p>}
                     <div className="veh-meta">
                       <div className="veh-meta-item"><Users />Up to {v.seats} seats</div>
                       <div className="veh-meta-item"><Briefcase />{v.bags} bags</div>
-                      <div className="veh-meta-item"><Clock />~{search.time_est}</div>
+                      {tripCount > 1 ? (
+                        <div className="veh-meta-item"><Clock />{tripCount} {lang === "es" ? "recorridos" : "trips"} · ~{totalKm}km</div>
+                      ) : (
+                        search.time_est && <div className="veh-meta-item"><Clock />~{search.time_est}</div>
+                      )}
                     </div>
-                    <div className="veh-features">{v.features.map((f) => <span key={f}>{f}</span>)}</div>
+                    {(v.features || []).length > 0 && (
+                      <div className="veh-features">{v.features.map((f) => <span key={f}>{f}</span>)}</div>
+                    )}
                   </div>
                   <div className="veh-cta">
                     <span className="veh-price">{fmt(total).replace(/\.00$/, "")}</span>
@@ -5546,6 +5569,8 @@ function AdminPanel({ onClose }) {
   const [newEmployeeCredentials, setNewEmployeeCredentials] = useState(null);
   const [editingBooking, setEditingBooking] = useState(null);
   const [editingVehicle, setEditingVehicle] = useState(null);
+  // PM 2026-06-17: input controlado para el chip-add de features del vehículo.
+  const [vehFeatureInput, setVehFeatureInput] = useState("");
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [invoiceErrors, setInvoiceErrors] = useState({});
@@ -6830,7 +6855,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         { label: lang === "es" ? "Nuevo tour" : "New tour", icon: Compass, action: () => { setSection("tours"); setEditing({ type: "tour", isNew: true }); } },
                         { label: lang === "es" ? "Nueva ruta" : "New route", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("routes"); setEditing({ type: "route", isNew: true }); } },
                         { label: lang === "es" ? "Nuevo destino" : "New location", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); } },
-                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" }); } },
+                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "" }); } },
                         { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true }); } },
                         { label: lang === "es" ? "Nuevo post" : "New post", icon: Edit, action: () => { setSection("posts"); setEditing({ type: "post", isNew: true }); } },
                       ].map((it, i) => (
@@ -7469,7 +7494,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); }}>
                   <MapPin />{lang === "es" ? "Nuevo destino" : "New location"}
                 </button>
-                <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" }); }}>
+                <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "" }); }}>
                   <Car />{lang === "es" ? "Nuevo vehículo" : "New vehicle"}
                 </button>
                 <button className="adm-btn adm-btn-primary" onClick={() => { setTransferTab("routes"); setEditing({ type: "route", isNew: true }); }}>
@@ -7676,7 +7701,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card">
                 <div className="adm-card-head">
                   <div className="adm-card-title"><Car />{lang === "es" ? "Flota de Vehículos" : "Fleet Vehicles"}</div>
-                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available" })}><Plus />{lang === "es" ? "Agregar Vehículo" : "Add Vehicle"}</button>
+                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "" })}><Plus />{lang === "es" ? "Agregar Vehículo" : "Add Vehicle"}</button>
                 </div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
@@ -7772,6 +7797,49 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       ))}
                     </div>
                   </div>
+                  {/* PM 2026-06-17: descripción + features ahora son editables
+                      (eran hardcoded en el mapper, todos los vehículos mostraban
+                      lo mismo en el resultado de búsqueda). */}
+                  <div className="adm-fg">
+                    <label className="adm-fl">{lang === "es" ? "Descripción corta" : "Short description"}</label>
+                    <input className="adm-fi" value={editingVehicle.desc || ""} onChange={(e) => setEditingVehicle({ ...editingVehicle, desc: e.target.value })} placeholder={lang === "es" ? "Ej: Van amplia, ideal grupos familiares" : "E.g. Spacious van, family-friendly"} />
+                  </div>
+                  <div className="adm-fg">
+                    <label className="adm-fl">{lang === "es" ? "Características (chips)" : "Features (chips)"}</label>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        className="adm-fi"
+                        value={vehFeatureInput}
+                        onChange={(e) => setVehFeatureInput(e.target.value)}
+                        placeholder={lang === "es" ? "A/C, WiFi, Agua, Conductor..." : "A/C, WiFi, Water, Driver..."}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && vehFeatureInput.trim()) {
+                            e.preventDefault();
+                            const next = [...(editingVehicle.features || []), vehFeatureInput.trim()];
+                            setEditingVehicle({ ...editingVehicle, features: next });
+                            setVehFeatureInput("");
+                          }
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                      <button type="button" className="adm-btn adm-btn-ghost" onClick={() => {
+                        if (!vehFeatureInput.trim()) return;
+                        const next = [...(editingVehicle.features || []), vehFeatureInput.trim()];
+                        setEditingVehicle({ ...editingVehicle, features: next });
+                        setVehFeatureInput("");
+                      }} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />{lang === "es" ? "Agregar" : "Add"}</button>
+                    </div>
+                    {(editingVehicle.features || []).length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                        {(editingVehicle.features || []).map((f, i) => (
+                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 99, background: "rgba(245,166,35,.12)", color: "#F5A623", fontSize: 11, fontWeight: 700 }}>
+                            {f}
+                            <button type="button" onClick={() => setEditingVehicle({ ...editingVehicle, features: (editingVehicle.features || []).filter((_, j) => j !== i) })} style={{ background: "none", border: "none", color: "#F5A623", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 13 }}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="adm-modal-actions">
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingVehicle(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
@@ -7787,6 +7855,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         fd.append("max_luggage", String(editingVehicle.bags || 2));
                         fd.append("price_cents", String(Math.round((editingVehicle.base || 0) * 100)));
                         fd.append("active", "true");
+                        // PM 2026-06-17: persistir features + description.
+                        fd.append("features", JSON.stringify(Array.isArray(editingVehicle.features) ? editingVehicle.features : []));
+                        fd.append("description", editingVehicle.desc || "");
                         const action = isNew ? sbCreateVehicle : sbUpdateVehicle;
                         res = await action(fd);
                       } catch (e) {

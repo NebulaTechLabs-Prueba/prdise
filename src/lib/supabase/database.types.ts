@@ -1881,6 +1881,8 @@ export type Database = {
         Row: {
           active: boolean
           created_at: string
+          description: string | null
+          features: Json
           id: string
           image: string | null
           max_luggage: number
@@ -1893,6 +1895,8 @@ export type Database = {
         Insert: {
           active?: boolean
           created_at?: string
+          description?: string | null
+          features?: Json
           id?: string
           image?: string | null
           max_luggage?: number
@@ -1905,6 +1909,8 @@ export type Database = {
         Update: {
           active?: boolean
           created_at?: string
+          description?: string | null
+          features?: Json
           id?: string
           image?: string | null
           max_luggage?: number

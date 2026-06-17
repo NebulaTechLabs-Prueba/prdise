@@ -677,6 +677,8 @@ export async function createVehicle(
     price_cents: asNumberOrNull(formData, "price_cents"),
     image: formData.get("image") ?? "",
     active: asBool(formData, "active"),
+    features: readListField(formData, "features"),
+    description: formData.get("description") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -696,6 +698,8 @@ export async function createVehicle(
       price_cents: d.price_cents ?? null,
       image: d.image || null,
       active: d.active,
+      features: d.features as never,
+      description: d.description || null,
     })
     .select("id")
     .single();
@@ -725,6 +729,8 @@ export async function updateVehicle(
     price_cents: asNumberOrNull(formData, "price_cents"),
     image: formData.get("image") ?? "",
     active: asBool(formData, "active"),
+    features: readListField(formData, "features"),
+    description: formData.get("description") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -744,6 +750,8 @@ export async function updateVehicle(
       price_cents: d.price_cents ?? null,
       image: d.image || null,
       active: d.active,
+      features: d.features as never,
+      description: d.description || null,
     })
     .eq("id", id);
 
