@@ -5214,6 +5214,17 @@ function RegisterPage() {
             <ArrowRight style={{ width: 12, height: 12 }} />
             {lang === "es" ? "Ya confirmé, ir a iniciar sesión" : "Already confirmed, go to sign in"}
           </button>
+          {/* PM 2026-06-17: salida de emergencia — si el cliente ve que tipeó
+              mal el email (típico "yaho.com" vs "yahoo.com") puede volver al
+              form sin perder lo demás. setSuccess(false) re-renderiza el form;
+              el state de los campos sigue en memoria (no se reseteó). */}
+          <div style={{ marginTop: 10 }}>
+            <button type="button" onClick={() => { setSuccess(false); setOtp(""); setOtpError(""); }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, background: "transparent", border: "1px dashed rgba(255,255,255,.18)", color: "rgba(255,255,255,.6)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+              <ArrowLeft style={{ width: 12, height: 12 }} />
+              {lang === "es" ? "¿Email incorrecto? Volver al formulario" : "Wrong email? Back to form"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -6385,6 +6396,15 @@ function AdminPanel({ onClose }) {
       console.warn("[admin] reloadInvoices:", e);
     }
   };
+
+  // PM 2026-06-17: refresh automático al ENTRAR a la sección invoices —
+  // sin esto, si el cliente calificaba una factura mientras el admin tenía
+  // abierto otro tab del panel, la rating/comentario nuevo no aparecía
+  // hasta un F5 manual.
+  useEffect(() => {
+    if (section === "invoices") reloadInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
 
   // Refetch helper para usuarios. Necesario tras crear un cliente desde el
   // InvoiceCreateModal: antes el cliente nuevo no aparecía hasta refresh

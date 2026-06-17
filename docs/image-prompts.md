@@ -12,6 +12,11 @@ Subí la imagen resultante via el form del admin →
 `Edit service → Cover Image / Gallery Images`. Soporta tanto URL
 como upload directo de archivo.
 
+Servicios marcados con `🔧 override` tienen prompt afinado a mano
+tras la verificación contra el sitio del partner (ver
+docs/image-verification.md). Los demás derivan del template
+categórico por keyword del slug/título.
+
 ---
 
 ## Stays (2)
@@ -30,7 +35,7 @@ Elegant beachfront villa exterior in Cabo Rojo Puerto Rico at dusk, warm interio
 Elegant beachfront villa exterior in Cabo Rojo Puerto Rico at dusk, warm interior lights glowing, palm trees framing the entrance, pool reflecting the sky. Inspired by "Turmoline"; location: Beach. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
-## Tours (33)
+## Tours (34)
 
 ### Afternoon Sunset Sail
 *slug: `katarina-sail-charters-afternoon-sunset-sail` · cat: `sail` · loc: Rincón, PR*
@@ -75,17 +80,17 @@ Premium beach setup on Buyé Beach Cabo Rojo at midday — colorful umbrella, tw
 ```
 
 ### Beach Tent Rental
-*slug: `endless-summer-beach-tent-rental` · cat: `beach_gear` · loc: Buyé Beach, Cabo Rojo, PR*
+*slug: `endless-summer-beach-tent-rental` · 🔧 override · loc: Buyé Beach, Cabo Rojo, PR*
 
 ```
-Premium beach setup on Buyé Beach Cabo Rojo at midday — colorful umbrella, two lounge chairs, small wooden side table, palm shade, turquoise water lapping the white sand. Inspired by "Beach Tent Rental"; location: Buyé Beach, Cabo Rojo, PR; Beach tent/shade structure for the day.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+Pop-up beach shade tent with white canopy on four poles set up on the white sand of Buyé Beach Cabo Rojo Puerto Rico, two folded beach towels visible inside, turquoise water lapping the shore in the background, palm tree casting dappled shade nearby, calm afternoon. Inspired by "Beach Tent Rental"; location: Buyé Beach, Cabo Rojo, PR; Beach tent/shade structure for the day.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
 ### Beach Umbrella Rental
-*slug: `endless-summer-beach-umbrella-rental` · cat: `beach_gear` · loc: Buyé Beach, Cabo Rojo, PR*
+*slug: `endless-summer-beach-umbrella-rental` · 🔧 override · loc: Buyé Beach, Cabo Rojo, PR*
 
 ```
-Premium beach setup on Buyé Beach Cabo Rojo at midday — colorful umbrella, two lounge chairs, small wooden side table, palm shade, turquoise water lapping the white sand. Inspired by "Beach Umbrella Rental"; location: Buyé Beach, Cabo Rojo, PR; Beach umbrella for the day.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+Single large colorful beach umbrella with red-and-white stripes planted in the fine white sand of Buyé Beach Cabo Rojo Puerto Rico, casting a perfect circular shadow on the sand, turquoise water gently lapping nearby, no chairs or other objects, isolated and inviting. Inspired by "Beach Umbrella Rental"; location: Buyé Beach, Cabo Rojo, PR; Beach umbrella for the day.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
 ### Bio Bay Kayak & Swim Tour
@@ -180,10 +185,10 @@ Stand-up paddleboarder gliding over glassy turquoise shallows at sunrise near Bu
 ```
 
 ### Piñones UTV Tour (near San Juan)
-*slug: `aventoura-puerto-rico-pinones-utv-tour-near-san-juan` · cat: `utv` · loc: —*
+*slug: `aventoura-puerto-rico-pinones-utv-tour-near-san-juan` · 🔧 override · loc: —*
 
 ```
-A rugged 4-seat off-road UTV buggy splashing through a muddy jungle trail in Puerto Rico's western mountains, drivers in helmets, lush green foliage and palm trees in the background. Inspired by "Piñones UTV Tour (near San Juan)"; Explore Piñones untamed coast. Urban beaches, natural reserves, cultural hotspots.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+A rugged 4-seat off-road UTV buggy driving along a sandy coastal trail through palm groves and mangroves in Piñones near San Juan Puerto Rico, distant Atlantic Ocean visible on the right, urban skyline silhouette on the horizon, helmeted driver, tropical sunny morning. Inspired by "Piñones UTV Tour (near San Juan)"; Explore Piñones untamed coast. Urban beaches, natural reserves, cultural hotspots.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
 ### Pony Experience
@@ -193,11 +198,18 @@ A rugged 4-seat off-road UTV buggy splashing through a muddy jungle trail in Pue
 Small Puerto Rican pony with a child rider walking gently along the marina boardwalk in Rincón, blue boats moored behind, warm afternoon light. Inspired by "Pony Experience"; location: Rincón, PR; Extended pony ride at the farm. Kids groom & tack their own pony, ride, feed the herd.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
-### Private Island Adventure Boat Tour
-*slug: `parguera-water-sports-bio-bay-private-island-adventure-boat-tour` · cat: `bio_bay` · loc: La Parguera, PR*
+### Prico Tour
+*slug: `prico-tour-403r` · cat: `adventure` · loc: PR - East*
 
 ```
-Bioluminescent bay at night in La Parguera Puerto Rico, glowing blue plankton trails behind a kayak paddle, starry sky reflected on the dark water, mangrove silhouettes. Inspired by "Private Island Adventure Boat Tour"; location: La Parguera, PR; Full day at los Cayos in La Parguera by private boat.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+Adventurers rappelling into a hidden limestone river cave in Arecibo Puerto Rico (Tanamá area), helmet headlamps illuminating crystal-clear blue water. Inspired by "Prico Tour"; location: PR - East; Solution to your streess. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Private Island Adventure Boat Tour
+*slug: `parguera-water-sports-bio-bay-private-island-adventure-boat-tour` · 🔧 override · loc: La Parguera, PR*
+
+```
+Private motorboat anchored over crystal turquoise water at a small uninhabited cay in La Parguera Puerto Rico, golden sand beach in the foreground, palm trees swaying, snorkel gear visible on deck, midday Caribbean sun, distant mangrove cays. Inspired by "Private Island Adventure Boat Tour"; location: La Parguera, PR; Full day at los Cayos in La Parguera by private boat.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
 ### Private Ride
@@ -229,10 +241,10 @@ Bioluminescent bay at night in La Parguera Puerto Rico, glowing blue plankton tr
 ```
 
 ### Table Rental
-*slug: `endless-summer-table-rental` · cat: `beach_gear` · loc: Buyé Beach, Cabo Rojo, PR*
+*slug: `endless-summer-table-rental` · 🔧 override · loc: Buyé Beach, Cabo Rojo, PR*
 
 ```
-Premium beach setup on Buyé Beach Cabo Rojo at midday — colorful umbrella, two lounge chairs, small wooden side table, palm shade, turquoise water lapping the white sand. Inspired by "Table Rental"; location: Buyé Beach, Cabo Rojo, PR; Table rental at the beach.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+Simple wooden picnic table with attached bench seating on the white sand of Buyé Beach Cabo Rojo Puerto Rico, completely empty and clean, palm trees casting dappled shade above, turquoise water and white sand stretching into the background, ready for guests, late morning light. Inspired by "Table Rental"; location: Buyé Beach, Cabo Rojo, PR; Table rental at the beach.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
 ### Tanamá Full Day Adventure
@@ -250,15 +262,88 @@ Snorkeler floating over a vibrant Caribbean coral reef off Puerto Rico's south c
 ```
 
 ### Water Bikes
-*slug: `endless-summer-water-bikes` · cat: `paddle` · loc: Buyé Beach, Cabo Rojo, PR*
+*slug: `endless-summer-water-bikes` · 🔧 override · loc: Buyé Beach, Cabo Rojo, PR*
 
 ```
-Stand-up paddleboarder gliding over glassy turquoise shallows at sunrise near Buyé Beach Puerto Rico, perfect reflection, distant lighthouse silhouette. Inspired by "Water Bikes"; location: Buyé Beach, Cabo Rojo, PR; Water bike rental at Buyé Beach.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+Bright yellow water bike (hydrobike with twin pontoon floats and a bicycle-style frame with handlebars and pedals) cruising on calm turquoise water off Buyé Beach Cabo Rojo Puerto Rico, single rider mid-pedal, gentle splash trailing behind, palm-lined coastline in the background, sunny morning. Inspired by "Water Bikes"; location: Buyé Beach, Cabo Rojo, PR; Water bike rental at Buyé Beach.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```
 
 ### Water Birthday Splash
-*slug: `parguera-water-sports-bio-bay-water-birthday-splash` · cat: `bio_bay` · loc: La Parguera, PR*
+*slug: `parguera-water-sports-bio-bay-water-birthday-splash` · 🔧 override · loc: La Parguera, PR*
 
 ```
-Bioluminescent bay at night in La Parguera Puerto Rico, glowing blue plankton trails behind a kayak paddle, starry sky reflected on the dark water, mangrove silhouettes. Inspired by "Water Birthday Splash"; location: La Parguera, PR; Private birthday party on a pontoon boat in La Parguera.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+Festive pontoon boat in turquoise La Parguera waters Puerto Rico, decorated with colorful balloons and birthday flags, a small cake and cold drinks set on a table, sun reflecting off blue water, palm-fringed cays in the distance, celebratory tropical mood. Inspired by "Water Birthday Splash"; location: La Parguera, PR; Private birthday party on a pontoon boat in La Parguera.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+---
+
+## 🔧 Prompts ajustados (overrides — 7)
+
+Estos servicios tienen un prompt afinado a mano que reemplaza al
+template categórico. Se aplicó tras verificar contra el sitio del
+partner (ver docs/image-verification.md). Si regenerás la imagen y
+queda bien, el override puede quitarse del script:
+`scripts/generate-image-prompts.mjs` → `OVERRIDES`.
+
+### Beach Tent Rental
+*slug: `endless-summer-beach-tent-rental` · tour*
+
+**Motivo del ajuste:** El template beach_gear genérico mostraba 'setup completo' (silla+sombrilla+mesa). Acá la imagen debe ser solo la carpa.
+
+```
+Pop-up beach shade tent with white canopy on four poles set up on the white sand of Buyé Beach Cabo Rojo Puerto Rico, two folded beach towels visible inside, turquoise water lapping the shore in the background, palm tree casting dappled shade nearby, calm afternoon. Inspired by "Beach Tent Rental"; location: Buyé Beach, Cabo Rojo, PR; Beach tent/shade structure for the day.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Beach Umbrella Rental
+*slug: `endless-summer-beach-umbrella-rental` · tour*
+
+**Motivo del ajuste:** Idem tent — la imagen debe ser solo la sombrilla aislada.
+
+```
+Single large colorful beach umbrella with red-and-white stripes planted in the fine white sand of Buyé Beach Cabo Rojo Puerto Rico, casting a perfect circular shadow on the sand, turquoise water gently lapping nearby, no chairs or other objects, isolated and inviting. Inspired by "Beach Umbrella Rental"; location: Buyé Beach, Cabo Rojo, PR; Beach umbrella for the day.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Piñones UTV Tour (near San Juan)
+*slug: `aventoura-puerto-rico-pinones-utv-tour-near-san-juan` · tour*
+
+**Motivo del ajuste:** Piñones es zona COSTERA cerca de San Juan, no montañas del oeste.
+
+```
+A rugged 4-seat off-road UTV buggy driving along a sandy coastal trail through palm groves and mangroves in Piñones near San Juan Puerto Rico, distant Atlantic Ocean visible on the right, urban skyline silhouette on the horizon, helmeted driver, tropical sunny morning. Inspired by "Piñones UTV Tour (near San Juan)"; Explore Piñones untamed coast. Urban beaches, natural reserves, cultural hotspots.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Private Island Adventure Boat Tour
+*slug: `parguera-water-sports-bio-bay-private-island-adventure-boat-tour` · tour*
+
+**Motivo del ajuste:** Tour DIURNO en cayos por barco privado — el template categórico era nocturno bioluminiscente.
+
+```
+Private motorboat anchored over crystal turquoise water at a small uninhabited cay in La Parguera Puerto Rico, golden sand beach in the foreground, palm trees swaying, snorkel gear visible on deck, midday Caribbean sun, distant mangrove cays. Inspired by "Private Island Adventure Boat Tour"; location: La Parguera, PR; Full day at los Cayos in La Parguera by private boat.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Table Rental
+*slug: `endless-summer-table-rental` · tour*
+
+**Motivo del ajuste:** Idem tent — la imagen debe ser solo la mesa de playa.
+
+```
+Simple wooden picnic table with attached bench seating on the white sand of Buyé Beach Cabo Rojo Puerto Rico, completely empty and clean, palm trees casting dappled shade above, turquoise water and white sand stretching into the background, ready for guests, late morning light. Inspired by "Table Rental"; location: Buyé Beach, Cabo Rojo, PR; Table rental at the beach.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Water Bikes
+*slug: `endless-summer-water-bikes` · tour*
+
+**Motivo del ajuste:** El template paddle mostraba un SUP (paddleboard). Water bike = hydrobike (bici sobre flotadores), distinto.
+
+```
+Bright yellow water bike (hydrobike with twin pontoon floats and a bicycle-style frame with handlebars and pedals) cruising on calm turquoise water off Buyé Beach Cabo Rojo Puerto Rico, single rider mid-pedal, gentle splash trailing behind, palm-lined coastline in the background, sunny morning. Inspired by "Water Bikes"; location: Buyé Beach, Cabo Rojo, PR; Water bike rental at Buyé Beach.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
+```
+
+### Water Birthday Splash
+*slug: `parguera-water-sports-bio-bay-water-birthday-splash` · tour*
+
+**Motivo del ajuste:** Cumpleaños DIURNO en pontoon — el template categórico era nocturno bioluminiscente.
+
+```
+Festive pontoon boat in turquoise La Parguera waters Puerto Rico, decorated with colorful balloons and birthday flags, a small cake and cold drinks set on a table, sun reflecting off blue water, palm-fringed cays in the distance, celebratory tropical mood. Inspired by "Water Birthday Splash"; location: La Parguera, PR; Private birthday party on a pontoon boat in La Parguera.. Photorealistic, golden-hour natural lighting, vibrant tropical color palette, 16:9 wide-angle composition, cinematic depth of field, no text, no watermark, no people facing the camera.
 ```

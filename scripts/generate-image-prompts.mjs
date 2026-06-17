@@ -114,7 +114,30 @@ function buildDetail(row) {
   return parts.length ? `. ${parts.join("; ")}` : "";
 }
 
+// PM 2026-06-17: overrides puntuales tras la verificación contra los sitios
+// de partners (docs/image-verification.md). Estos slugs no encajaban con el
+// template categórico genérico — el prompt acá los sobrescribe entero. Si
+// el cliente regenera la imagen y ya queda bien, el override puede quitarse.
+const OVERRIDES = {
+  "aventoura-puerto-rico-pinones-utv-tour-near-san-juan": (d) =>
+    `A rugged 4-seat off-road UTV buggy driving along a sandy coastal trail through palm groves and mangroves in Piñones near San Juan Puerto Rico, distant Atlantic Ocean visible on the right, urban skyline silhouette on the horizon, helmeted driver, tropical sunny morning${d}.`,
+  "parguera-water-sports-bio-bay-private-island-adventure-boat-tour": (d) =>
+    `Private motorboat anchored over crystal turquoise water at a small uninhabited cay in La Parguera Puerto Rico, golden sand beach in the foreground, palm trees swaying, snorkel gear visible on deck, midday Caribbean sun, distant mangrove cays${d}.`,
+  "parguera-water-sports-bio-bay-water-birthday-splash": (d) =>
+    `Festive pontoon boat in turquoise La Parguera waters Puerto Rico, decorated with colorful balloons and birthday flags, a small cake and cold drinks set on a table, sun reflecting off blue water, palm-fringed cays in the distance, celebratory tropical mood${d}.`,
+  "endless-summer-beach-tent-rental": (d) =>
+    `Pop-up beach shade tent with white canopy on four poles set up on the white sand of Buyé Beach Cabo Rojo Puerto Rico, two folded beach towels visible inside, turquoise water lapping the shore in the background, palm tree casting dappled shade nearby, calm afternoon${d}.`,
+  "endless-summer-beach-umbrella-rental": (d) =>
+    `Single large colorful beach umbrella with red-and-white stripes planted in the fine white sand of Buyé Beach Cabo Rojo Puerto Rico, casting a perfect circular shadow on the sand, turquoise water gently lapping nearby, no chairs or other objects, isolated and inviting${d}.`,
+  "endless-summer-table-rental": (d) =>
+    `Simple wooden picnic table with attached bench seating on the white sand of Buyé Beach Cabo Rojo Puerto Rico, completely empty and clean, palm trees casting dappled shade above, turquoise water and white sand stretching into the background, ready for guests, late morning light${d}.`,
+  "endless-summer-water-bikes": (d) =>
+    `Bright yellow water bike (hydrobike with twin pontoon floats and a bicycle-style frame with handlebars and pedals) cruising on calm turquoise water off Buyé Beach Cabo Rojo Puerto Rico, single rider mid-pedal, gentle splash trailing behind, palm-lined coastline in the background, sunny morning${d}.`,
+};
+
 function buildPrompt(row, forceCat) {
+  const override = OVERRIDES[row.slug];
+  if (override) return override(buildDetail(row)) + SUFFIX;
   const cat = forceCat || categorize(row.slug, row.title_es || row.title_en);
   const template = TEMPLATES[cat] || TEMPLATES.adventure;
   return template(buildDetail(row)) + SUFFIX;
@@ -149,6 +172,11 @@ lines.push("Subí la imagen resultante via el form del admin →");
 lines.push("`Edit service → Cover Image / Gallery Images`. Soporta tanto URL");
 lines.push("como upload directo de archivo.");
 lines.push("");
+lines.push("Servicios marcados con `🔧 override` tienen prompt afinado a mano");
+lines.push("tras la verificación contra el sitio del partner (ver");
+lines.push("docs/image-verification.md). Los demás derivan del template");
+lines.push("categórico por keyword del slug/título.");
+lines.push("");
 lines.push("---");
 lines.push("");
 
@@ -157,9 +185,11 @@ function section(title, rows, forceCat) {
   lines.push("");
   for (const r of rows) {
     const t = r.title_es || r.title_en || r.slug;
+    const isOverride = OVERRIDES[r.slug] != null;
     const cat = forceCat || categorize(r.slug, r.title_es || r.title_en);
+    const badge = isOverride ? "🔧 override" : `cat: \`${cat}\``;
     lines.push(`### ${t}`);
-    lines.push(`*slug: \`${r.slug}\` · cat: \`${cat}\` · loc: ${r.location || "—"}*`);
+    lines.push(`*slug: \`${r.slug}\` · ${badge} · loc: ${r.location || "—"}*`);
     lines.push("");
     lines.push("```");
     lines.push(buildPrompt(r, forceCat));
@@ -172,6 +202,60 @@ function section(title, rows, forceCat) {
 // puede traer texto del tour si el admin lo mezcló).
 section("Stays", stays || [], "beach_stay");
 section("Tours", tours || []);
+
+// ─── Sección consolidada de Overrides al final ─────────────────────────────
+// PM 2026-06-17: el badge "🔧 override" disperso por cada servicio era difícil
+// de encontrar. Esta sección lista TODOS los prompts ajustados juntos con el
+// motivo del ajuste — facilita regenerar solo los problemáticos.
+const allRows = [
+  ...(stays || []).map((r) => ({ ...r, _kind: "stay" })),
+  ...(tours || []).map((r) => ({ ...r, _kind: "tour" })),
+];
+const overridden = allRows.filter((r) => OVERRIDES[r.slug]);
+const OVERRIDE_REASONS = {
+  "aventoura-puerto-rico-pinones-utv-tour-near-san-juan":
+    "Piñones es zona COSTERA cerca de San Juan, no montañas del oeste.",
+  "parguera-water-sports-bio-bay-private-island-adventure-boat-tour":
+    "Tour DIURNO en cayos por barco privado — el template categórico era nocturno bioluminiscente.",
+  "parguera-water-sports-bio-bay-water-birthday-splash":
+    "Cumpleaños DIURNO en pontoon — el template categórico era nocturno bioluminiscente.",
+  "endless-summer-beach-tent-rental":
+    "El template beach_gear genérico mostraba 'setup completo' (silla+sombrilla+mesa). Acá la imagen debe ser solo la carpa.",
+  "endless-summer-beach-umbrella-rental":
+    "Idem tent — la imagen debe ser solo la sombrilla aislada.",
+  "endless-summer-table-rental":
+    "Idem tent — la imagen debe ser solo la mesa de playa.",
+  "endless-summer-water-bikes":
+    "El template paddle mostraba un SUP (paddleboard). Water bike = hydrobike (bici sobre flotadores), distinto.",
+};
+
+if (overridden.length) {
+  lines.push("---");
+  lines.push("");
+  lines.push(`## 🔧 Prompts ajustados (overrides — ${overridden.length})`);
+  lines.push("");
+  lines.push("Estos servicios tienen un prompt afinado a mano que reemplaza al");
+  lines.push("template categórico. Se aplicó tras verificar contra el sitio del");
+  lines.push("partner (ver docs/image-verification.md). Si regenerás la imagen y");
+  lines.push("queda bien, el override puede quitarse del script:");
+  lines.push("`scripts/generate-image-prompts.mjs` → `OVERRIDES`.");
+  lines.push("");
+  for (const r of overridden) {
+    const t = r.title_es || r.title_en || r.slug;
+    lines.push(`### ${t}`);
+    lines.push(`*slug: \`${r.slug}\` · ${r._kind}*`);
+    lines.push("");
+    const reason = OVERRIDE_REASONS[r.slug];
+    if (reason) {
+      lines.push(`**Motivo del ajuste:** ${reason}`);
+      lines.push("");
+    }
+    lines.push("```");
+    lines.push(buildPrompt(r, r._kind === "stay" ? "beach_stay" : null));
+    lines.push("```");
+    lines.push("");
+  }
+}
 
 const outPath = "docs/image-prompts.md";
 mkdirSync(dirname(outPath), { recursive: true });

@@ -181,6 +181,11 @@ export async function rateInvoice(
         user_id: userId,
         item_type: itemType,
         item_id: itemId,
+        // PM 2026-06-17: invoice_id liga la review al invoice de origen.
+        // Combinado con el unique index parcial (user, item_type, item_id,
+        // invoice_id) WHERE invoice_id IS NOT NULL, evita duplicados si el
+        // mismo invoice se procesa 2 veces (race / reintento).
+        invoice_id: invoiceId,
         rating,
         title: null,
         body: comment || null,
@@ -192,13 +197,18 @@ export async function rateInvoice(
     .filter((r): r is NonNullable<typeof r> => r !== null);
 
   if (reviewRows.length > 0) {
-    // PM 2026-06-17: idem rating — usamos admin client porque reviews
-    // probablemente tampoco permite insert directo del cliente (RLS).
-    const { error: revErr } = await admin.from("reviews").insert(reviewRows);
+    // PM 2026-06-17: admin client porque reviews tampoco permite insert
+    // directo del cliente (RLS). ON CONFLICT no-op para que un reintento
+    // del mismo invoice no falle por unique index — el trigger se dispara
+    // sólo si se insertan filas nuevas, así que el agregado en tours/stays
+    // queda consistente.
+    const { error: revErr } = await admin
+      .from("reviews")
+      .upsert(reviewRows, { onConflict: "user_id,item_type,item_id,invoice_id", ignoreDuplicates: true });
     if (revErr) {
       // No revertimos la calificación de la factura — la propagación a
       // `reviews` es secundaria y puede reintentarse en background.
-      console.warn("[rateInvoice] reviews insert failed:", revErr.message);
+      console.warn("[rateInvoice] reviews upsert failed:", revErr.message);
     }
   }
 

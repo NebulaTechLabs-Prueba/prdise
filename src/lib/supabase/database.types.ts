@@ -1289,6 +1289,7 @@ export type Database = {
           body: string | null
           created_at: string
           id: string
+          invoice_id: string | null
           item_id: string
           item_type: Database["public"]["Enums"]["item_type"]
           rating: number
@@ -1303,6 +1304,7 @@ export type Database = {
           body?: string | null
           created_at?: string
           id?: string
+          invoice_id?: string | null
           item_id: string
           item_type: Database["public"]["Enums"]["item_type"]
           rating: number
@@ -1317,6 +1319,7 @@ export type Database = {
           body?: string | null
           created_at?: string
           id?: string
+          invoice_id?: string | null
           item_id?: string
           item_type?: Database["public"]["Enums"]["item_type"]
           rating?: number
@@ -1338,6 +1341,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
           {
