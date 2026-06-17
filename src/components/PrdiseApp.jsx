@@ -391,6 +391,14 @@ function mapRouteToRoute(r) {
 }
 
 function mapPostToAdminPost(p) {
+  // PM 2026-06-17: el EditModal lee nameEN/nameES (para los tabs ES/EN del
+  // título) y excerpt/bodyES separados. El mapper antes hacía fallback
+  // "es || en" lo que mezclaba idiomas: al abrir EDIT POST el campo TITLE
+  // se cargaba vacío (porque el modal lee it.nameEN/it.name, no it.title) y
+  // el cuerpo en EN traía el texto en ES si no había EN. Exponemos los
+  // campos bilingues por separado + un alias `name` para el modal compartido.
+  const titleEN = p.title_en || "";
+  const titleES = p.title_es || "";
   return {
     // PM 2026-06-11: el id "lógico" es el slug (lo usa el front para
     // routing /post?slug=...). Pero las server actions de admin (toggle
@@ -399,7 +407,11 @@ function mapPostToAdminPost(p) {
     // "Identificador inválido".
     id: p.slug,
     dbId: p.id,
-    title: p.title_es || p.title_en || p.slug,
+    title: titleES || titleEN || p.slug,
+    // Alias para el EditModal compartido (lee it.name como base).
+    name: titleEN || titleES || p.slug,
+    nameEN: titleEN,
+    nameES: titleES,
     slug: p.slug,
     category: p.category || "",
     author: "",
@@ -408,8 +420,11 @@ function mapPostToAdminPost(p) {
     featured: !!p.featured,
     img: p.image || "IMG_PALM",
     views: p.views || 0,
-    excerpt: p.excerpt_es || p.excerpt_en || "",
-    body: p.body_es || p.body_en || "",
+    // EN como base, ES separado — el modal los inicializa así.
+    excerpt: p.excerpt_en || "",
+    excerptES: p.excerpt_es || "",
+    body: p.body_en || "",
+    bodyES: p.body_es || "",
   };
 }
 
@@ -11967,7 +11982,15 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       : (it.status || (isNew ? "published" : "draft"))
   );
   const [saved, setSaved] = useState(false);
-  const [imageUrl, setImageUrl] = useState(it.img || "");
+  // PM 2026-06-17: solo cargar como URL si es URL real. Para posts legacy,
+  // posts.image puede tener un preset key tipo "IMG_MANGROVES" — eso NO
+  // es URL y meterlo en este input confunde al admin. Si es preset, el
+  // dropdown de "Cover Image (preset)" maneja la selección y este input
+  // queda vacío (override sobre preset solo si admin pega URL/sube archivo).
+  const [imageUrl, setImageUrl] = useState(() => {
+    const v = it.img || "";
+    return /^(https?:\/\/|\/|data:)/.test(v) ? v : "";
+  });
   const [imageList, setImageList] = useState(it.gallery || it.images || []);
   const [newImgUrl, setNewImgUrl] = useState("");
   const [scheduleDate, setScheduleDate] = useState(it.scheduleDate || "");
