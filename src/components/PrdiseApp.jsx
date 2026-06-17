@@ -1040,35 +1040,53 @@ function MagicLinkPasswordPrompt() {
     }
   };
 
+  // PM 2026-06-17: el banner es position:fixed y empuja navbar+content via
+  // body class + CSS var --magic-banner-h. Sin esto se superponía al navbar.
+  useEffect(() => {
+    if (show) {
+      document.body.classList.add("has-magic-banner");
+      document.documentElement.style.setProperty("--magic-banner-h", "48px");
+    } else {
+      document.body.classList.remove("has-magic-banner");
+      document.documentElement.style.removeProperty("--magic-banner-h");
+    }
+    return () => {
+      document.body.classList.remove("has-magic-banner");
+      document.documentElement.style.removeProperty("--magic-banner-h");
+    };
+  }, [show]);
+
   if (!show) return null;
 
   return (
     <>
       <div style={{
-        position: "sticky", top: 0, zIndex: 200,
-        background: "linear-gradient(90deg,rgba(245,166,35,.18),rgba(239,108,43,.18))",
-        borderBottom: "1px solid rgba(245,166,35,.4)",
-        backdropFilter: "blur(8px)",
-        padding: "10px 16px",
-        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 250,
+        height: 48,
+        background: "linear-gradient(90deg,#EF6C2B,#F5A623)",
+        borderBottom: "1px solid rgba(0,0,0,.2)",
+        boxShadow: "0 2px 12px rgba(0,0,0,.25)",
+        padding: "0 16px",
+        display: "flex", alignItems: "center", gap: 12,
       }}>
-        <AlertTriangle style={{ width: 16, height: 16, color: "var(--gold)", flexShrink: 0 }} />
-        <span style={{ fontSize: 12.5, color: "#fff", flex: 1, minWidth: 220, lineHeight: 1.5 }}>
+        <AlertTriangle style={{ width: 16, height: 16, color: "#fff", flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, color: "#fff", fontWeight: 600, flex: 1, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {lang === "es"
-            ? "Iniciaste sesión con un link de un solo uso. Por seguridad, establecé tu contraseña ahora para poder volver a entrar."
-            : "You signed in with a one-time link. For security, set your password now so you can sign in again later."}
+            ? "Sesión temporal vía link. Establecé tu contraseña — no requiere email."
+            : "Temporary link session. Set your password — no email required."}
         </span>
         <button
           type="button"
           onClick={() => setOpen(true)}
           style={{
-            padding: "7px 14px", borderRadius: 8, border: "none",
-            background: "linear-gradient(135deg,#F5A623,#EF6C2B)",
+            padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,.5)",
+            background: "rgba(255,255,255,.15)", backdropFilter: "blur(4px)",
             color: "#fff", fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em",
             textTransform: "uppercase", cursor: "pointer", flexShrink: 0,
+            whiteSpace: "nowrap",
           }}
         >
-          {lang === "es" ? "Establecer contraseña" : "Set password"}
+          {lang === "es" ? "Establecer ahora" : "Set now"}
         </button>
       </div>
 
@@ -1100,8 +1118,8 @@ function MagicLinkPasswordPrompt() {
             </div>
             <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", lineHeight: 1.55, marginBottom: 18 }}>
               {lang === "es"
-                ? "Para futuros inicios de sesión, necesitás una contraseña. Esta se va a guardar de inmediato."
-                : "You'll need a password for future sign-ins. It will be saved immediately."}
+                ? "Esta contraseña se guarda directo en tu cuenta — no se envía ningún email. Inmediatamente podrás usarla para iniciar sesión."
+                : "This password saves directly to your account — no email is sent. You can use it to sign in immediately."}
             </p>
 
             {done ? (
@@ -1242,8 +1260,13 @@ input,select,textarea{font-family:inherit}
 .container{max-width:1240px;margin:0 auto;padding:0 28px}
 
 /* NAV */
-.nav{position:fixed;top:0;left:0;width:100%;z-index:200;transition:background .4s,box-shadow .4s}
+.nav{position:fixed;top:var(--magic-banner-h,0);left:0;width:100%;z-index:200;transition:top .2s,background .4s,box-shadow .4s}
 .nav.stuck{background:rgba(12,19,24,.95);backdrop-filter:blur(16px);box-shadow:0 2px 24px rgba(0,0,0,.3)}
+/* PM 2026-06-17: cuando MagicLinkPasswordPrompt está activo, body recibe
+   esta clase y los elementos fijos se reacomodan para no superponerse al
+   banner. La var --magic-banner-h vive en root; el banner la setea. */
+body.has-magic-banner{padding-top:var(--magic-banner-h,48px)}
+body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,48px))}
 .nav-color{display:flex;height:3px}.nav-color span{flex:1}
 .nav-color span:nth-child(1){background:var(--gold)}.nav-color span:nth-child(2){background:var(--orange)}
 .nav-color span:nth-child(3){background:var(--green)}.nav-color span:nth-child(4){background:var(--sky)}
@@ -8733,7 +8756,31 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       const sorted = [...filtered].sort((a, b) => invoicesSort.dir === "asc" ? cmp(a, b) : cmp(b, a));
                       return paginate(sorted, invoicesPage, invoicesPerPage).map((inv) => (
                       <tr key={inv.id}>
-                        <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12, fontWeight: 700 }}>{inv.num}</td>
+                        {/* PM 2026-06-17: estrella inline si la invoice tiene
+                            rating. Click abre el viewer donde se ve detalle +
+                            comentario completo. Tooltip muestra rating + preview. */}
+                        <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12, fontWeight: 700 }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            {inv.num}
+                            {inv.rating != null && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setViewingInvoice(inv); }}
+                                title={(lang==="es" ? "Calificación: " : "Rating: ") + inv.rating + "/5" + (inv.ratingComment ? "\n\"" + inv.ratingComment.slice(0, 120) + (inv.ratingComment.length > 120 ? "…" : "") + "\"" : "")}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 2,
+                                  background: "rgba(245,166,35,.12)", border: "1px solid rgba(245,166,35,.3)",
+                                  borderRadius: 99, padding: "1px 6px 1px 5px", cursor: "pointer",
+                                  color: "var(--gold)", fontSize: 10, fontWeight: 800,
+                                }}
+                              >
+                                <Star style={{ width: 10, height: 10, fill: "#F5A623", color: "#F5A623" }} />
+                                {inv.rating}
+                                {inv.ratingComment && <MessageCircle style={{ width: 9, height: 9, marginLeft: 2, opacity: 0.85 }} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td>
                           <button onClick={() => setCustomerProfileEmail(inv.email)} title={lang==="es"?"Ver perfil del cliente":"View customer profile"} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", textAlign: "left" }}>
                             <Search style={{ width: 11, height: 11, color: "rgba(255,255,255,.35)", flexShrink: 0 }} />
