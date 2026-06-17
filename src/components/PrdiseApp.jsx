@@ -11504,13 +11504,34 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   );
 
   // Image section for hotels and tours
+  // PM 2026-06-15: doble entrada — paste URL externa o seleccionar archivo
+  // local (Storage bucket service-images). El admin elige según convenga.
   const maxImages = type === "tour" ? 15 : type === "hotel" ? 10 : 5;
   const imageSection = (type === "hotel" || type === "tour") ? (
     <div className="adm-fg">
       <label className="adm-fl">Images / Gallery</label>
       <div className="adm-fg" style={{ marginBottom: 8 }}>
-        <label className="adm-fl" style={{ fontSize: 10 }}>Cover Image URL</label>
-        <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://... or paste image URL" />
+        <label className="adm-fl" style={{ fontSize: 10 }}>{lang === "es" ? "Imagen de portada" : "Cover Image"}</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL o usá Subir archivo →" : "Paste URL or use Upload file →"} style={{ flex: 1 }} />
+          <label className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, cursor: uploading ? "wait" : "pointer", opacity: uploading ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            {uploading ? <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(141,198,63,.3)", borderTopColor: "#8DC63F", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> : <Plus style={{ width: 12, height: 12 }} />}
+            {lang === "es" ? "Subir" : "Upload"}
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              disabled={uploading}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                const url = await uploadImageFile(f, "cover");
+                if (url) setImageUrl(url);
+              }}
+            />
+          </label>
+        </div>
         {imageUrl && (
           <div style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", height: 80, position: "relative" }}>
             <img src={imageUrl} alt="Cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; }} />
@@ -11520,11 +11541,29 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           </div>
         )}
       </div>
-      <label className="adm-fl" style={{ fontSize: 10 }}>Gallery Images ({imageList.length}/{maxImages})</label>
+      <label className="adm-fl" style={{ fontSize: 10 }}>{lang === "es" ? `Galería (${imageList.length}/${maxImages})` : `Gallery Images (${imageList.length}/${maxImages})`}</label>
       <div style={{ display: "flex", gap: 6 }}>
-        <input className="adm-fi" value={newImgUrl} onChange={(e) => setNewImgUrl(e.target.value)} placeholder="Paste image URL and click Add" style={{ flex: 1 }} onKeyDown={(e) => e.key === "Enter" && newImgUrl.trim() && imageList.length < maxImages && (e.preventDefault(), setImageList([...imageList, newImgUrl.trim()]), setNewImgUrl(""))} disabled={imageList.length >= maxImages} />
-        <button className="adm-btn adm-btn-ghost" onClick={() => { if (newImgUrl.trim() && imageList.length < maxImages) { setImageList([...imageList, newImgUrl.trim()]); setNewImgUrl(""); } }} style={{ flexShrink: 0, opacity: imageList.length >= maxImages ? .4 : 1 }} disabled={imageList.length >= maxImages}><Plus style={{ width: 12, height: 12 }} />Add</button>
+        <input className="adm-fi" value={newImgUrl} onChange={(e) => setNewImgUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL y dale + Agregar" : "Paste URL and click Add"} style={{ flex: 1 }} onKeyDown={(e) => e.key === "Enter" && newImgUrl.trim() && imageList.length < maxImages && (e.preventDefault(), setImageList([...imageList, newImgUrl.trim()]), setNewImgUrl(""))} disabled={imageList.length >= maxImages} />
+        <button className="adm-btn adm-btn-ghost" onClick={() => { if (newImgUrl.trim() && imageList.length < maxImages) { setImageList([...imageList, newImgUrl.trim()]); setNewImgUrl(""); } }} style={{ flexShrink: 0, opacity: imageList.length >= maxImages ? .4 : 1 }} disabled={imageList.length >= maxImages}><Plus style={{ width: 12, height: 12 }} />{lang === "es" ? "Agregar" : "Add"}</button>
+        <label className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, cursor: (uploading || imageList.length >= maxImages) ? "not-allowed" : "pointer", opacity: (uploading || imageList.length >= maxImages) ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {uploading ? <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(141,198,63,.3)", borderTopColor: "#8DC63F", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> : <Plus style={{ width: 12, height: 12 }} />}
+          {lang === "es" ? "Subir" : "Upload"}
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            disabled={uploading || imageList.length >= maxImages}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f || imageList.length >= maxImages) return;
+              const url = await uploadImageFile(f, `gal${imageList.length}`);
+              if (url) setImageList([...imageList, url]);
+            }}
+          />
+        </label>
       </div>
+      {uploadError && <p style={{ fontSize: 10.5, color: "#EF6C2B", marginTop: 4 }}>{uploadError}</p>}
       {imageList.length > 0 && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {imageList.map((url, i) => (
@@ -11535,11 +11574,62 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           ))}
         </div>
       )}
-      <p style={{ fontSize: 10, color: imageList.length >= maxImages ? "#EF6C2B" : "rgba(255,255,255,.35)", marginTop: 6 }}>{imageList.length >= maxImages ? `Maximum ${maxImages} images reached.` : `Paste direct image URLs. Up to ${maxImages} images. JPG, PNG, WebP.`}</p>
+      <p style={{ fontSize: 10, color: imageList.length >= maxImages ? "#EF6C2B" : "rgba(255,255,255,.35)", marginTop: 6 }}>{imageList.length >= maxImages ? (lang === "es" ? `Máximo ${maxImages} imágenes.` : `Maximum ${maxImages} images reached.`) : (lang === "es" ? `URL externa o archivo (≤8MB). JPG/PNG/WebP. Hasta ${maxImages} imágenes.` : `External URL or file (≤8MB). JPG/PNG/WebP. Up to ${maxImages} images.`)}</p>
     </div>
   ) : null;
 
   const formRef = useRef(null);
+
+  // PM 2026-06-15: upload directo de archivo al bucket public service-images.
+  // El admin puede pegar URL o seleccionar un archivo local; en ambos casos
+  // el resultado final es una URL que va al array `images` de la DB.
+  // El bucket es público (lectura abierta), por lo que la URL devuelta sirve
+  // directo en cards/detail sin signed URLs ni proxies. La policy RLS exige
+  // staff para insert/update/delete (ver migración 20260615190000).
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function uploadImageFile(file, slotHint) {
+    setUploadError("");
+    if (!file) return null;
+    if (!file.type.startsWith("image/")) {
+      setUploadError(lang === "es" ? "Solo se permiten imágenes." : "Only image files allowed.");
+      return null;
+    }
+    const MAX = 8 * 1024 * 1024; // 8MB
+    if (file.size > MAX) {
+      setUploadError(lang === "es" ? "Imagen máxima 8MB." : "Image must be ≤8MB.");
+      return null;
+    }
+    setUploading(true);
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const sb = createClient();
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "jpg";
+      // Path determinístico-ish: servicio + slot + epoch + 4 random chars.
+      // Si el admin re-sube otra imagen al mismo slot, queda como objeto
+      // nuevo (no se pisa) — el anterior queda huérfano en storage hasta
+      // que se haga limpieza separada. Aceptable por simplicidad.
+      const ownerKey = (it?.id || `new-${Date.now().toString(36)}`).slice(0, 60);
+      const slot = (slotHint || "img").replace(/[^a-z0-9]/gi, "");
+      const rand = Math.random().toString(36).slice(2, 6);
+      const path = `${type}/${ownerKey}/${slot}-${Date.now().toString(36)}-${rand}.${ext}`;
+      const { error: upErr } = await sb.storage
+        .from("service-images")
+        .upload(path, file, { cacheControl: "31536000", upsert: false, contentType: file.type });
+      if (upErr) {
+        setUploadError((lang === "es" ? "Error subiendo: " : "Upload error: ") + upErr.message);
+        return null;
+      }
+      const { data } = sb.storage.from("service-images").getPublicUrl(path);
+      return data?.publicUrl || null;
+    } catch (e) {
+      setUploadError((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const handleSave = () => {
     // Collect all input values from the form
