@@ -3850,9 +3850,13 @@ function AccountPage() {
         const sb = createClient();
         const { data: { user: authUser } } = await sb.auth.getUser();
         if (!authUser || !mounted) return;
+        // PM 2026-06-17: incluimos birth_date + lang_pref. Sin esto el form
+        // no podía editar/mostrar fecha de nacimiento y al recargar tras
+        // editar el nombre, el load le sobreescribía con el null del DB
+        // (porque save antes era solo a localStorage).
         const { data: profile } = await sb
           .from("profiles")
-          .select("first_name, last_name, phone, country, avatar_url")
+          .select("first_name, last_name, phone, country, avatar_url, birth_date, lang_pref")
           .eq("id", authUser.id)
           .maybeSingle();
         if (!profile || !mounted) return;
@@ -3862,6 +3866,8 @@ function AccountPage() {
           lastName: profile.last_name || prev?.lastName || "",
           phone: profile.phone || prev?.phone || "",
           country: profile.country || prev?.country || "",
+          birthDate: profile.birth_date || prev?.birthDate || "",
+          language: profile.lang_pref === "es" ? "Español" : profile.lang_pref === "en" ? "English" : (prev?.language || "Español"),
           email: authUser.email || prev?.email || "",
           avatarUrl: profile.avatar_url || null,
         }));
@@ -3991,6 +3997,9 @@ function AccountPage() {
               {renderField(lang === "es" ? "Apellido" : "Last Name", null, "lastName")}
               {renderField(lang === "es" ? "Correo" : "Email", user.email || "", null, { readonly: true })}
               {renderField(lang === "es" ? "Teléfono" : "Phone", null, "phone", { type: "tel", placeholder: "+1 787 555 1234" })}
+              {/* PM 2026-06-17: agregado birthDate (estaba pedido en /register
+                  pero el form de cuenta no lo exponía). Persiste a DB. */}
+              {renderField(lang === "es" ? "Fecha de nacimiento" : "Birth Date", null, "birthDate", { type: "date" })}
               {renderField(lang === "es" ? "País" : "Country", null, "country", { select: COUNTRY_OPTIONS })}
               {renderField(lang === "es" ? "Idioma preferido" : "Preferred Language", null, "language", { select: LANGUAGE_OPTIONS })}
               {renderField(lang === "es" ? "Número de pasaporte" : "Passport Number", null, "passport", { placeholder: "AB1234567" })}
@@ -4003,7 +4012,39 @@ function AccountPage() {
               {renderField(lang === "es" ? "Restricciones alimenticias" : "Dietary Restrictions", null, "dietRestrictions")}
               {renderField(lang === "es" ? "Necesidades especiales" : "Special Needs", null, "specialNeeds")}
             </div>
-            <button className="f-submit" onClick={() => { PRDISE.save("user", user); setSaved(true); setTimeout(() => setSaved(false), 2000); }}><Check style={{ width: 14, height: 14 }} />{saved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : (lang === "es" ? "Guardar todos los cambios" : "Save All Changes")}</button>
+            {/* PM 2026-06-17: Save All Changes ahora también persiste a DB los
+                campos que tienen columna en profiles. Antes solo guardaba a
+                localStorage, así que al recargar el useEffect que lee profile
+                sobreescribía cualquier cambio con el dato (null) del DB —
+                típico "edité mi nombre y al refrescar volvió a estar vacío". */}
+            <button className="f-submit" onClick={async () => {
+              PRDISE.save("user", user);
+              try {
+                const { createClient } = await import("@/lib/supabase/client");
+                const sb = createClient();
+                const { data: { user: authUser } } = await sb.auth.getUser();
+                if (authUser) {
+                  const langCode = user.language === "English" ? "en" : "es";
+                  const patch = {
+                    first_name: (user.firstName || "").trim() || null,
+                    last_name: (user.lastName || "").trim() || null,
+                    phone: (user.phone || "").trim() || null,
+                    country: (user.country || "").trim() || null,
+                    birth_date: (user.birthDate || "").trim() || null,
+                    lang_pref: langCode,
+                  };
+                  const { error } = await sb.from("profiles").update(patch).eq("id", authUser.id);
+                  if (error) {
+                    alert((lang === "es" ? "No se pudo guardar en el servidor: " : "Could not save to server: ") + error.message);
+                    return;
+                  }
+                }
+              } catch (e) {
+                alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+                return;
+              }
+              setSaved(true); setTimeout(() => setSaved(false), 2000);
+            }}><Check style={{ width: 14, height: 14 }} />{saved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : (lang === "es" ? "Guardar todos los cambios" : "Save All Changes")}</button>
           </div>
         )}
 
@@ -4028,11 +4069,8 @@ function AccountPage() {
                 <Key style={{ width: 16, height: 16, color: "var(--gold)" }} />{lang === "es" ? "Cambiar contraseña" : "Change Password"}
                 <ChevronRight style={{ width: 14, height: 14, marginLeft: "auto", color: "rgba(255,255,255,.3)" }} />
               </button>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.02)", border: "1px dashed rgba(255,255,255,.08)", color: "rgba(255,255,255,.45)", fontSize: 14, fontWeight: 600, textAlign: "left" }}>
-                <Shield style={{ width: 16, height: 16, color: "rgba(141,198,63,.5)" }} />
-                <span style={{ flex: 1 }}>{lang === "es" ? "Autenticación de dos factores" : "Two-Factor Authentication"}</span>
-                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 99, background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.55)" }}>{lang === "es" ? "Próximamente" : "Coming soon"}</span>
-              </div>
+              {/* PM 2026-06-17: 2FA removido — no está en el alcance de la
+                  entrega y el placeholder "Coming soon" generaba confusión. */}
               <button onClick={async () => {
                 try { await sbSignOut(); } catch {}
                 try { PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession"); } catch {}
