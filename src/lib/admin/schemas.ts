@@ -361,6 +361,10 @@ const vehicleBaseSchema = z.object({
   // mapper del frontend, todos los vehículos mostraban lo mismo).
   features: stringArraySchema.default([]),
   description: optionalText(500, "Descripción"),
+  // PM 2026-06-17: tarifa por km del vehículo. Antes hardcoded a 2.5 en el
+  // mapper — todos los vehículos cobraban lo mismo por km aunque un SUV/van
+  // sea más caro de operar que un sedan.
+  price_per_km_cents: priceCentsSchema.optional().nullable(),
 });
 
 export const createVehicleSchema = vehicleBaseSchema;

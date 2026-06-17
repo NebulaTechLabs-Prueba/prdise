@@ -679,6 +679,7 @@ export async function createVehicle(
     active: asBool(formData, "active"),
     features: readListField(formData, "features"),
     description: formData.get("description") ?? "",
+    price_per_km_cents: asNumberOrNull(formData, "price_per_km_cents"),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -700,6 +701,7 @@ export async function createVehicle(
       active: d.active,
       features: d.features as never,
       description: d.description || null,
+      price_per_km_cents: d.price_per_km_cents ?? null,
     })
     .select("id")
     .single();
@@ -731,6 +733,7 @@ export async function updateVehicle(
     active: asBool(formData, "active"),
     features: readListField(formData, "features"),
     description: formData.get("description") ?? "",
+    price_per_km_cents: asNumberOrNull(formData, "price_per_km_cents"),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -752,6 +755,7 @@ export async function updateVehicle(
       active: d.active,
       features: d.features as never,
       description: d.description || null,
+      price_per_km_cents: d.price_per_km_cents ?? null,
     })
     .eq("id", id);
 

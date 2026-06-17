@@ -1889,6 +1889,7 @@ export type Database = {
           max_pax: number
           name: string
           price_cents: number | null
+          price_per_km_cents: number | null
           type: string | null
           updated_at: string
         }
@@ -1903,6 +1904,7 @@ export type Database = {
           max_pax?: number
           name: string
           price_cents?: number | null
+          price_per_km_cents?: number | null
           type?: string | null
           updated_at?: string
         }
@@ -1917,6 +1919,7 @@ export type Database = {
           max_pax?: number
           name?: string
           price_cents?: number | null
+          price_per_km_cents?: number | null
           type?: string | null
           updated_at?: string
         }

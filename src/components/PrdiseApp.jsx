@@ -354,7 +354,9 @@ function mapVehicleToVehicle(v) {
     seats: v.max_pax || 4,
     bags: v.max_luggage || 2,
     base: Math.round((v.price_cents || 0) / 100),
-    perKm: 2.5,
+    // PM 2026-06-17: perKm desde DB (antes hardcoded 2.5 para todos los
+    // vehículos). NULL = 0 (no se cobra por km, solo flat base).
+    perKm: v.price_per_km_cents == null ? 0 : Number(v.price_per_km_cents) / 100,
     // PM 2026-06-17: desc + features ahora vienen de DB (antes hardcoded).
     desc: v.description || "",
     features: Array.isArray(v.features) ? v.features : [],
@@ -3282,15 +3284,36 @@ function TransferResultsPage() {
   // distintos). Antes el cálculo usaba solo search.km del recorrido primario,
   // ignorando trips[] → quedaba con el precio inicial sin importar cuántas
   // paradas/días extra agregara el cliente.
+  //
+  // Cada leg tiene un flag `estimated` = true cuando no encontramos la ruta
+  // en ROUTES (admin no la configuró). En ese caso usamos DEFAULT_KM como
+  // km estimado y el UI muestra disclaimer "precio aproximado".
+  const DEFAULT_KM_ESTIMATE = 50;
+  const findRoute = (from, to) =>
+    ROUTES.find((r) => r.from === from && r.to === to)
+    || ROUTES.find((r) => r.from === to && r.to === from);
+  const primaryRoute = findRoute(search.from, search.to);
   const allLegs = [
-    { from: search.from, to: search.to, km: search.km || 0, time_est: search.time_est || "" },
+    {
+      from: search.from,
+      to: search.to,
+      km: primaryRoute ? primaryRoute.km : (search.km || DEFAULT_KM_ESTIMATE),
+      time_est: primaryRoute?.time || search.time_est || "",
+      estimated: !primaryRoute,
+    },
     ...trips.map((tp) => {
-      const r = ROUTES.find((r) => r.from === tp.from && r.to === tp.to)
-        || ROUTES.find((r) => r.from === tp.to && r.to === tp.from);
-      return { from: tp.from, to: tp.to, km: r?.km ?? 150, time_est: r?.time || "" };
+      const r = findRoute(tp.from, tp.to);
+      return {
+        from: tp.from,
+        to: tp.to,
+        km: r ? r.km : DEFAULT_KM_ESTIMATE,
+        time_est: r?.time || "",
+        estimated: !r,
+      };
     }),
   ];
   const totalKm = allLegs.reduce((s, l) => s + (Number(l.km) || 0), 0);
+  const hasEstimatedLegs = allLegs.some((l) => l.estimated);
   return (
     <>
       <PageHero
@@ -3318,6 +3341,19 @@ function TransferResultsPage() {
             </div>
             <NavLink to="/transfer-search" className="cta-sec" style={{ padding: "8px 16px", fontSize: 10 }}>{lang === "es" ? "Modificar" : "Modify Search"}</NavLink>
           </div>
+          {hasEstimatedLegs && (
+            // PM 2026-06-17: si alguna leg no estaba configurada como ruta
+            // por el admin, el km es una estimación. El precio mostrado es
+            // aproximado y se confirma vía WhatsApp.
+            <div style={{ maxWidth: 900, margin: "0 auto 12px", padding: "10px 14px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.3)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <Info style={{ width: 15, height: 15, color: "var(--gold)", flexShrink: 0, marginTop: 1 }} />
+              <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.75)", margin: 0, lineHeight: 1.5 }}>
+                {lang === "es"
+                  ? "Uno o más recorridos no están en nuestras rutas predefinidas. El precio mostrado es estimado (≈50 km por recorrido); confirmamos el valor final por WhatsApp."
+                  : "One or more trips aren't in our predefined routes. The price shown is estimated (≈50 km per trip); we'll confirm the final amount via WhatsApp."}
+              </p>
+            </div>
+          )}
           <div style={{ maxWidth: 900, margin: "0 auto" }}>
             {eligible.length === 0 ? (
               <div style={{ padding: 60, textAlign: "center" }}>
@@ -3329,6 +3365,7 @@ function TransferResultsPage() {
               // PM 2026-06-17: total = Σ (base + perKm × km_i) por cada
               // recorrido. Antes era solo (base + perKm × km_primario), por
               // eso agregar más paradas o días no cambiaba el precio.
+              // perKm es por VEHÍCULO (sale de DB, ya no es 2.5 hardcoded).
               const total = allLegs.reduce((s, l) => s + v.base + v.perKm * (l.km || 0), 0);
               // El detalle del mensaje a WhatsApp incluye todos los recorridos
               // del servicio (no solo el principal). El equipo PRDISE recibe
@@ -6855,7 +6892,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         { label: lang === "es" ? "Nuevo tour" : "New tour", icon: Compass, action: () => { setSection("tours"); setEditing({ type: "tour", isNew: true }); } },
                         { label: lang === "es" ? "Nueva ruta" : "New route", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("routes"); setEditing({ type: "route", isNew: true }); } },
                         { label: lang === "es" ? "Nuevo destino" : "New location", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); } },
-                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "" }); } },
+                        { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "", perKm: null }); } },
                         { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true }); } },
                         { label: lang === "es" ? "Nuevo post" : "New post", icon: Edit, action: () => { setSection("posts"); setEditing({ type: "post", isNew: true }); } },
                       ].map((it, i) => (
@@ -7494,7 +7531,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); }}>
                   <MapPin />{lang === "es" ? "Nuevo destino" : "New location"}
                 </button>
-                <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "" }); }}>
+                <button className="adm-btn adm-btn-ghost" onClick={() => { setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "", perKm: null }); }}>
                   <Car />{lang === "es" ? "Nuevo vehículo" : "New vehicle"}
                 </button>
                 <button className="adm-btn adm-btn-primary" onClick={() => { setTransferTab("routes"); setEditing({ type: "route", isNew: true }); }}>
@@ -7701,7 +7738,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card">
                 <div className="adm-card-head">
                   <div className="adm-card-title"><Car />{lang === "es" ? "Flota de Vehículos" : "Fleet Vehicles"}</div>
-                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "" })}><Plus />{lang === "es" ? "Agregar Vehículo" : "Add Vehicle"}</button>
+                  <button className="adm-btn adm-btn-primary" onClick={() => setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "", perKm: null })}><Plus />{lang === "es" ? "Agregar Vehículo" : "Add Vehicle"}</button>
                 </div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
@@ -7771,6 +7808,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                   <div className="adm-fg-row">
                     <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Precio Base" : "Base Price"} ($)</label><input type="number" className="adm-fi" value={editingVehicle.base} onChange={(e) => setEditingVehicle({ ...editingVehicle, base: parseInt(e.target.value) || 0 })} /></div>
+                    {/* PM 2026-06-17: tarifa por km — distinta por vehículo
+                        (un SUV cuesta más operar que un sedan). El total del
+                        viaje = base + perKm × distancia_ruta. Si lo dejás en
+                        blanco, no se cobra por km (solo flat). */}
+                    <div className="adm-fg">
+                      <label className="adm-fl">{lang === "es" ? "Precio por km" : "Price per km"} ($)</label>
+                      <input
+                        type="number" min="0" step="0.01"
+                        className="adm-fi"
+                        value={editingVehicle.perKm ?? ""}
+                        onChange={(e) => setEditingVehicle({ ...editingVehicle, perKm: e.target.value === "" ? null : parseFloat(e.target.value) || 0 })}
+                        placeholder="0.00"
+                      />
+                    </div>
                     <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Conductor Asignado" : "Assigned Driver"}</label>
                       <select className="adm-fi" value={editingVehicle.driver} onChange={(e) => setEditingVehicle({ ...editingVehicle, driver: e.target.value })}>
                         <option value="">{lang === "es" ? "Sin asignar" : "Unassigned"}</option>
@@ -7855,9 +7906,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         fd.append("max_luggage", String(editingVehicle.bags || 2));
                         fd.append("price_cents", String(Math.round((editingVehicle.base || 0) * 100)));
                         fd.append("active", "true");
-                        // PM 2026-06-17: persistir features + description.
+                        // PM 2026-06-17: persistir features + description + perKm.
                         fd.append("features", JSON.stringify(Array.isArray(editingVehicle.features) ? editingVehicle.features : []));
                         fd.append("description", editingVehicle.desc || "");
+                        // perKm en USD → CENTAVOS para DB. NULL/vacío = no se cobra
+                        // por km (solo el flat base).
+                        if (editingVehicle.perKm == null || editingVehicle.perKm === "") {
+                          fd.append("price_per_km_cents", "");
+                        } else {
+                          fd.append("price_per_km_cents", String(Math.round(Number(editingVehicle.perKm) * 100)));
+                        }
                         const action = isNew ? sbCreateVehicle : sbUpdateVehicle;
                         res = await action(fd);
                       } catch (e) {
