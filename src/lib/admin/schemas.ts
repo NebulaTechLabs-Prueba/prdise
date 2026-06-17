@@ -61,6 +61,14 @@ const stringArraySchema = z
   .array(z.string().trim().min(1).max(120))
   .max(50, "Máximo 50 elementos");
 
+// PM 2026-06-17: separado de stringArraySchema porque las URLs (storage de
+// Supabase, signed links, etc.) sobrepasan los 120 chars de los strings de
+// negocio (amenities/includes/features). Las URLs públicas de Storage son
+// ~165 chars; las firmadas pueden superar 500. Tope generoso.
+const imageUrlArraySchema = z
+  .array(z.string().trim().min(1).max(2000, "URL de imagen demasiado larga"))
+  .max(30, "Máximo 30 imágenes");
+
 const priceCentsSchema = z.coerce
   .number({ invalid_type_error: "Precio inválido" })
   .int("El precio debe ser entero (centavos)")
@@ -243,7 +251,7 @@ const stayBaseSchema = z.object({
   bedrooms: positiveIntSchema("Habitaciones"),
   bathrooms: positiveIntSchema("Baños"),
   amenities: stringArraySchema.default([]),
-  images: stringArraySchema.default([]),
+  images: imageUrlArraySchema.default([]),
   location: optionalText(200, "Ubicación"),
   lat: latSchema,
   lng: lngSchema,
@@ -290,7 +298,7 @@ const tourBaseSchema = z.object({
   difficulty: optionalText(40, "Dificultad"),
   meeting_point: optionalText(200, "Punto de encuentro"),
   includes: stringArraySchema.default([]),
-  images: stringArraySchema.default([]),
+  images: imageUrlArraySchema.default([]),
   location: optionalText(200, "Ubicación"),
   lat: latSchema,
   lng: lngSchema,

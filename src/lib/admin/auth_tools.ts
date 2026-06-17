@@ -24,6 +24,15 @@ import { z } from "zod";
 
 const emailSchema = z.string().trim().email("Email inválido").max(200);
 
+// PM 2026-06-17: los links generados por generateLink redirigen al "Site URL"
+// configurado en el dashboard de Supabase Auth — si quedó como la IP cruda
+// de Hetzner (http://46.225.63.21) el browser tira ERR_SSL_PROTOCOL_ERROR
+// al abrirlos. Pasamos redirectTo explícito a https://livinginprdise.com/
+// auth/callback para sobreescribir el default y garantizar HTTPS.
+function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "https://livinginprdise.com";
+}
+
 /**
  * Genera un link de confirmación de signup SIN enviar email. Útil cuando el
  * SMTP no funciona: el admin copia el link y se lo envía al cliente por
@@ -58,6 +67,7 @@ export async function generateSignupConfirmLink(
       // ya lo tiene seteado). Pasamos uno dummy; Supabase lo ignora si el
       // user existe.
       password: "ignored-existing-user-keeps-their-password",
+      options: { redirectTo: `${getAppUrl()}/auth/callback` },
     });
     if (error) {
       return {
@@ -183,6 +193,7 @@ export async function generateRecoveryLink(
     const { data, error } = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
+      options: { redirectTo: `${getAppUrl()}/auth/callback` },
     });
     if (error) {
       return { ok: false, error: `No se pudo generar el link: ${error.message}` };

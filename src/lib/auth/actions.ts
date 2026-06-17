@@ -26,7 +26,10 @@ export type SignInResult =
 // ---------- Helpers internos ------------------------------------------------
 
 function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://46.225.63.21";
+  // PM 2026-06-17: fallback HTTPS al dominio real, no la IP cruda — los links
+  // que devuelve Supabase (redirect_to) usan este valor; con la IP el browser
+  // tira ERR_SSL_PROTOCOL_ERROR.
+  return process.env.NEXT_PUBLIC_APP_URL ?? "https://livinginprdise.com";
 }
 
 function firstZodError(error: { errors: { message: string }[] }): string {

@@ -104,6 +104,7 @@ import {
   listAllUsers as sbListAllUsers,
   updateUserRole as sbUpdateUserRole,
   createEmployeeAccount as sbCreateEmployeeAccount,
+  toggleUserStatus as sbToggleUserStatus,
 } from "@/lib/admin/users";
 import {
   listInvoices as sbListInvoices,
@@ -9577,6 +9578,48 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             <td onClick={(e) => e.stopPropagation()}>
                               <div className="adm-row-actions">
                                 <button className="adm-icon-btn" title={lang==="es"?"Ver detalle":"View detail"} onClick={() => setCustomerDetailId(c.id)}><Eye /></button>
+                                {/* PM 2026-06-17: acción Deshabilitar/Reactivar desde la lista.
+                                    Ghost customers (sin cuenta auth) no aplican — se ocultan.
+                                    Confirmación obligatoria; en inactive Supabase cierra sesiones
+                                    globales (ver toggleUserStatus). */}
+                                {c.role !== "ghost" && !String(c.id).startsWith("ghost-") && (
+                                  c.status === "inactive" ? (
+                                    <button
+                                      className="adm-icon-btn"
+                                      title={lang==="es"?"Reactivar cliente":"Reactivate customer"}
+                                      onClick={async () => {
+                                        if (!confirm(lang==="es"
+                                          ? `¿Reactivar a "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? Podrá iniciar sesión y reservar de nuevo.`
+                                          : `Reactivate "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? They will be able to sign in and book again.`)) return;
+                                        const fd = new FormData(); fd.append("targetUserId", c.id);
+                                        const res = await sbToggleUserStatus(fd);
+                                        if (!res?.ok) { alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "")); return; }
+                                        setCustomers(customers.map(x => x.id === c.id ? { ...x, status: "active" } : x));
+                                      }}
+                                      style={{ color: "#8DC63F" }}
+                                    ><Check style={{ width: 14, height: 14 }} /></button>
+                                  ) : (
+                                    <button
+                                      className="adm-icon-btn"
+                                      title={lang==="es"?"Deshabilitar cliente":"Disable customer"}
+                                      onClick={async () => {
+                                        if (!confirm(lang==="es"
+                                          ? `¿Deshabilitar a "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? No podrá iniciar sesión hasta que lo reactives. Sus reservas y facturas quedan intactas.`
+                                          : `Disable "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? They won't be able to sign in until reactivated. Their bookings and invoices remain intact.`)) return;
+                                        const fd = new FormData(); fd.append("targetUserId", c.id);
+                                        const res = await sbToggleUserStatus(fd);
+                                        if (!res?.ok) { alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "")); return; }
+                                        setCustomers(customers.map(x => x.id === c.id ? { ...x, status: "inactive" } : x));
+                                      }}
+                                      style={{ color: "#EF6C2B" }}
+                                    ><X style={{ width: 14, height: 14 }} /></button>
+                                  )
+                                )}
+                                {c.status === "inactive" && (
+                                  <span className="adm-pill" style={{ background: "rgba(239,108,43,.15)", color: "#EF6C2B", fontSize: 9 }}>
+                                    {lang==="es"?"INACTIVO":"INACTIVE"}
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -10645,8 +10688,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               {newEmployeeCredentials.phone && (
                 <a
                   href={`https://wa.me/${(newEmployeeCredentials.phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(lang === "es"
-                    ? `Hola ${newEmployeeCredentials.name}, tu cuenta en el panel admin de PRDISE está lista. Email: ${newEmployeeCredentials.email} · Password temporal: ${newEmployeeCredentials.password} · Iniciá sesión en http://46.225.63.21/#/login y cambiá tu password desde /account.`
-                    : `Hi ${newEmployeeCredentials.name}, your PRDISE admin panel account is ready. Email: ${newEmployeeCredentials.email} · Temp password: ${newEmployeeCredentials.password} · Sign in at http://46.225.63.21/#/login and change your password from /account.`)}`}
+                    ? `Hola ${newEmployeeCredentials.name}, tu cuenta en el panel admin de PRDISE está lista. Email: ${newEmployeeCredentials.email} · Password temporal: ${newEmployeeCredentials.password} · Iniciá sesión en ${typeof window !== "undefined" ? window.location.origin : "https://livinginprdise.com"}/#/login y cambiá tu password desde /account.`
+                    : `Hi ${newEmployeeCredentials.name}, your PRDISE admin panel account is ready. Email: ${newEmployeeCredentials.email} · Temp password: ${newEmployeeCredentials.password} · Sign in at ${typeof window !== "undefined" ? window.location.origin : "https://livinginprdise.com"}/#/login and change your password from /account.`)}`}
                   target="_blank" rel="noopener noreferrer"
                   className="adm-btn adm-btn-primary"
                   style={{ textDecoration: "none", background: "linear-gradient(135deg,#25D366,#128C7E)", border: "none" }}
@@ -13906,7 +13949,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                       className="adm-btn adm-btn-ghost" style={{ padding: "6px 12px" }}>
                       <Copy />{T("Copiar", "Copy")}
                     </button>
-                    <a href={`https://wa.me/${(customerPhone || "").replace(/\D/g, "")}?text=${encodeURIComponent(T(`Hola ${customerName}, tu cuenta en PRDISE está lista. Email: ${customerEmail} · Password: ${newCustomerPwd} · Iniciá sesión en http://46.225.63.21/#/login y cambiá tu password.`, `Hi ${customerName}, your PRDISE account is ready. Email: ${customerEmail} · Password: ${newCustomerPwd} · Sign in at http://46.225.63.21/#/login and change your password.`))}`}
+                    <a href={`https://wa.me/${(customerPhone || "").replace(/\D/g, "")}?text=${encodeURIComponent(T(`Hola ${customerName}, tu cuenta en PRDISE está lista. Email: ${customerEmail} · Password: ${newCustomerPwd} · Iniciá sesión en ${typeof window !== "undefined" ? window.location.origin : "https://livinginprdise.com"}/#/login y cambiá tu password.`, `Hi ${customerName}, your PRDISE account is ready. Email: ${customerEmail} · Password: ${newCustomerPwd} · Sign in at ${typeof window !== "undefined" ? window.location.origin : "https://livinginprdise.com"}/#/login and change your password.`))}`}
                       target="_blank" rel="noopener noreferrer" className="adm-btn adm-btn-ghost" style={{ padding: "6px 12px", textDecoration: "none" }}>
                       <MessageCircle />{T("Enviar por WhatsApp", "Send WhatsApp")}
                     </a>
