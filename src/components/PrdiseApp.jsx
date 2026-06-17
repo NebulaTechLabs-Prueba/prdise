@@ -6099,6 +6099,14 @@ function AdminPanel({ onClose }) {
   const [hotelsFilter, setHotelsFilter] = useState("all");
   const [toursFilter, setToursFilter] = useState("all");
   const [invoicesFilter, setInvoicesFilter] = useState("all");
+  // PM 2026-06-17: los inputs de búsqueda en cada listing del admin eran
+  // decorativos (sin value/onChange). Acá centralizamos el query por sección
+  // y los inputs ahora son controlled.
+  const [staysSearch, setStaysSearch] = useState("");
+  const [toursSearch, setToursSearch] = useState("");
+  const [postsSearch, setPostsSearch] = useState("");
+  const [invoicesSearch, setInvoicesSearch] = useState("");
+  const [teamSearch, setTeamSearch] = useState("");
   // Service-specific tracking filter — when active, filter invoices/payments to only show those involving a given service
   const [serviceTrackFilter, setServiceTrackFilter] = useState(null); // { type: 'stay'|'tour'|'transfer', id, name }
   const [selectedContact, setSelectedContact] = useState(null);
@@ -6135,6 +6143,25 @@ function AdminPanel({ onClose }) {
   useEffect(() => { setInvoicesPage(1); }, [invoicesPerPage]);
   useEffect(() => { setContactsPage(1); }, [contactsFilter]);
   useEffect(() => { setRoutesPage(1); setVehiclesPage(1); setDriversPage(1); setBookingsPage(1); }, [transferTab]);
+  // PM 2026-06-17: reset paginación al cambiar query de búsqueda.
+  useEffect(() => { setStaysPage(1); }, [staysSearch]);
+  useEffect(() => { setToursPage(1); }, [toursSearch]);
+  useEffect(() => { setPostsPage(1); }, [postsSearch]);
+  useEffect(() => { setInvoicesPage(1); }, [invoicesSearch]);
+
+  // PM 2026-06-17: helper de match para los searchbars del admin. Compara
+  // case-insensitive y trimmed contra una lista de fields. Si query vacío,
+  // siempre matchea.
+  const matchesSearch = (item, query, fields) => {
+    const q = (query || "").trim().toLowerCase();
+    if (!q) return true;
+    for (const f of fields) {
+      const v = item?.[f];
+      if (v == null) continue;
+      if (String(v).toLowerCase().includes(q)) return true;
+    }
+    return false;
+  };
 
   // Round-robin auto-assign: picks the next available driver from the route's assigned list
   const autoAssignDriver = (routeName) => {
@@ -7154,11 +7181,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-fchip ${hotelsFilter === "draft" ? "active" : ""}`} onClick={() => setHotelsFilter("draft")}>{lang==="es"?"Borradores":"Drafts"} <span className="adm-fchip-num">{hotels.filter(h => h.status === "draft").length}</span></button>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
                 <PageSizeSelector value={staysPerPage} options={[4, 10, 20]} onChange={setStaysPerPage} />
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar estadías...":"Search stays..."} /></div>
+                <div className="adm-search"><Search /><input value={staysSearch} onChange={(e) => setStaysSearch(e.target.value)} placeholder={lang==="es"?"Buscar estadías...":"Search stays..."} /></div>
               </div>
             </div>
             <div className="adm-cards-grid">
-              {paginate(filterServices("stays", hotels).filter(h => hotelsFilter === "all" || h.status === hotelsFilter), staysPage, staysPerPage).map((h) => {
+              {paginate(
+                filterServices("stays", hotels)
+                  .filter(h => hotelsFilter === "all" || h.status === hotelsFilter)
+                  .filter(h => matchesSearch(h, staysSearch, ["name", "nameES", "desc", "descES", "zone", "category", "id"])),
+                staysPage,
+                staysPerPage
+              ).map((h) => {
                 const svcPerm = getServicePerm("stays", h.id);
                 const canEdit = svcPerm === "edit" || svcPerm === "full";
                 const canDelete = svcPerm === "full";
@@ -7256,11 +7289,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-fchip ${toursFilter === "draft" ? "active" : ""}`} onClick={() => setToursFilter("draft")}>{lang==="es"?"Borradores":"Drafts"} <span className="adm-fchip-num">{tours.filter(t => t.status === "draft").length}</span></button>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
                 <PageSizeSelector value={toursPerPage} options={[6, 12]} onChange={setToursPerPage} />
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar tours...":"Search tours..."} /></div>
+                <div className="adm-search"><Search /><input value={toursSearch} onChange={(e) => setToursSearch(e.target.value)} placeholder={lang==="es"?"Buscar tours...":"Search tours..."} /></div>
               </div>
             </div>
             <div className="adm-cards-grid">
-              {paginate(filterServices("tours", tours).filter(t => toursFilter === "all" || t.status === toursFilter), toursPage, toursPerPage).map((t) => {
+              {paginate(
+                filterServices("tours", tours)
+                  .filter(t => toursFilter === "all" || t.status === toursFilter)
+                  .filter(t => matchesSearch(t, toursSearch, ["name", "nameES", "desc", "descES", "location", "category", "id"])),
+                toursPage,
+                toursPerPage
+              ).map((t) => {
                 const svcPerm = getServicePerm("tours", t.id);
                 const canEdit = svcPerm === "edit" || svcPerm === "full";
                 const canDelete = svcPerm === "full";
@@ -7402,7 +7441,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-fchip ${postsFilter === "featured" ? "active" : ""}`} onClick={() => setPostsFilter("featured")}>{lang==="es"?"Destacados":"Featured"} <span className="adm-fchip-num">{posts.filter(p => p.featured).length}</span></button>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
                 <PageSizeSelector value={postsPerPage} options={[5, 10, 20]} onChange={setPostsPerPage} />
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar publicaciones...":"Search posts..."} /></div>
+                <div className="adm-search"><Search /><input value={postsSearch} onChange={(e) => setPostsSearch(e.target.value)} placeholder={lang==="es"?"Buscar publicaciones...":"Search posts..."} /></div>
               </div>
             </div>
 
@@ -7422,11 +7461,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </tr>
                   </thead>
                   <tbody>
-                    {paginate(posts.filter(p => {
-                      if (postsFilter === "all") return true;
-                      if (postsFilter === "featured") return p.featured;
-                      return p.status === postsFilter;
-                    }), postsPage, postsPerPage).map((p) => {
+                    {paginate(posts
+                      .filter(p => {
+                        if (postsFilter === "all") return true;
+                        if (postsFilter === "featured") return p.featured;
+                        return p.status === postsFilter;
+                      })
+                      .filter(p => matchesSearch(p, postsSearch, ["title", "excerpt", "category", "author", "slug"])),
+                      postsPage,
+                      postsPerPage
+                    ).map((p) => {
                       const CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
                       const cc = CAT_COLORS[p.category] || "#F5A623";
                       return (
@@ -8341,12 +8385,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-fchip ${invoicesFilter === "cancelled" ? "active" : ""}`} onClick={() => setInvoicesFilter("cancelled")}>{lang==="es"?"Canceladas":"Cancelled"} <span className="adm-fchip-num">{visibleInvoices.filter(i => i.status === "cancelled").length}</span></button>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
                 <PageSizeSelector value={invoicesPerPage} options={[5, 10, 20, 50]} onChange={setInvoicesPerPage} />
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar facturas...":"Search invoices..."} /></div>
+                <div className="adm-search"><Search /><input value={invoicesSearch} onChange={(e) => setInvoicesSearch(e.target.value)} placeholder={lang==="es"?"Buscar facturas...":"Search invoices..."} /></div>
               </div>
             </div>
 
             <div className="adm-card">
-              <div className="adm-card-head"><div className="adm-card-title">{visibleInvoices.filter(i => (invoicesFilter === "all" || i.status === invoicesFilter) && itemMatchesTrackFilter(i, serviceTrackFilter) && itemBelongsToEmployee(i)).length} {lang==="es"?"FACTURAS":"INVOICES"}</div></div>
+              <div className="adm-card-head"><div className="adm-card-title">{visibleInvoices.filter(i => (invoicesFilter === "all" || i.status === invoicesFilter) && matchesSearch(i, invoicesSearch, ["num", "customer", "customer_email", "customer_phone", "status"]) && itemMatchesTrackFilter(i, serviceTrackFilter) && itemBelongsToEmployee(i)).length} {lang==="es"?"FACTURAS":"INVOICES"}</div></div>
               <div className="adm-tbl-wrap">
                 <table className="adm-tbl">
                   {(() => {
@@ -8388,7 +8432,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         status: (a, b) => (a.status || "").localeCompare(b.status || ""),
                       };
                       const cmp = invSortHelpers[invoicesSort.key] || invSortHelpers.issued;
-                      const filtered = visibleInvoices.filter(i => (invoicesFilter === "all" || i.status === invoicesFilter) && itemMatchesTrackFilter(i, serviceTrackFilter) && itemBelongsToEmployee(i));
+                      const filtered = visibleInvoices.filter(i => (invoicesFilter === "all" || i.status === invoicesFilter) && matchesSearch(i, invoicesSearch, ["num", "customer", "email", "phone", "status"]) && itemMatchesTrackFilter(i, serviceTrackFilter) && itemBelongsToEmployee(i));
                       const sorted = [...filtered].sort((a, b) => invoicesSort.dir === "asc" ? cmp(a, b) : cmp(b, a));
                       return paginate(sorted, invoicesPage, invoicesPerPage).map((inv) => (
                       <tr key={inv.id}>
@@ -9703,7 +9747,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div className="adm-search"><Search /><input placeholder={lang==="es"?"Buscar equipo...":"Search team..."} /></div>
+                <div className="adm-search"><Search /><input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} placeholder={lang==="es"?"Buscar equipo...":"Search team..."} /></div>
                 <button
                   className="adm-btn adm-btn-primary"
                   onClick={() => { if (canManageRoles) setEditingUser({ id: "new", name: "", email: "", role: "Viewer", department: "Operations", position: "", joined: new Date().toISOString().split("T")[0], status: "active", phone: "", vehicle: "", plate: "", license: "" }); }}
@@ -9719,7 +9763,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <table className="adm-tbl">
                   <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Correo":"Email"}</th><th>{lang==="es"?"Rol":"Role"}</th><th>{lang==="es"?"Departamento":"Department"}</th><th>{lang==="es"?"Posición":"Position"}</th><th>{lang==="es"?"Ingreso":"Joined"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
                   <tbody>
-                    {paginate(users, usersPage, ROWS_PER_PAGE).map((u) => (
+                    {paginate(users.filter(u => matchesSearch(u, teamSearch, ["name", "email", "role", "department", "position", "phone"])), usersPage, ROWS_PER_PAGE).map((u) => (
                       <tr key={u.id}>
                         <td style={{ fontWeight: 600 }}>
                           {u.name}
