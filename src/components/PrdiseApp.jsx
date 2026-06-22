@@ -112,6 +112,7 @@ import {
   updateInvoiceStatus as sbUpdateInvoiceStatus,
   createInvoiceManual as sbCreateInvoiceManual,
   regenerateStripePaymentLink as sbRegenerateStripeLink,
+  regeneratePaypalPaymentLink as sbRegeneratePaypalLink,
   generateInvoicePdf as sbGenerateInvoicePdf,
   getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
   searchProfiles as sbSearchProfiles,
@@ -338,7 +339,15 @@ function mapTourToTour(t) {
     // Pricing mixto + categoría (PM 2026-06-10).
     pricingUnit: t.pricing_unit || "per_person",
     pricingExtras: Array.isArray(t.pricing_extras) ? t.pricing_extras : [],
+    // `category` legacy = texto libre tipo "Adventure / Cultural" (columna
+    // tours.category). Distinto del experience_category nuevo (3 buckets).
     category: t.category || "",
+    // PM 2026-06-22: clasificación nueva del review del cliente — agrupa los
+    // tours del Home en 3 grandes experiencias (Beach Escape, River & Mountain,
+    // UTV Tours in West Coast). Editable desde el admin.
+    experienceCategory: t.experience_category || "",
+    partnerName: t.partner_name || "",
+    markupPct: t.markup_pct == null ? 10 : Number(t.markup_pct),
   };
 }
 
@@ -436,7 +445,7 @@ const SITE_SETTINGS_DEFAULTS = {
   whatsapp_phone: "17872379519",
   contact_phone: "+1 (787) 237-9519",
   contact_phone_tel: "+17872379519",
-  contact_email: "info@prdise.com",
+  contact_email: "livinginprdise@gmail.com",
   company_name: "Living in PRDISE",
   tagline: "House of Tours",
   address: "Cabo Rojo, Puerto Rico",
@@ -449,6 +458,12 @@ const SITE_SETTINGS_DEFAULTS = {
   terms_en: "Our Terms & Conditions will be published soon. In the meantime, if you have any questions, contact us via WhatsApp.",
   privacy_es: "Próximamente publicaremos nuestra Política de Privacidad. Mientras tanto, si tienes alguna duda, contáctanos por WhatsApp.",
   privacy_en: "Our Privacy Policy will be published soon. In the meantime, if you have any questions, contact us via WhatsApp.",
+  // PM 2026-06-22: prefill del mensaje del FAB de WhatsApp + SMS. Editable
+  // desde admin → Settings → Mensajes. Antes estaba hardcoded "...en Cabo Rojo"
+  // pero el negocio opera en varios municipios del oeste; el cliente quiere
+  // poder ajustarlo sin pedir deploy.
+  whatsapp_prefill_es: "¡Hola! Me interesan sus servicios en Puerto Rico (costa oeste y centro). ¿Pueden ayudarme?",
+  whatsapp_prefill_en: "Hi! I'm interested in your services in Puerto Rico (West Coast & Central). Can you help me?",
 };
 const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
 function getSetting(key) {
@@ -576,7 +591,7 @@ const TX = {
     // Nav
     home: "Home", about: "About", services: "Services", stays: "Stays", tours: "Tours", transfers: "Transfers", contact: "Contact", signIn: "Sign In", bookNow: "Book Now", logOut: "Log Out", myAccount: "My Account", createAccount: "Create Account",
     // Home hero
-    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "LIVING IN", heroBold: "PARADISE", heroSub: "Seamless transfers from the airport to PR's west coast — plus our trusted partner network for stays, tours, and more.", heroCta: "Explore Experiences", heroCtaSec: "View Stays",
+    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "LIVING IN", heroBold: "PARADISE", heroSub: "Seamless transfers from PR's main airports to the West Coast — plus our trusted partner network for stays, tours, and more.", heroCta: "Explore Experiences", heroCtaSec: "View Stays",
     // Home sections
     whyUs: "WHY US", whyTitle: "WHY CHOOSE", whyBold: "PRDISE", trustTitle: "TRUSTED BY", trustBold: "TRAVELERS",
     local: "LOCAL", localD: "Real local culture & hidden gems", private: "PRIVATE", privateD: "Small groups, personal service", safe: "SAFE", safeD: "Licensed, insured & reviewed", seamless: "SEAMLESS", seamlessD: "One team handles everything",
@@ -645,7 +660,7 @@ const TX = {
     vSust: "SUSTAINABLE", vSustD: "We partner with local businesses, respect natural spaces, and keep group sizes small to minimize impact on the places we love.",
     vPers: "PERSONAL", vPersD: "Every guide cares. Every stay is curated. Every traveler leaves feeling like they made friends, not just made a trip.",
     theTeam: "The Team", meetThe: "MEET THE", crew: "CREW",
-    theLocals: "The Locals", bornRaised: "Born & raised", localsD: "Our guides grew up in Cabo Rojo. They know which cove catches the best sunset, which panadería opens at dawn, which road to take when it rains.",
+    theLocals: "The Locals", bornRaised: "Born & raised", localsD: "Our guides grew up in the west coast and center of the island. They know which cove catches the best sunset, which panadería opens at dawn, which road to take when it rains.",
     thePlanners: "The Planners", obsessive: "Obsessively detailed", plannersD: "From pickup timing to lunch reservations to backup plans, we sweat every detail so you don't have to think about logistics on vacation.",
     theCommunity: "The Community", localPartners: "Local partners", communityD: "We work with family-run restaurants, independent accommodations, and certified boat captains — keeping tourism money where it belongs.",
     happyTravelers: "Happy Travelers", uniqueTours: "Unique Tours", avgRating: "Avg Rating", localSupport: "Local Support",
@@ -670,13 +685,13 @@ const TX = {
     // Services
     svcHeroSub: "A full suite of services to make your Puerto Rico trip unforgettable.",
     guidedTours: "Guided Tours", guidedToursD: "Curated tours from our trusted partners — booking handled on their site.",
-    vacationRentals: "Vacation Rentals", vacationRentalsD: "Villas, apartments and beach houses from our partner network in Cabo Rojo.",
-    transfersSvc: "Transfers", transfersSvcD: "Our core service: airport pickups and zone transport managed directly by prdise.",
+    vacationRentals: "Vacation Rentals", vacationRentalsD: "Cabin, apartments and beach houses from our partner network in Cabo Rojo.",
+    transfersSvc: "Transfers", transfersSvcD: "Our core service: airport pickups and zone transport managed directly by Living in PRdise.",
     waterAct: "Water Activities", waterActD: "Snorkeling, jet ski, bio bay kayak, sunset sailing.",
     adventureTours: "Adventure Tours", adventureToursD: "Hiking, ziplining, river swimming, off-road adventures.",
     customPkg: "Custom Packages", customPkgD: "Tell us your dream trip and we'll design the itinerary.",
     eventPlan: "Event Planning", eventPlanD: "Weddings, birthdays, corporate retreats in paradise.",
-    conciergeSvc: "Concierge", conciergeSvcD: "Restaurant reservations, spa bookings, private chefs, anything.",
+    conciergeSvc: "Concierge", conciergeSvcD: "Restaurant reservations, bookings, anything.",
     // Homepage sections
     ourToursTag: "Our Tours", curatedExp: "CURATED EXPERIENCES", curatedExpSub: "Three signature day trips designed for small groups.",
     destTag: "Destinations", exploreWest: "EXPLORE WEST PR",
@@ -708,7 +723,7 @@ const TX = {
   },
   es: {
     home: "Inicio", about: "Nosotros", services: "Servicios", stays: "Estadías", tours: "Tours", transfers: "Traslados", contact: "Contacto", signIn: "Iniciar Sesión", bookNow: "Reservar", logOut: "Cerrar Sesión", myAccount: "Mi Cuenta", createAccount: "Crear Cuenta",
-    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "VIVIENDO EN", heroBold: "PARAÍSO", heroSub: "Traslados sin fricción desde el aeropuerto hasta la costa oeste de PR — más nuestra red de aliados de hospedaje, tours y servicios.", heroCta: "Explorar Experiencias", heroCtaSec: "Ver Estadías",
+    heroTag: "CABO ROJO, PUERTO RICO", heroTitle: "VIVIENDO EN", heroBold: "PARAÍSO", heroSub: "Traslados sin fricción desde los aeropuertos principales de PR hasta la costa oeste — más nuestra red de aliados de hospedaje, tours y servicios.", heroCta: "Explorar Experiencias", heroCtaSec: "Ver Estadías",
     whyUs: "POR QUÉ", whyTitle: "POR QUÉ ELEGIR", whyBold: "PRDISE", trustTitle: "CONFIANZA DE", trustBold: "VIAJEROS",
     local: "LOCAL", localD: "Cultura local real y joyas escondidas", private: "PRIVADO", privateD: "Grupos pequeños, servicio personal", safe: "SEGURO", safeD: "Licenciado, asegurado y reseñado", seamless: "SIN FISURAS", seamlessD: "Un solo equipo lo maneja todo",
     valAuthentic: "AUTÉNTICO", valAuthenticD: "Te mostramos el Puerto Rico real — no la versión pulida de Instagram. Playas escondidas, comida local, lugares familiares. Sin trampas para turistas.",
@@ -758,7 +773,7 @@ const TX = {
     vSust: "SOSTENIBLE", vSustD: "Nos asociamos con negocios locales, respetamos los espacios naturales y mantenemos grupos pequeños para minimizar el impacto en los lugares que amamos.",
     vPers: "PERSONAL", vPersD: "Cada guía se preocupa. Cada estadía es curada. Cada viajero se va sintiendo que hizo amigos, no solo un viaje.",
     theTeam: "El Equipo", meetThe: "CONOCE AL", crew: "EQUIPO",
-    theLocals: "Los Locales", bornRaised: "Nacidos y criados", localsD: "Nuestros guías crecieron en Cabo Rojo. Saben cuál cala atrapa el mejor atardecer, cuál panadería abre al amanecer, cuál camino tomar cuando llueve.",
+    theLocals: "Los Locales", bornRaised: "Nacidos y criados", localsD: "Nuestros guías crecieron en la costa oeste y el centro de la isla. Saben cuál cala atrapa el mejor atardecer, cuál panadería abre al amanecer, cuál camino tomar cuando llueve.",
     thePlanners: "Los Planificadores", obsessive: "Obsesivamente detallistas", plannersD: "Desde horarios de recogida hasta reservas de almuerzo y planes de respaldo, sudamos cada detalle para que no tengas que pensar en logística en vacaciones.",
     theCommunity: "La Comunidad", localPartners: "Socios locales", communityD: "Trabajamos con restaurantes familiares, alojamientos independientes y capitanes de barco certificados — manteniendo el dinero del turismo donde pertenece.",
     happyTravelers: "Viajeros Felices", uniqueTours: "Tours Únicos", avgRating: "Calificación", localSupport: "Soporte Local",
@@ -775,13 +790,13 @@ const TX = {
     bookNowBtn: "Reservar Ahora", smallGroups: "Grupos pequeños", maxPeople: "Máximo {n} personas", runsOn: "Opera:", perPersonPrice: "/ PERSONA",
     svcHeroSub: "Un conjunto completo de servicios para hacer tu viaje a Puerto Rico inolvidable.",
     guidedTours: "Tours Guiados", guidedToursD: "Tours curados por nuestros aliados — la reserva se completa en su sitio.",
-    vacationRentals: "Alquileres Vacacionales", vacationRentalsD: "Villas, apartamentos y casas de playa de nuestra red de aliados en Cabo Rojo.",
-    transfersSvc: "Traslados", transfersSvcD: "Nuestro servicio principal: recogidas en aeropuerto y movilidad por zonas gestionadas directamente por prdise.",
+    vacationRentals: "Alquileres Vacacionales", vacationRentalsD: "Cabaña, apartamentos y casas de playa de nuestra red de aliados en Cabo Rojo.",
+    transfersSvc: "Traslados", transfersSvcD: "Nuestro servicio principal: recogidas en aeropuerto y movilidad por zonas gestionadas directamente por Living in PRdise.",
     waterAct: "Actividades Acuáticas", waterActD: "Snorkeling, jet ski, kayak bahía bio, vela al atardecer.",
     adventureTours: "Tours de Aventura", adventureToursD: "Senderismo, tirolesa, natación en ríos, aventuras todoterreno.",
     customPkg: "Paquetes Personalizados", customPkgD: "Cuéntanos tu viaje soñado y diseñamos el itinerario.",
     eventPlan: "Planificación de Eventos", eventPlanD: "Bodas, cumpleaños, retiros corporativos en el paraíso.",
-    conciergeSvc: "Concierge", conciergeSvcD: "Reservas de restaurantes, spa, chefs privados, lo que necesites.",
+    conciergeSvc: "Concierge", conciergeSvcD: "Reservas de restaurantes, reservaciones, lo que necesites.",
     ourToursTag: "Nuestros Tours", curatedExp: "EXPERIENCIAS CURADAS", curatedExpSub: "Tres tours de día diseñados para grupos pequeños.",
     destTag: "Destinos", exploreWest: "EXPLORA EL OESTE DE PR",
     aboutUsTag: "Sobre Nosotros", weAre: "SOMOS", houseOfTours: "House of Tours — Cabo Rojo",
@@ -1320,13 +1335,15 @@ body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,4
 .nav-color span:nth-child(3){background:var(--green)}.nav-color span:nth-child(4){background:var(--sky)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .logo{display:flex;align-items:center;gap:14px}
-/* +30% sobre tamaños previos para que la firma "LIVING IN PRDISE / Your
-   Transportation Solution / Transport · Discover · Experience" sea legible.
-   Antes: 44/72px desktop, 36/60px mobile. */
-.logo-img{display:block;height:58px;width:auto;max-width:260px}
-.logo-img-sm{height:48px}
-.logo-img-lg{height:92px;max-width:360px}
-@media(max-width:640px){.logo-img{height:48px;max-width:200px}.logo-img-lg{height:78px;max-width:280px}}
+/* PM 2026-06-22: +30% adicional sobre el ajuste previo del 2026-06-17
+   (cliente reporta que la firma "Transport · Discover · Experience" aún
+   no se lee a primera vista). Tamaños finales:
+   - desktop nav: 75px (era 58, +30%)  ·  hero: 120px (era 92, +30%)
+   - mobile nav: 62px (era 48, +30%)   ·  hero: 100px (era 78, +30%) */
+.logo-img{display:block;height:75px;width:auto;max-width:340px}
+.logo-img-sm{height:62px}
+.logo-img-lg{height:120px;max-width:470px}
+@media(max-width:640px){.logo-img{height:62px;max-width:260px}.logo-img-lg{height:100px;max-width:360px}}
 .logo-shapes{display:flex;gap:3px;height:34px}
 .logo-shapes i{display:block;width:12px;border-radius:3px;transform:perspective(200px) rotateY(-6deg)}
 .logo-shapes i:nth-child(1){background:var(--gold)}.logo-shapes i:nth-child(2){background:var(--orange)}
@@ -1970,9 +1987,17 @@ function Footer() {
             </div>
             <div className="foot-bottom">
               <div className="foot-socs">
-                <button><Instagram style={{ color: "var(--orange)" }} /></button>
-                <button><Facebook style={{ color: "var(--sky)" }} /></button>
-                <button><Globe style={{ color: "var(--green)" }} /></button>
+                {/* PM 2026-06-22: redes oficiales del cliente. Instagram/Facebook
+                    quedan como placeholder (#) hasta que el cliente confirme
+                    handles — son botones sin link en lugar de a fake URLs.
+                    TikTok = @living.in.prdise (confirmado). */}
+                <a href="#" aria-label="Instagram"><Instagram style={{ color: "var(--orange)" }} /></a>
+                <a href="#" aria-label="Facebook"><Facebook style={{ color: "var(--sky)" }} /></a>
+                <a href="https://www.tiktok.com/@living.in.prdise" target="_blank" rel="noreferrer" aria-label="TikTok">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color: "var(--green)" }} aria-hidden="true">
+                    <path d="M16 3v3.5a4.5 4.5 0 0 0 4.5 4.5v3.2a7.5 7.5 0 0 1-4.5-1.5v6.3a5.5 5.5 0 1 1-5.5-5.5c.3 0 .6 0 .9.1V17a2.4 2.4 0 1 0 1.6 2.3V3H16Z" fill="currentColor"/>
+                  </svg>
+                </a>
               </div>
               <span className="foot-copy">{t("footerCopy")}</span>
             </div>
@@ -1993,9 +2018,7 @@ function WhatsAppChat() {
   const [open, setOpen] = useState(false);
   const waPhone = getSetting("whatsapp_phone");
   const smsPhone = getSetting("contact_phone_tel") || `+${waPhone}`;
-  const msg = lang === "es"
-    ? "Hola! Me interesan sus servicios en Cabo Rojo, Puerto Rico. ¿Pueden ayudarme?"
-    : "Hi! I'm interested in your services in Cabo Rojo, Puerto Rico. Can you help me?";
+  const msg = getSetting(lang === "es" ? "whatsapp_prefill_es" : "whatsapp_prefill_en");
   const waHref = `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
   const smsHref = `sms:${smsPhone}?body=${encodeURIComponent(msg)}`;
 
@@ -2217,7 +2240,7 @@ function TransferQuickSearch() {
             <div className="transfer-quick-field" style={{ flex: ".5", minWidth: 100 }}>
               <label><Users />{t("passengers")}</label>
               <select value={pax} onChange={(e) => setPax(parseInt(e.target.value))} className="transfer-quick-select">
-                {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} pax</option>)}
+                {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} {lang==="es"?(n===1?"pasajero":"pasajeros"):(n===1?"passenger":"passengers")}</option>)}
               </select>
             </div>
             <button className="transfer-quick-btn" onClick={doSearch}>
@@ -2261,20 +2284,77 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
-      {/* Curated experiences: el home es teaser/escaparate, NO listado.
-          Mostramos máximo 3 tours featured (o los 3 más recientes si no
-          hay featured). Si querés ver todo, "Ver todos los tours" lleva
-          a /tours. Si no hay tours publicados → empty state Próximamente. */}
+      {/* PM 2026-06-22: las 3 cards principales pasan a ser CATEGORÍAS DE
+          EXPERIENCIA (Beach Escape / River & Mountain Adventure / UTV Tours
+          in West Coast), no tours individuales. Cada card es clickable y
+          lleva a /tours?category=X donde se ven los tours clasificados.
+          Tours sin clasificar (experience_category=NULL) no aparecen en
+          ninguna card pero sí en /tours general — "Ver todos los tours".
+          Si una categoría no tiene tours publicados, se oculta. */}
       {(() => {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
-        // Si no hay tours publicados → no renderizar la sección (PM 2026-06-11:
-        // home solo muestra contenido aprobado por admin, sin "Próximamente").
         if (published.length === 0) return null;
-        // Prioridad: featured primero (color === "gold" en el map),
-        // después el resto por orden natural. Cortar a 3.
-        const featured = published.filter(tr => tr.color === "gold");
-        const rest = published.filter(tr => tr.color !== "gold");
-        const homeTours = [...featured, ...rest].slice(0, 3);
+
+        const EXPERIENCES = [
+          {
+            key: "beach_escape",
+            color: "sky",
+            titleES: "Beach Escape",
+            titleEN: "Beach Escape",
+            descES: "Playas espectaculares de aguas cristalinas: snorkeling, jet ski, banana boat, relajación y paisajes costeros inolvidables.",
+            descEN: "Discover spectacular beaches with crystal-clear waters, snorkeling, jet ski, banana boat, relaxation and unforgettable coastal scenery.",
+          },
+          {
+            key: "river_mountain",
+            color: "green",
+            titleES: "River & Mountain Adventure",
+            titleEN: "River & Mountain Adventure",
+            descES: "Ríos cristalinos, charcos naturales, cascadas y paisajes de montaña que dejan sin aliento.",
+            descEN: "Explore crystal-clear rivers, natural pools, waterfalls, and breathtaking mountain scenery.",
+          },
+          {
+            key: "utv_west_coast",
+            color: "orange",
+            titleES: "UTV Tours in West Coast",
+            titleEN: "UTV Tours in West Coast",
+            descES: "Elegí cómo vivirlo: conducí tu propio UTV en convoy con guía, o viajá de pasajero mientras recorrés rutas costeras.",
+            descEN: "Choose how you want to experience it – drive your own UTV in a guide convoy or ride along with a guide while exploring scenic coastal routes.",
+          },
+        ];
+
+        // Filtramos a las experiencias que tengan AL MENOS 1 tour clasificado.
+        const cards = EXPERIENCES
+          .map(exp => {
+            const toursInCat = published.filter(tr => tr.experienceCategory === exp.key);
+            const cover = toursInCat.find(tr => tr.img)?.img || "";
+            return { ...exp, toursInCat, cover };
+          })
+          .filter(exp => exp.toursInCat.length > 0);
+
+        // Si todavía nadie clasificó ningún tour → no rendereamos la sección
+        // por categorías; el "Ver todos los tours" sigue disponible abajo.
+        if (cards.length === 0) {
+          return (
+            <section className="svc">
+              <div className="container">
+                <div className="sec-head">
+                  <div className="tag">{t("ourToursTag")}</div>
+                  <h2>{t("curatedExp")}</h2>
+                  <p>{lang === "es"
+                    ? "Estamos clasificando los tours por experiencia. Mientras tanto, podés ver el catálogo completo."
+                    : "We're sorting the tours by experience. In the meantime, browse the full catalog."}</p>
+                </div>
+                <div style={{ textAlign: "center", marginTop: 32 }}>
+                  <NavLink to="/tours" className="cta-sec" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px" }}>
+                    {lang === "es" ? `Ver todos los tours (${published.length})` : `View all tours (${published.length})`}
+                    <ArrowRight style={{ width: 14, height: 14 }} />
+                  </NavLink>
+                </div>
+              </div>
+            </section>
+          );
+        }
+
         return (
       <section className="svc">
         <div className="container">
@@ -2285,31 +2365,25 @@ function HomePage() {
           </div>
           <>
           <div className="svc-grid">
-            {homeTours.map((tr) => (
-              <NavLink to={`/tour?id=${tr.id}`} key={tr.id} className="svc-card">
+            {cards.map((exp) => (
+              <NavLink to={`/tours?category=${exp.key}`} key={exp.key} className="svc-card">
                 <div className="svc-pic">
-                  <img src={tr.img} alt={tr.name} />
-                  <div className="svc-badge" style={{ background: COLORS[tr.color] }}>{tr.day}</div>
+                  {exp.cover ? <img src={exp.cover} alt={lang === "es" ? exp.titleES : exp.titleEN} /> : <div style={{ width: "100%", height: "100%", background: `linear-gradient(135deg, ${COLORS[exp.color]}33, ${COLORS[exp.color]}11)` }} />}
+                  <div className="svc-badge" style={{ background: COLORS[exp.color] }}>
+                    {exp.toursInCat.length} {lang === "es" ? (exp.toursInCat.length === 1 ? "tour" : "tours") : (exp.toursInCat.length === 1 ? "tour" : "tours")}
+                  </div>
                 </div>
                 <div className="svc-info">
-                  <h3>{L(tr.name, tr.nameES).toUpperCase()}</h3>
-                  <p>{L(tr.desc, tr.descES)}</p>
-                  <div style={{ display: "flex", alignItems: "baseline", marginBottom: 14 }}>
-                    {tr.price > 0 ? (
-                      <>
-                        <span className="price" style={{ color: COLORS[tr.color] }}>${tr.price}</span>
-                        <span className="price-sub">{pricingUnitLabel(tr.pricingUnit || "per_person", lang).toUpperCase()}</span>
-                      </>
-                    ) : (
-                      <span className="price" style={{ color: COLORS[tr.color], fontSize: 18 }}>{t("onRequest")}</span>
-                    )}
-                  </div>
-                  <span className="svc-link" style={{ color: COLORS[tr.color] }}>{t("bookNow")} <ArrowRight /></span>
+                  <h3>{(lang === "es" ? exp.titleES : exp.titleEN).toUpperCase()}</h3>
+                  <p>{lang === "es" ? exp.descES : exp.descEN}</p>
+                  <span className="svc-link" style={{ color: COLORS[exp.color] }}>
+                    {lang === "es" ? "Explorar" : "Explore"} <ArrowRight />
+                  </span>
                 </div>
               </NavLink>
             ))}
           </div>
-          {published.length > homeTours.length && (
+          {published.length > 0 && (
             <div style={{ textAlign: "center", marginTop: 32 }}>
               <NavLink to="/tours" className="cta-sec" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px" }}>
                 {lang === "es" ? `Ver todos los tours (${published.length})` : `View all tours (${published.length})`}
@@ -2554,72 +2628,154 @@ function HotelsList() {
 }
 
 /* ═══════════════ TOURS LIST ═══════════════ */
-function ToursList() {
+function ToursList({ params }) {
   const { t, lang } = useLang();
   const L = (en, es) => (lang === "es" && es) ? es : en;
+
+  // PM 2026-06-22: filtrado por experiencia desde el Home. Si la URL no
+  // trae ?category=, mostramos TODOS los tours en grid plano (comportamiento
+  // previo). Si la trae, mostramos solo los de esa categoría agrupados por
+  // colaborador (partner_name) — esto satisface el pedido del cliente de
+  // "ver tours clasificados por aliado al hacer click en la card".
+  const categoryFilter = params?.get?.("category") || "";
+  const CATEGORY_META = {
+    beach_escape: {
+      titleES: "Beach Escape",
+      titleEN: "Beach Escape",
+      subtitleES: "Playas, snorkel, jet ski, banana boat y más.",
+      subtitleEN: "Beaches, snorkeling, jet ski, banana boat and more.",
+    },
+    river_mountain: {
+      titleES: "River & Mountain Adventure",
+      titleEN: "River & Mountain Adventure",
+      subtitleES: "Ríos, charcos, cascadas y montañas.",
+      subtitleEN: "Rivers, natural pools, waterfalls and mountains.",
+    },
+    utv_west_coast: {
+      titleES: "UTV Tours in West Coast",
+      titleEN: "UTV Tours in West Coast",
+      subtitleES: "Recorridos en UTV por la costa oeste.",
+      subtitleEN: "UTV rides along the west coast.",
+    },
+  };
+  const meta = CATEGORY_META[categoryFilter];
+
+  const pageTitle = meta ? (lang === "es" ? meta.titleES : meta.titleEN) : t("availTours");
+  const pageSubtitle = meta ? (lang === "es" ? meta.subtitleES : meta.subtitleEN) : "";
+
+  const renderTourCard = (tr) => (
+    <div key={tr.id} className="listing-card">
+      <div className="listing-pic">
+        <img src={tr.img} alt={tr.name} />
+        <div className="listing-badge" style={{ background: COLORS[tr.color] }}>{tr.day}</div>
+      </div>
+      <div className="listing-body">
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,.5)", marginBottom: 4 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock style={{ width: 12, height: 12 }} />{tr.duration}</span>
+          {tr.reviews > 0 && (
+            <span style={{ color: "var(--gold)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              <Star style={{ width: 12, height: 12, fill: "var(--gold)" }} />{tr.rating} ({tr.reviews})
+            </span>
+          )}
+        </div>
+        <h3>{L(tr.name, tr.nameES)}</h3>
+        <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {tr.difficulty}</p>
+        <p className="listing-desc">{L(tr.desc, tr.descES)}</p>
+        <div className="listing-foot">
+          <div>
+            {tr.price > 0 ? (
+              <>
+                {/* PM 2026-06-22: "Desde" antes del precio para tours con
+                    variantes (capacidad / tipo / horario). */}
+                <span className="price-sub" style={{ marginRight: 6, fontSize: 11, color: "rgba(255,255,255,.55)" }}>
+                  {lang === "es" ? "Desde" : "From"}
+                </span>
+                <span className="price">${tr.price}</span>
+                <span className="price-sub">{pricingUnitLabel(tr.pricingUnit || "per_person", lang).toUpperCase()}</span>
+              </>
+            ) : (
+              <span className="price" style={{ fontSize: 18 }}>{t("onRequest")}</span>
+            )}
+          </div>
+          <NavLink to={`/tour?id=${tr.id}`} className="listing-btn">
+            {lang === "es" ? "Reservar" : "Book"} <ArrowRight style={{ width: 12, height: 12 }} />
+          </NavLink>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <PageHero tag={t("tours")} title={t("availTours")} titleEm="" subtitle="" />
+      <PageHero tag={t("tours")} title={pageTitle} titleEm="" subtitle={pageSubtitle} />
       <div className="inner-page">
         <div className="inner-wrap">
           <BilingualNotice style={{ marginBottom: 22 }} />
 
-          <div className="card-grid">
-            {(() => {
-              const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
-              if (visibleTours.length === 0) {
-                return (
+          {meta && (
+            <div style={{ marginBottom: 18 }}>
+              <NavLink to="/tours" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--gold)", textDecoration: "none" }}>
+                ← {lang === "es" ? "Volver a todas las experiencias" : "Back to all experiences"}
+              </NavLink>
+            </div>
+          )}
+
+          {(() => {
+            const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
+            const filtered = categoryFilter
+              ? visibleTours.filter(tr => tr.experienceCategory === categoryFilter)
+              : visibleTours;
+
+            if (filtered.length === 0) {
+              return (
+                <div className="card-grid">
                   <div style={{ gridColumn: "1 / -1", padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.55)", background: "rgba(255,255,255,.03)", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 14 }}>
                     <MapPin style={{ width: 36, height: 36, opacity: .35, marginBottom: 10 }} />
                     <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", marginBottom: 6 }}>
-                      {lang === "es" ? "Aún no hay tours publicados" : "No tours published yet"}
+                      {categoryFilter
+                        ? (lang === "es" ? "Aún no hay tours en esta categoría" : "No tours in this category yet")
+                        : (lang === "es" ? "Aún no hay tours publicados" : "No tours published yet")}
                     </h3>
                     <p style={{ fontSize: 13 }}>
                       {lang === "es" ? "Nuestro equipo está cargando opciones. Vuelve pronto." : "Our team is uploading options. Check back soon."}
                     </p>
                   </div>
-                );
-              }
-              return visibleTours.map((tr) => {
-              const partner = tr.partnerId ? PARTNERS.find((p) => p.id === tr.partnerId) : null;
-              return (
-              <div key={tr.id} className="listing-card">
-                <div className="listing-pic">
-                  <img src={tr.img} alt={tr.name} />
-                  <div className="listing-badge" style={{ background: COLORS[tr.color] }}>{tr.day}</div>
                 </div>
-                <div className="listing-body">
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,.5)", marginBottom: 4 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock style={{ width: 12, height: 12 }} />{tr.duration}</span>
-                    {tr.reviews > 0 && (
-                      <span style={{ color: "var(--gold)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                        <Star style={{ width: 12, height: 12, fill: "var(--gold)" }} />{tr.rating} ({tr.reviews})
-                      </span>
-                    )}
-                  </div>
-                  <h3>{L(tr.name, tr.nameES)}</h3>
-                  <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {tr.difficulty}</p>
-                  <p className="listing-desc">{L(tr.desc, tr.descES)}</p>
-                  {/* Badge "Booking via <partner>" removido (PM cero fuga). */}
-                  <div className="listing-foot">
-                    <div>
-                      {tr.price > 0 ? (
-                        <>
-                          <span className="price">${tr.price}</span>
-                          <span className="price-sub">{pricingUnitLabel(tr.pricingUnit || "per_person", lang).toUpperCase()}</span>
-                        </>
-                      ) : (
-                        <span className="price" style={{ fontSize: 18 }}>{t("onRequest")}</span>
-                      )}
-                    </div>
-                    <NavLink to={`/tour?id=${tr.id}`} className="listing-btn">{t("view")} <ArrowRight style={{ width: 12, height: 12 }} /></NavLink>
-                  </div>
-                </div>
-              </div>
               );
-            });
-            })()}
-          </div>
+            }
+
+            // Vista sin filtro: grid plano (comportamiento previo).
+            if (!categoryFilter) {
+              return <div className="card-grid">{filtered.map(renderTourCard)}</div>;
+            }
+
+            // Vista filtrada: agrupar por partner_name. Tours sin colaborador
+            // van bajo un grupo "Otros / Other".
+            const groups = {};
+            for (const tr of filtered) {
+              const key = (tr.partnerName || "").trim() || (lang === "es" ? "Otros" : "Other");
+              (groups[key] ||= []).push(tr);
+            }
+            const groupNames = Object.keys(groups).sort();
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+                {groupNames.map(name => (
+                  <div key={name}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                      <h2 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "var(--gold)", margin: 0 }}>{name}</h2>
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
+                        {groups[name].length} {lang === "es" ? (groups[name].length === 1 ? "tour" : "tours") : (groups[name].length === 1 ? "tour" : "tours")}
+                      </span>
+                    </div>
+                    <div className="card-grid">
+                      {groups[name].map(renderTourCard)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </>
@@ -3371,7 +3527,7 @@ function TransferSearchPage() {
               <div>
                 <label className="f-lab">{t("xferPassengers")}</label>
                 <select className="f-in" value={form.pax} onChange={(e) => upd("pax", parseInt(e.target.value))}>
-                  {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} pax</option>)}
+                  {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} {lang==="es"?(n===1?"pasajero":"pasajeros"):(n===1?"passenger":"passengers")}</option>)}
                 </select>
               </div>
               <div>
@@ -3458,7 +3614,7 @@ function TransferSearchPage() {
                     <div>
                       <label className="f-lab">{t("xferPassengers")}</label>
                       <select className="f-in" value={tp.pax} onChange={(e) => updTrip(tp.id, "pax", parseInt(e.target.value))}>
-                        {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} pax</option>)}
+                        {[1, 2, 3, 4, 5, 6, 8, 10, 11].map((n) => <option key={n} value={n}>{n} {lang==="es"?(n===1?"pasajero":"pasajeros"):(n===1?"passenger":"passengers")}</option>)}
                       </select>
                     </div>
                     <div>
@@ -4669,14 +4825,22 @@ function ServicesPage() {
 
             {/* FEATURED TOUR PROMO — usa solo datos reales del tour (sin texto
                 de adorno hardcoded ni testimonio falso). Reviews están dormant
-                post-pivote, así que la card de testimonio se removió. */}
-            {TOURS[0] && (
+                post-pivote, así que la card de testimonio se removió.
+                PM 2026-06-22: el "Tour del mes" pasa a ser editable por el
+                admin via el toggle "Destacado" (mapper expone `color="gold"`).
+                Si no hay ninguno destacado, fallback al primero publicado. */}
+            {(() => {
+              const tom =
+                TOURS.find(tr => (!tr.status || tr.status === "published") && tr.color === "gold") ||
+                TOURS.find(tr => !tr.status || tr.status === "published");
+              if (!tom) return null;
+              return (
               <div
                 style={{ marginTop: 56, position: "relative", borderRadius: 24, overflow: "hidden", minHeight: 320, cursor: "pointer" }}
-                onClick={() => nav(`/tour-detail?id=${TOURS[0].id}`)}
+                onClick={() => nav(`/tour-detail?id=${tom.id}`)}
               >
                 <div style={{ position: "absolute", inset: 0 }}>
-                  {TOURS[0].img && <img src={TOURS[0].img} alt={TOURS[0].name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                  {tom.img && <img src={tom.img} alt={tom.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
                   <div style={{ position: "absolute", inset: 0, background: "linear-gradient(95deg,rgba(14,24,36,.95) 0%,rgba(14,24,36,.6) 60%,rgba(14,24,36,.3) 100%)" }} />
                 </div>
                 <div style={{ position: "relative", padding: "48px 44px" }} className="promo-grid">
@@ -4685,38 +4849,39 @@ function ServicesPage() {
                       <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".2em", textTransform: "uppercase", padding: "6px 12px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff" }}>{t("editorsPick")}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".15em" }}>· {t("tourOfMonth")}</span>
                     </div>
-                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.2rem)", letterSpacing: ".02em", lineHeight: 1, marginBottom: 14 }}>{(TOURS[0].name || "").toUpperCase()}</h3>
-                    {TOURS[0].desc && (
+                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.2rem)", letterSpacing: ".02em", lineHeight: 1, marginBottom: 14 }}>{(L(tom.name, tom.nameES) || "").toUpperCase()}</h3>
+                    {(L(tom.desc, tom.descES)) && (
                       <p style={{ fontSize: 15, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 20, maxWidth: 560 }}>
-                        {TOURS[0].desc}
+                        {L(tom.desc, tom.descES)}
                       </p>
                     )}
                     <div style={{ display: "flex", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
-                      {TOURS[0].duration && (
+                      {tom.duration && (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Clock style={{ width: 16, height: 16, color: "var(--gold)" }} />
-                          <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{TOURS[0].duration}</span>
+                          <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>{tom.duration}</span>
                         </div>
                       )}
-                      {TOURS[0].capacity && (
+                      {tom.capacity && (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Users style={{ width: 16, height: 16, color: "var(--gold)" }} />
-                          <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>Max {TOURS[0].capacity}</span>
+                          <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>Max {tom.capacity}</span>
                         </div>
                       )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                      <button onClick={(e) => { e.stopPropagation(); nav(`/tour-detail?id=${TOURS[0].id}`); }} style={{ padding: "14px 28px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, boxShadow: "0 8px 28px rgba(245,166,35,.35)" }}>
+                      <button onClick={(e) => { e.stopPropagation(); nav(`/tour-detail?id=${tom.id}`); }} style={{ padding: "14px 28px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, boxShadow: "0 8px 28px rgba(245,166,35,.35)" }}>
                         {t("bookThisTour")} <ArrowRight style={{ width: 14, height: 14 }} />
                       </button>
-                      {TOURS[0].price && (
-                        <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{t("fromPrice")} <span style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)", letterSpacing: ".02em" }}>${TOURS[0].price}</span> {t("perPerson")}</div>
+                      {tom.price && (
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{t("fromPrice")} <span style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--gold)", letterSpacing: ".02em" }}>${tom.price}</span> {t("perPerson")}</div>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             <style>{`
               .news-editorial{display:grid;grid-template-columns:1.8fr 1fr;gap:28px}
@@ -4839,11 +5004,14 @@ function AboutPage() {
 }
 
 function ContactPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "General Inquiry", message: "" });
   const [sent, setSent] = useState(false);
   const submit = async () => {
-    if (!form.name || !form.email || !form.message) { alert("Please complete the required fields"); return; }
+    if (!form.name || !form.email || !form.message) {
+      alert(lang==="es"?"Completá los campos requeridos":"Please complete the required fields");
+      return;
+    }
     try {
       const fd = new FormData();
       fd.append("name", form.name);
@@ -4852,11 +5020,11 @@ function ContactPage() {
       fd.append("message", `[${form.subject}] ${form.message}`);
       const res = await sbSubmitContact(fd);
       if (!res?.ok) {
-        alert("No se pudo enviar el mensaje: " + (res?.error || "error desconocido"));
+        alert((lang==="es"?"No se pudo enviar el mensaje: ":"Could not send the message: ") + (res?.error || (lang==="es"?"error desconocido":"unknown error")));
         return;
       }
     } catch (e) {
-      alert("Error al enviar el mensaje: " + (e?.message || e));
+      alert((lang==="es"?"Error al enviar el mensaje: ":"Error sending the message: ") + (e?.message || e));
       return;
     }
     setSent(true);
@@ -4874,8 +5042,8 @@ function ContactPage() {
               {sent ? (
                 <div style={{ padding: 28, borderRadius: 16, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.3)", textAlign: "center" }}>
                   <div style={{ width: 50, height: 50, borderRadius: "50%", background: "var(--green)", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}><Check style={{ color: "#fff", strokeWidth: 3 }} /></div>
-                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--green)" }}>MESSAGE SENT!</h3>
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.6)" }}>We'll get back to you shortly.</p>
+                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "var(--green)" }}>{lang==="es"?"¡MENSAJE ENVIADO!":"MESSAGE SENT!"}</h3>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.6)" }}>{lang==="es"?"Te responderemos en breve.":"We'll get back to you shortly."}</p>
                 </div>
               ) : (
                 <>
@@ -4907,10 +5075,10 @@ function ContactPage() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {[
-                { Icon: Phone, label: "Phone", value: getSetting("contact_phone"), href: `tel:${getSetting("contact_phone_tel")}`, c: "gold" },
-                { Icon: Mail, label: "Email", value: getSetting("contact_email"), href: `mailto:${getSetting("contact_email")}`, c: "orange" },
-                { Icon: MapPin, label: "Location", value: "Cabo Rojo, Puerto Rico", href: null, c: "green" },
-                { Icon: MessageCircle, label: "WhatsApp", value: "Chat with us", href: `https://wa.me/${getSetting("whatsapp_phone")}`, c: "sky" },
+                { Icon: Phone, label: lang==="es"?"Teléfono":"Phone", value: getSetting("contact_phone"), href: `tel:${getSetting("contact_phone_tel")}`, c: "gold" },
+                { Icon: Mail, label: lang==="es"?"Correo":"Email", value: getSetting("contact_email"), href: `mailto:${getSetting("contact_email")}`, c: "orange" },
+                { Icon: MapPin, label: lang==="es"?"Ubicación":"Location", value: "Cabo Rojo, Puerto Rico", href: null, c: "green" },
+                { Icon: MessageCircle, label: "WhatsApp", value: lang==="es"?"Chatea con nosotros":"Chat with us", href: `https://wa.me/${getSetting("whatsapp_phone")}`, c: "sky" },
               ].map((c, i) => (
                 <a key={i} href={c.href || "#"} target={c.href?.startsWith("http") ? "_blank" : undefined} rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 14, padding: 18, borderRadius: 16, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)" }}>
                   <div style={{ width: 44, height: 44, borderRadius: 14, background: COLORS[c.c] + "22", color: COLORS[c.c], display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -5147,7 +5315,14 @@ function RegisterPage() {
     if (/[a-z]/.test(p) && /[A-Z]/.test(p)) score++;
     if (/\d/.test(p)) score++;
     if (/[^a-zA-Z0-9]/.test(p)) score++;
-    const meta = [
+    const meta = lang === "es" ? [
+      { label: "Muy débil", color: "#EF4444" },
+      { label: "Débil", color: "#EF6C2B" },
+      { label: "Aceptable", color: "#F5A623" },
+      { label: "Buena", color: "#8DC63F" },
+      { label: "Fuerte", color: "#22C55E" },
+      { label: "Muy fuerte", color: "#10B981" },
+    ] : [
       { label: "Very weak", color: "#EF4444" },
       { label: "Weak", color: "#EF6C2B" },
       { label: "Fair", color: "#F5A623" },
@@ -5156,7 +5331,7 @@ function RegisterPage() {
       { label: "Very strong", color: "#10B981" },
     ];
     return { score, ...meta[Math.min(score, 5)] };
-  }, [form.password]);
+  }, [form.password, lang]);
 
   const handleRegister = async () => {
     setError("");
@@ -5198,13 +5373,9 @@ function RegisterPage() {
     }
   };
 
-  const handleSocial = () => {
-    setError("Inicio de sesión con proveedores externos disponible próximamente. Por ahora usa email + contraseña.");
-  };
-
-  const GoogleIcon = () => (<svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.5 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l6.2 5.2c-.4.4 6.6-4.8 6.6-14.8 0-1.3-.1-2.3-.4-3.5z"/></svg>);
-  const FacebookIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.79-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>);
-  const AppleIcon = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>);
+  // PM 2026-06-18: OAuth (Google/Facebook/Apple) fuera de alcance — handler,
+  // iconos SVG y CTAs sociales removidos para que la pantalla solo refleje
+  // lo que el sistema realmente soporta (email + contraseña).
 
   if (success) {
     if (otpVerified) {
@@ -5215,10 +5386,10 @@ function RegisterPage() {
             <div style={{ width: 76, height: 76, borderRadius: 20, background: "linear-gradient(135deg,#8DC63F,#22C55E)", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 36px rgba(141,198,63,.35)" }}>
               <CheckCircle style={{ width: 38, height: 38, color: "#fff" }} />
             </div>
-            <h1 style={{ fontFamily: "Bebas Neue", fontSize: 30, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>¡CUENTA ACTIVADA!</h1>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 8 }}>Tu correo fue confirmado correctamente.</p>
+            <h1 style={{ fontFamily: "Bebas Neue", fontSize: 30, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>{lang==="es"?"¡CUENTA ACTIVADA!":"ACCOUNT ACTIVATED!"}</h1>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 8 }}>{lang==="es"?"Tu correo fue confirmado correctamente.":"Your email was confirmed successfully."}</p>
             <p style={{ fontFamily: "Dancing Script, cursive", fontSize: 22, color: "var(--gold)", marginBottom: 20 }}>Welcome to Living in Paradise.</p>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>Redirigiendo al login...</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>{lang==="es"?"Redirigiendo al login…":"Redirecting to sign in…"}</div>
           </div>
         </div>
       );
@@ -5230,8 +5401,8 @@ function RegisterPage() {
           <div style={{ width: 64, height: 64, borderRadius: 18, background: "linear-gradient(135deg,var(--gold),var(--orange))", margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 12px 32px rgba(239,108,43,.3)" }}>
             <Lock style={{ width: 28, height: 28, color: "#fff" }} />
           </div>
-          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 28, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>CONFIRMA TU CORREO</h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 6 }}>Te enviamos un código de 6 dígitos a:</p>
+          <h1 style={{ fontFamily: "Bebas Neue", fontSize: 28, letterSpacing: ".04em", marginBottom: 10, color: "#fff" }}>{lang==="es"?"CONFIRMA TU CORREO":"CONFIRM YOUR EMAIL"}</h1>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 6 }}>{lang==="es"?"Te enviamos un código de 6 dígitos a:":"We sent a 6-digit code to:"}</p>
           <p style={{ fontSize: 14, color: "var(--gold)", fontWeight: 700, marginBottom: 22, wordBreak: "break-all" }}>{form.email}</p>
           <input
             type="text"
@@ -5305,17 +5476,17 @@ function RegisterPage() {
         {/* Form */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <div>
-            <label className="f-lab">First Name</label>
-            <input className="f-in" placeholder="Jane" value={form.firstName} onChange={(e) => setForm(f => ({ ...f, firstName: e.target.value }))} />
+            <label className="f-lab">{lang==="es"?"Nombre":"First Name"}</label>
+            <input className="f-in" placeholder={lang==="es"?"Juana":"Jane"} value={form.firstName} onChange={(e) => setForm(f => ({ ...f, firstName: e.target.value }))} />
           </div>
           <div>
-            <label className="f-lab">Last Name</label>
-            <input className="f-in" placeholder="Doe" value={form.lastName} onChange={(e) => setForm(f => ({ ...f, lastName: e.target.value }))} />
+            <label className="f-lab">{lang==="es"?"Apellido":"Last Name"}</label>
+            <input className="f-in" placeholder={lang==="es"?"Pérez":"Doe"} value={form.lastName} onChange={(e) => setForm(f => ({ ...f, lastName: e.target.value }))} />
           </div>
         </div>
 
         <div className="f-grp">
-          <label className="f-lab">Email</label>
+          <label className="f-lab">{lang==="es"?"Correo":"Email"}</label>
           <div style={{ position: "relative" }}>
             <input type="email" className="f-in" placeholder="you@email.com" value={form.email}
               onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
@@ -5326,7 +5497,7 @@ function RegisterPage() {
               </div>
             )}
           </div>
-          {form.email && !emailValid && <p style={{ fontSize: 11, color: "#EF6C2B", marginTop: 4 }}>Enter a valid email address</p>}
+          {form.email && !emailValid && <p style={{ fontSize: 11, color: "#EF6C2B", marginTop: 4 }}>{lang==="es"?"Ingresá un correo válido":"Enter a valid email address"}</p>}
         </div>
 
         <div className="f-grp">
@@ -5370,9 +5541,9 @@ function RegisterPage() {
         </div>
 
         <div className="f-grp">
-          <label className="f-lab">Password</label>
+          <label className="f-lab">{lang==="es"?"Contraseña":"Password"}</label>
           <div style={{ position: "relative" }}>
-            <input type={showPwd ? "text" : "password"} className="f-in" placeholder="At least 8 characters" value={form.password}
+            <input type={showPwd ? "text" : "password"} className="f-in" placeholder={lang==="es"?"Al menos 8 caracteres":"At least 8 characters"} value={form.password}
               onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
               style={{ paddingRight: 42 }} />
             <button type="button" onClick={() => setShowPwd(!showPwd)} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 6 }}>
@@ -5387,7 +5558,7 @@ function RegisterPage() {
                 ))}
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5 }}>
-                <span style={{ color: "rgba(255,255,255,.4)" }}>Password strength:</span>
+                <span style={{ color: "rgba(255,255,255,.4)" }}>{lang==="es"?"Fortaleza de contraseña:":"Password strength:"}</span>
                 <span style={{ color: pwdStrength.color, fontWeight: 700 }}>{pwdStrength.label}</span>
               </div>
             </div>
@@ -5395,9 +5566,9 @@ function RegisterPage() {
         </div>
 
         <div className="f-grp">
-          <label className="f-lab">Confirm Password</label>
+          <label className="f-lab">{lang==="es"?"Confirmar contraseña":"Confirm Password"}</label>
           <div style={{ position: "relative" }}>
-            <input type={showPwdConfirm ? "text" : "password"} className="f-in" placeholder="Re-enter password" value={form.confirmPassword}
+            <input type={showPwdConfirm ? "text" : "password"} className="f-in" placeholder={lang==="es"?"Reingresá la contraseña":"Re-enter password"} value={form.confirmPassword}
               onChange={(e) => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
               style={{ paddingRight: 70, borderColor: form.confirmPassword && !passwordsMatch ? "rgba(239,108,43,.5)" : undefined }} />
             <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
@@ -5407,7 +5578,7 @@ function RegisterPage() {
               </button>
             </div>
           </div>
-          {form.confirmPassword && !passwordsMatch && <p style={{ fontSize: 11, color: "#EF6C2B", marginTop: 4 }}>Passwords do not match</p>}
+          {form.confirmPassword && !passwordsMatch && <p style={{ fontSize: 11, color: "#EF6C2B", marginTop: 4 }}>{lang==="es"?"Las contraseñas no coinciden":"Passwords do not match"}</p>}
         </div>
 
         <div className="f-grp">
@@ -6094,6 +6265,10 @@ function AdminPanel({ onClose }) {
     contact_phone_tel: SITE_SETTINGS.contact_phone_tel ?? "",
     whatsapp_phone: SITE_SETTINGS.whatsapp_phone ?? "",
     address: SITE_SETTINGS.address ?? "",
+    // PM 2026-06-22: prefill bilingüe del FAB de WhatsApp/SMS. Editable
+    // por el cliente para reflejar cambios de alcance geográfico sin deploy.
+    whatsapp_prefill_es: SITE_SETTINGS.whatsapp_prefill_es ?? "",
+    whatsapp_prefill_en: SITE_SETTINGS.whatsapp_prefill_en ?? "",
   });
   const [companySettings, setCompanySettings] = useState(initCompanySettings);
   const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
@@ -6295,8 +6470,9 @@ function AdminPanel({ onClose }) {
             subtotal: (i.subtotal_cents || 0) / 100,
             status: i.status,
             stripePaymentLinkUrl: i.stripe_payment_link_url || "",
+            paypalPaymentLinkUrl: i.paypal_payment_link_url || "",
             pdfUrl: i.pdf_url || "",
-            link: !!i.stripe_payment_link_url,
+            link: !!i.stripe_payment_link_url || !!i.paypal_payment_link_url,
             source: "supabase",
             paymentRef: i.payment_ref || "",
             // Shape requerida por el modal "Ver" + tabla draft-edit: usamos
@@ -6431,8 +6607,9 @@ function AdminPanel({ onClose }) {
         subtotal: (i.subtotal_cents || 0) / 100,
         status: i.status,
         stripePaymentLinkUrl: i.stripe_payment_link_url || "",
+        paypalPaymentLinkUrl: i.paypal_payment_link_url || "",
         pdfUrl: i.pdf_url || "",
-        link: !!i.stripe_payment_link_url,
+        link: !!i.stripe_payment_link_url || !!i.paypal_payment_link_url,
         source: "supabase",
         paymentRef: i.payment_ref || "",
         // PM 2026-06-17: rating del cliente (1-5) + fecha + comentario opcional.
@@ -8983,6 +9160,48 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       }}
                                     >{busy === "stripe" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw />}</button>
                                   )}
+                                  {/* PM 2026-06-18: PayPal — paridad con Stripe.
+                                      Si ya hay approve URL, botón copiar (azul PayPal);
+                                      si no, botón generar (intent=CAPTURE → webhook marca paid). */}
+                                  {inv.paypalPaymentLinkUrl ? (
+                                    <button
+                                      className="adm-icon-btn"
+                                      title={lang==="es"?"Copiar link de pago PayPal":"Copy PayPal payment link"}
+                                      style={{ color: "#0070BA" }}
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(inv.paypalPaymentLinkUrl);
+                                          alert(lang==="es"?"Link PayPal copiado":"PayPal link copied");
+                                        } catch {
+                                          alert(lang==="es"?"No se pudo copiar":"Could not copy");
+                                        }
+                                      }}
+                                    ><Copy /></button>
+                                  ) : (
+                                    <button
+                                      className="adm-icon-btn"
+                                      title={lang==="es"?"Generar link de pago PayPal":"Generate PayPal payment link"}
+                                      disabled={!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled"}
+                                      style={{ color: "#0070BA", opacity: (!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled") ? 0.4 : 1, cursor: (!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled") ? "not-allowed" : "pointer" }}
+                                      onClick={async () => {
+                                        if (!canEditInvoices()) return;
+                                        setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "paypal" }));
+                                        try {
+                                          const fd = new FormData();
+                                          fd.append("id", inv.sbId);
+                                          const res = await sbRegeneratePaypalLink(fd);
+                                          if (res?.ok) {
+                                            await reloadInvoices();
+                                            alert(lang==="es"?"Link PayPal generado":"PayPal link generated");
+                                          } else {
+                                            alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                                          }
+                                        } finally {
+                                          setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
+                                        }
+                                      }}
+                                    >{busy === "paypal" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <Globe />}</button>
+                                  )}
                                   <button
                                     className="adm-icon-btn"
                                     title={lang==="es"?"Descargar PDF":"Download PDF"}
@@ -10977,6 +11196,21 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   updCompanySetting("whatsapp_phone", digits);
                 }} placeholder="+1 (787) 237-9519" /></div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" value={companySettings.address} onChange={(e) => updCompanySetting("address", e.target.value)} /></div>
+
+                {/* PM 2026-06-22: plantillas editables del FAB WhatsApp/SMS. */}
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+                    {lang==="es"?"Mensaje pre-relleno (WhatsApp / SMS)":"Pre-filled message (WhatsApp / SMS)"}
+                  </div>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                    {lang==="es"
+                      ? "Este texto aparece pre-cargado cuando un cliente abre el chat o SMS desde el botón flotante. Se muestra según el idioma activo del visitante."
+                      : "This text shows up pre-loaded when a customer opens the chat or SMS from the floating button. Displayed based on the visitor's active language."}
+                  </p>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en español":"Spanish version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_es} onChange={(e) => updCompanySetting("whatsapp_prefill_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_en} onChange={(e) => updCompanySetting("whatsapp_prefill_en", e.target.value)} /></div>
+                </div>
+
                 <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving}>
                   {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
                   {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : companySettingsSaved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : t("adm_save")}
@@ -11092,14 +11326,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             {settingsTab === "security" && (
               <div className="adm-card">
                 <div className="adm-card-head"><div className="adm-card-title">{lang==="es"?"Seguridad y Autenticación":"Security & Authentication"}</div></div>
-                {/* PM 2026-06-11: el aviso "por ahora sólo está disponible..."
-                    se retiró — confundía al admin. La acción principal de
-                    esta sección es Cambiar Contraseña. Cuando habilitemos
-                    2FA / sesiones activas, se agregan acá como nuevas filas. */}
+                {/* PM 2026-06-18: 2FA / sesiones activas / registro de accesos
+                    quedan fuera del alcance de esta entrega — los placeholders
+                    "Próximamente" se removieron para no inducir expectativa. */}
                 <p style={{ fontSize: 13, color: "rgba(255,255,255,.65)", margin: "0 0 14px", lineHeight: 1.6 }}>
                   {lang === "es"
-                    ? "Gestioná la contraseña de tu cuenta. Próximamente: doble factor, cierre de sesiones activas y registro de accesos."
-                    : "Manage your account password. Coming soon: two-factor auth, active session signout, and access log."}
+                    ? "Gestioná la contraseña de tu cuenta."
+                    : "Manage your account password."}
                 </p>
                 <div style={{ marginTop: 6, paddingTop: 0 }}>
                   <button className="adm-btn adm-btn-ghost" onClick={async () => {
@@ -11816,6 +12049,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("pricing_unit", ownedUpdate.pricingUnit || "per_person");
               fd.append("pricing_extras", JSON.stringify(Array.isArray(ownedUpdate.pricingExtras) ? ownedUpdate.pricingExtras : []));
               fd.append("category", ownedUpdate.category || "");
+              // PM 2026-06-22: clasificación nueva + colaborador + markup pct
+              // (review del cliente — agrupa el Home en 3 grandes experiencias).
+              fd.append("experience_category", ownedUpdate.experienceCategory || "");
+              fd.append("partner_name", ownedUpdate.partnerName || "");
+              fd.append("markup_pct", ownedUpdate.markupPct == null ? "10" : String(ownedUpdate.markupPct));
               // PM 2026-06-15: ver bloque stay — markup en columnas dedicadas.
               fd.append("markup_type", ownedUpdate.markupType || "");
               fd.append("markup_value", ownedUpdate.markupValue == null ? "" : String(ownedUpdate.markupValue));
@@ -12792,6 +13030,48 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                   <option value="">Select...</option>
                   <option>Easy</option><option>Moderate</option><option>Hard</option><option>Expert</option>
                 </select>
+              </div>
+            </div>
+            {/* PM 2026-06-22: clasificación pedida por el cliente — agrupa
+                tours del Home en 3 grandes experiencias. Sin clasificar = no
+                aparece en las 3 cards de Home, pero sí en /tours general.
+                `partner_name` agrupa visualmente dentro de cada categoría;
+                `markup_pct` permite excepción por servicio (default 10%, Tanamá 20%). */}
+            <div className="adm-fg-row">
+              <div className="adm-fg" style={{ flex: 2 }}>
+                <label className="adm-fl">{lang === "es" ? "Experiencia (Home)" : "Experience (Home)"}</label>
+                <select
+                  className="adm-fi"
+                  defaultValue={it.experienceCategory || ""}
+                  onChange={(e) => (it.experienceCategory = e.target.value || null)}
+                >
+                  <option value="">{lang === "es" ? "— Sin clasificar —" : "— Unclassified —"}</option>
+                  <option value="beach_escape">{lang === "es" ? "Beach Escape (playa)" : "Beach Escape"}</option>
+                  <option value="river_mountain">{lang === "es" ? "River & Mountain Adventure" : "River & Mountain Adventure"}</option>
+                  <option value="utv_west_coast">{lang === "es" ? "UTV Tours in West Coast" : "UTV Tours in West Coast"}</option>
+                </select>
+              </div>
+              <div className="adm-fg" style={{ flex: 2 }}>
+                <label className="adm-fl">{lang === "es" ? "Colaborador" : "Partner"}</label>
+                <input
+                  className="adm-fi"
+                  defaultValue={it.partnerName || ""}
+                  onChange={(e) => (it.partnerName = e.target.value)}
+                  placeholder={lang === "es" ? "Ej. Barra Salada, Aventoura…" : "E.g. Barra Salada, Aventoura…"}
+                />
+              </div>
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Markup %" : "Markup %"}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  className="adm-fi"
+                  defaultValue={it.markupPct == null ? 10 : it.markupPct}
+                  onChange={(e) => (it.markupPct = Number(e.target.value))}
+                  placeholder="10"
+                />
               </div>
             </div>
             <div className="adm-fg">
@@ -15075,7 +15355,7 @@ export default function PrdiseApp() {
     case "/stay":
     case "/hotel-detail": page = <HotelDetail params={params} />; break;
     case "/tours":
-    case "/packages": page = <ToursList />; break;
+    case "/packages": page = <ToursList params={params} />; break;
     case "/tour":
     case "/tour-detail": page = <TourDetail params={params} />; break;
     case "/transfer-search":

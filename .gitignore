@@ -74,6 +74,10 @@ desktop.ini
 /docs/*.xlsx
 /docs/*.xls
 /docs/*.csv
+# Reviews / pedidos de ajustes del cliente en formato Word + imágenes
+# adjuntas — son working documents, no documentación oficial del repo.
+/docs/*.docx
+/docs/Web Site Update*/
 
 # Imágenes de servicios para asignar al catálogo. El admin las dropea aquí
 # con nombre {slug}.{ext}; scripts/assign-service-images.mjs las sube a

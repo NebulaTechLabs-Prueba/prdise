@@ -308,6 +308,26 @@ const tourBaseSchema = z.object({
   pricing_unit: tourPricingUnitSchema,
   pricing_extras: pricingExtrasArraySchema,
   category: optionalText(120, "Categoría"),
+  // PM 2026-06-22: clasificación nueva del Home (Beach Escape / River &
+  // Mountain Adventure / UTV Tours in West Coast). NULL = sin clasificar.
+  experience_category: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .nullable()
+    .or(z.literal(""))
+    .transform((v) => {
+      if (!v) return null;
+      const allowed = ["beach_escape", "river_mountain", "utv_west_coast"];
+      return allowed.includes(v) ? v : null;
+    }),
+  partner_name: optionalText(120, "Colaborador"),
+  markup_pct: z.coerce
+    .number()
+    .min(0, "Markup mínimo 0%")
+    .max(100, "Markup máximo 100%")
+    .default(10),
   // PM 2026-06-15: ver markupShape.
   ...markupShape,
 }).merge(partnerLinkSchema);

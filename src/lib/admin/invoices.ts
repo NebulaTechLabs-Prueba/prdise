@@ -10,6 +10,10 @@ import type { ActionResult } from "./types";
 import type { Tables } from "@/lib/supabase/database.types";
 import { z } from "zod";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/client";
+import {
+  getPayPalConfig,
+  createCheckoutOrder as createPayPalOrder,
+} from "@/lib/paypal/client";
 import { renderInvoicePdf, type InvoiceForPdf } from "@/lib/invoices/pdf";
 
 const PDF_BUCKET = "invoice-pdfs";
@@ -465,6 +469,75 @@ export async function regenerateStripePaymentLink(
     return {
       ok: false,
       error: `Stripe falló: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+
+// ===========================================================================
+// REGENERATE PAYPAL PAYMENT LINK
+// ===========================================================================
+
+/**
+ * Crea un PayPal Order (intent=CAPTURE) y persiste el `approve URL` + el
+ * `order_id` en la invoice. Paridad funcional con `regenerateStripePaymentLink`.
+ * El webhook `/api/paypal/webhook` marca el invoice como `paid` cuando PayPal
+ * dispara `PAYMENT.CAPTURE.COMPLETED`.
+ */
+export async function regeneratePaypalPaymentLink(
+  formData: FormData
+): Promise<ActionResult<{ url: string }>> {
+  const guard = await getStaffWithPermissionOrError("invoices:write");
+  if (!guard.ok) return guard;
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { ok: false, error: "ID requerido" };
+
+  const cfg = getPayPalConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      error: "PayPal no está configurado en el servidor.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: inv } = await supabase
+    .from("invoices")
+    .select("id, number, customer_name, total_cents, status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!inv) return { ok: false, error: "Factura no encontrada" };
+  if (inv.status === "paid") {
+    return { ok: false, error: "La factura ya está pagada." };
+  }
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://livinginprdise.com";
+
+  try {
+    const { orderId, approveUrl } = await createPayPalOrder({
+      cfg,
+      invoiceId: inv.id,
+      invoiceNumber: inv.number,
+      customerName: inv.customer_name,
+      totalCents: inv.total_cents,
+      returnUrl: `${appUrl}/#/account?inv=${inv.id}&pp=ok`,
+      cancelUrl: `${appUrl}/#/account?inv=${inv.id}&pp=cancel`,
+    });
+    await supabase
+      .from("invoices")
+      .update({
+        paypal_payment_link_url: approveUrl,
+        paypal_order_id: orderId,
+        status: inv.status === "draft" ? "pending" : inv.status,
+      })
+      .eq("id", id);
+    return { ok: true, data: { url: approveUrl } };
+  } catch (e) {
+    return {
+      ok: false,
+      error: `PayPal falló: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
 }

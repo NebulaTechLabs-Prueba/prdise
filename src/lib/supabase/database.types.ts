@@ -680,6 +680,8 @@ export type Database = {
           rating: number | null
           rating_comment: string | null
           status: string
+          paypal_order_id: string | null
+          paypal_payment_link_url: string | null
           stripe_payment_link_id: string | null
           stripe_payment_link_url: string | null
           subtotal_cents: number
@@ -702,6 +704,8 @@ export type Database = {
           number: string
           paid_at?: string | null
           payment_ref?: string | null
+          paypal_order_id?: string | null
+          paypal_payment_link_url?: string | null
           pdf_url?: string | null
           rated_at?: string | null
           rating?: number | null
@@ -729,6 +733,8 @@ export type Database = {
           number?: string
           paid_at?: string | null
           payment_ref?: string | null
+          paypal_order_id?: string | null
+          paypal_payment_link_url?: string | null
           pdf_url?: string | null
           rated_at?: string | null
           rating?: number | null
@@ -1551,6 +1557,7 @@ export type Database = {
           description_es: string | null
           difficulty: string | null
           duration_minutes: number
+          experience_category: string | null
           featured: boolean
           id: string
           images: Json
@@ -1558,11 +1565,13 @@ export type Database = {
           lat: number | null
           lng: number | null
           location: string | null
+          markup_pct: number
           markup_type: string | null
           markup_value: number | null
           max_pax: number
           meeting_point: string | null
           partner_id: string | null
+          partner_name: string | null
           partner_url: string | null
           price_cents: number
           pricing_extras: Json
@@ -1585,6 +1594,7 @@ export type Database = {
           description_es?: string | null
           difficulty?: string | null
           duration_minutes: number
+          experience_category?: string | null
           featured?: boolean
           id?: string
           images?: Json
@@ -1592,11 +1602,13 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           location?: string | null
+          markup_pct?: number
           markup_type?: string | null
           markup_value?: number | null
           max_pax?: number
           meeting_point?: string | null
           partner_id?: string | null
+          partner_name?: string | null
           partner_url?: string | null
           price_cents: number
           pricing_extras?: Json
@@ -1619,6 +1631,7 @@ export type Database = {
           description_es?: string | null
           difficulty?: string | null
           duration_minutes?: number
+          experience_category?: string | null
           featured?: boolean
           id?: string
           images?: Json
@@ -1626,11 +1639,13 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           location?: string | null
+          markup_pct?: number
           markup_type?: string | null
           markup_value?: number | null
           max_pax?: number
           meeting_point?: string | null
           partner_id?: string | null
+          partner_name?: string | null
           partner_url?: string | null
           price_cents?: number
           pricing_extras?: Json

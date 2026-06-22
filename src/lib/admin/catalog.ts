@@ -341,6 +341,9 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     pricing_unit: formData.get("pricing_unit") ?? undefined,
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
+    experience_category: formData.get("experience_category") ?? "",
+    partner_name: formData.get("partner_name") ?? "",
+    markup_pct: formData.get("markup_pct") ?? 10,
     ...readMarkup(formData),
   });
   if (!parsed.success) {
@@ -378,6 +381,9 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      experience_category: d.experience_category ?? null,
+      partner_name: d.partner_name || null,
+      markup_pct: d.markup_pct,
       markup_type: d.markup_type ?? null,
       markup_value: d.markup_value ?? null,
       created_by: actorId,
@@ -428,6 +434,9 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     pricing_unit: formData.get("pricing_unit") ?? undefined,
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
+    experience_category: formData.get("experience_category") ?? "",
+    partner_name: formData.get("partner_name") ?? "",
+    markup_pct: formData.get("markup_pct") ?? 10,
     ...readMarkup(formData),
   });
   if (!parsed.success) {
@@ -465,6 +474,9 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      experience_category: d.experience_category ?? null,
+      partner_name: d.partner_name || null,
+      markup_pct: d.markup_pct,
       markup_type: d.markup_type ?? null,
       markup_value: d.markup_value ?? null,
     })

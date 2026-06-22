@@ -19,7 +19,11 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const rawNext = searchParams.get("next") ?? "/";
+  // PM 2026-06-18: validar que next sea path relativo. `//attacker.com` y
+  // `https://attacker.com` son redirects abiertos que permitirían secuestro
+  // de sesión post-auth.
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   const type = searchParams.get("type");
 
   if (code) {
