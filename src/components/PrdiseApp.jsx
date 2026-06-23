@@ -13,6 +13,7 @@ import {
   Bell, Key, Power, Monitor,
   Printer, FileText, Copy, Hash, DollarSign, ExternalLink,
   Download, Loader2, RefreshCw,
+  Image as ImageIcon, Twitter, Link2,
 } from "lucide-react";
 import {
   signIn as sbSignIn,
@@ -464,6 +465,32 @@ const SITE_SETTINGS_DEFAULTS = {
   // poder ajustarlo sin pedir deploy.
   whatsapp_prefill_es: "¡Hola! Me interesan sus servicios en Puerto Rico (costa oeste y centro). ¿Pueden ayudarme?",
   whatsapp_prefill_en: "Hi! I'm interested in your services in Puerto Rico (West Coast & Central). Can you help me?",
+  // PM 2026-06-22 (B): URLs de redes sociales del footer. Editables desde
+  // admin → Settings. Vacío = botón se renderea como placeholder no-clickable.
+  instagram_url: "",
+  facebook_url: "",
+  tiktok_url: "https://www.tiktok.com/@living.in.prdise",
+  // Aviso debajo del título "SEND MESSAGE" para que el usuario sepa por qué
+  // medio recibirá respuesta (cliente lo pidió: "no me indica por cuál medio
+  // se está enviando el mensaje").
+  contact_form_notice_es: "Te responderemos al correo que dejes en este formulario, normalmente dentro de las 24 horas.",
+  contact_form_notice_en: "We'll reply to the email you provide in this form, usually within 24 hours.",
+  // Sección "Our Story / Born in Cabo Rojo" de la página About — todo
+  // editable por el admin (imagen, copy bilingüe). Defaults = los textos
+  // que tenían los strings i18n previos.
+  about_story_image: "",
+  about_story_tag_es: "Nuestra historia",
+  about_story_tag_en: "Our Story",
+  about_story_title_es: "NACIDOS EN CABO ROJO",
+  about_story_title_en: "BORN IN CABO ROJO",
+  about_story_subtitle_es: "Una carta de amor a la costa oeste",
+  about_story_subtitle_en: "A love letter to the west coast",
+  about_story_p1_es: "Living in PRDISE comenzó como un proyecto de pasión entre amigos que crecieron en la costa oeste de Puerto Rico. Vimos demasiados viajeros bajar del avión en San Juan y marcharse sin conocer lo que hace mágica a nuestra isla.",
+  about_story_p1_en: "Living in PRDISE started as a passion project among friends who grew up on the west coast of Puerto Rico. We saw too many travelers hop off the plane in San Juan and leave without knowing what makes our island magical.",
+  about_story_p2_es: "Así que construimos algo diferente — tours íntimos, estadías curadas y experiencias auténticas operadas por locales que realmente aman esta tierra.",
+  about_story_p2_en: "So we built something different — intimate tours, curated stays, and authentic experiences run by locals who actually love this land.",
+  about_story_p3_es: "Desde los acantilados del Faro Los Morrillos hasta las aguas luminiscentes de La Parguera, cada viaje está diseñado para mostrarte el verdadero Puerto Rico.",
+  about_story_p3_en: "From the cliffs of Los Morrillos Lighthouse to the luminescent waters of La Parguera, every trip is designed to show you the real Puerto Rico.",
 };
 const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
 function getSetting(key) {
@@ -660,7 +687,7 @@ const TX = {
     vSust: "SUSTAINABLE", vSustD: "We partner with local businesses, respect natural spaces, and keep group sizes small to minimize impact on the places we love.",
     vPers: "PERSONAL", vPersD: "Every guide cares. Every stay is curated. Every traveler leaves feeling like they made friends, not just made a trip.",
     theTeam: "The Team", meetThe: "MEET THE", crew: "CREW",
-    theLocals: "The Locals", bornRaised: "Born & raised", localsD: "Our guides grew up in the west coast and center of the island. They know which cove catches the best sunset, which panadería opens at dawn, which road to take when it rains.",
+    theLocals: "The Guides", bornRaised: "Born & raised", localsD: "Our guides grew up in the west coast and center of the island. They know which cove catches the best sunset, which panadería opens at dawn, which road to take when it rains.",
     thePlanners: "The Planners", obsessive: "Obsessively detailed", plannersD: "From pickup timing to lunch reservations to backup plans, we sweat every detail so you don't have to think about logistics on vacation.",
     theCommunity: "The Community", localPartners: "Local partners", communityD: "We work with family-run restaurants, independent accommodations, and certified boat captains — keeping tourism money where it belongs.",
     happyTravelers: "Happy Travelers", uniqueTours: "Unique Tours", avgRating: "Avg Rating", localSupport: "Local Support",
@@ -773,7 +800,7 @@ const TX = {
     vSust: "SOSTENIBLE", vSustD: "Nos asociamos con negocios locales, respetamos los espacios naturales y mantenemos grupos pequeños para minimizar el impacto en los lugares que amamos.",
     vPers: "PERSONAL", vPersD: "Cada guía se preocupa. Cada estadía es curada. Cada viajero se va sintiendo que hizo amigos, no solo un viaje.",
     theTeam: "El Equipo", meetThe: "CONOCE AL", crew: "EQUIPO",
-    theLocals: "Los Locales", bornRaised: "Nacidos y criados", localsD: "Nuestros guías crecieron en la costa oeste y el centro de la isla. Saben cuál cala atrapa el mejor atardecer, cuál panadería abre al amanecer, cuál camino tomar cuando llueve.",
+    theLocals: "Las Guías", bornRaised: "Nacidos y criados", localsD: "Nuestros guías crecieron en la costa oeste y el centro de la isla. Saben cuál cala atrapa el mejor atardecer, cuál panadería abre al amanecer, cuál camino tomar cuando llueve.",
     thePlanners: "Los Planificadores", obsessive: "Obsesivamente detallistas", plannersD: "Desde horarios de recogida hasta reservas de almuerzo y planes de respaldo, sudamos cada detalle para que no tengas que pensar en logística en vacaciones.",
     theCommunity: "La Comunidad", localPartners: "Socios locales", communityD: "Trabajamos con restaurantes familiares, alojamientos independientes y capitanes de barco certificados — manteniendo el dinero del turismo donde pertenece.",
     happyTravelers: "Viajeros Felices", uniqueTours: "Tours Únicos", avgRating: "Calificación", localSupport: "Soporte Local",
@@ -1335,15 +1362,14 @@ body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,4
 .nav-color span:nth-child(3){background:var(--green)}.nav-color span:nth-child(4){background:var(--sky)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .logo{display:flex;align-items:center;gap:14px}
-/* PM 2026-06-22: +30% adicional sobre el ajuste previo del 2026-06-17
-   (cliente reporta que la firma "Transport · Discover · Experience" aún
-   no se lee a primera vista). Tamaños finales:
-   - desktop nav: 75px (era 58, +30%)  ·  hero: 120px (era 92, +30%)
-   - mobile nav: 62px (era 48, +30%)   ·  hero: 100px (era 78, +30%) */
-.logo-img{display:block;height:75px;width:auto;max-width:340px}
-.logo-img-sm{height:62px}
-.logo-img-lg{height:120px;max-width:470px}
-@media(max-width:640px){.logo-img{height:62px;max-width:260px}.logo-img-lg{height:100px;max-width:360px}}
+/* PM 2026-06-22 (B): +20% sobre el +30% previo. Cliente quiere todavía
+   más protagonismo de la firma. Tamaños finales:
+   - desktop nav: 90px (era 75, +20%)  ·  hero: 144px (era 120, +20%)
+   - mobile nav: 74px (era 62, +20%)   ·  hero: 120px (era 100, +20%) */
+.logo-img{display:block;height:90px;width:auto;max-width:410px}
+.logo-img-sm{height:74px}
+.logo-img-lg{height:144px;max-width:560px}
+@media(max-width:640px){.logo-img{height:74px;max-width:310px}.logo-img-lg{height:120px;max-width:430px}}
 .logo-shapes{display:flex;gap:3px;height:34px}
 .logo-shapes i{display:block;width:12px;border-radius:3px;transform:perspective(200px) rotateY(-6deg)}
 .logo-shapes i:nth-child(1){background:var(--gold)}.logo-shapes i:nth-child(2){background:var(--orange)}
@@ -1403,6 +1429,10 @@ body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,4
 .hero-kicker i:nth-child(4){background:var(--sky);animation-delay:.9s}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.4);opacity:1}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+/* PM 2026-06-22 (B): shimmer del MediaImg — barrido diagonal sobre el placeholder
+   para indicar carga sin dejar el cuadrado negro horrible. */
+@keyframes mediaShimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.media-skeleton{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.02) 0%,rgba(255,255,255,.08) 40%,rgba(255,255,255,.02) 80%);background-size:200% 100%;animation:mediaShimmer 1.4s ease-in-out infinite}
 .hero-kicker span{font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.5)}
 /* h1 con min-height fija (basada en la versión EN, que es la más alta).
    Cuando el usuario cambia EN↔ES la ES es más chica pero el bloque h1
@@ -1539,10 +1569,11 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .foot-bottom{border-top:1px solid rgba(255,255,255,.06);padding-top:24px;padding-bottom:16px;display:flex;flex-direction:column;align-items:center;gap:14px}
 @media(min-width:640px){.foot-bottom{flex-direction:row;justify-content:space-between;padding-right:96px}}
 .foot-copy{font-size:11px;color:rgba(255,255,255,.25)}
-.foot-socs{display:flex;gap:8px}
-.foot-socs button{padding:10px;border-radius:10px}
-.foot-socs button:hover{background:rgba(255,255,255,.05)}
-.foot-socs svg{width:15px;height:15px}
+/* PM 2026-06-22: +20% para dar protagonismo a redes sociales del cliente. */
+.foot-socs{display:flex;gap:10px}
+.foot-socs a,.foot-socs button{padding:12px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:inherit;text-decoration:none}
+.foot-socs a:hover,.foot-socs button:hover{background:rgba(255,255,255,.06)}
+.foot-socs svg{width:22px;height:22px}
 
 .wa-fab-wrap{position:fixed;bottom:24px;right:24px;z-index:150;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
 .wa-float{width:56px;height:56px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,.45);transition:transform .3s,box-shadow .3s;color:#fff;border:none;cursor:pointer;padding:0}
@@ -1986,19 +2017,28 @@ function Footer() {
               </div>
             </div>
             <div className="foot-bottom">
-              <div className="foot-socs">
-                {/* PM 2026-06-22: redes oficiales del cliente. Instagram/Facebook
-                    quedan como placeholder (#) hasta que el cliente confirme
-                    handles — son botones sin link en lugar de a fake URLs.
-                    TikTok = @living.in.prdise (confirmado). */}
-                <a href="#" aria-label="Instagram"><Instagram style={{ color: "var(--orange)" }} /></a>
-                <a href="#" aria-label="Facebook"><Facebook style={{ color: "var(--sky)" }} /></a>
-                <a href="https://www.tiktok.com/@living.in.prdise" target="_blank" rel="noreferrer" aria-label="TikTok">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ color: "var(--green)" }} aria-hidden="true">
-                    <path d="M16 3v3.5a4.5 4.5 0 0 0 4.5 4.5v3.2a7.5 7.5 0 0 1-4.5-1.5v6.3a5.5 5.5 0 1 1-5.5-5.5c.3 0 .6 0 .9.1V17a2.4 2.4 0 1 0 1.6 2.3V3H16Z" fill="currentColor"/>
-                  </svg>
-                </a>
-              </div>
+              {/* PM 2026-06-22 (B): URLs editables desde admin → Settings.
+                  Si el URL está vacío, el ícono se renderea apagado (no
+                  clickable) para no llevar al usuario a una URL inválida. */}
+              {(() => {
+                const ig = getSetting("instagram_url");
+                const fb = getSetting("facebook_url");
+                const tt = getSetting("tiktok_url");
+                const linkOrSpan = (url, ariaLabel, child) => url
+                  ? <a key={ariaLabel} href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel}>{child}</a>
+                  : <span key={ariaLabel} aria-label={ariaLabel + " (no configurado)"} style={{ opacity: 0.35, cursor: "default" }}>{child}</span>;
+                return (
+                  <div className="foot-socs">
+                    {linkOrSpan(ig, "Instagram", <Instagram style={{ color: "var(--orange)" }} />)}
+                    {linkOrSpan(fb, "Facebook", <Facebook style={{ color: "var(--sky)" }} />)}
+                    {linkOrSpan(tt, "TikTok", (
+                      <svg viewBox="0 0 24 24" fill="none" style={{ color: "var(--green)" }} aria-hidden="true">
+                        <path d="M16 3v3.5a4.5 4.5 0 0 0 4.5 4.5v3.2a7.5 7.5 0 0 1-4.5-1.5v6.3a5.5 5.5 0 1 1-5.5-5.5c.3 0 .6 0 .9.1V17a2.4 2.4 0 1 0 1.6 2.3V3H16Z" fill="currentColor"/>
+                      </svg>
+                    ))}
+                  </div>
+                );
+              })()}
               <span className="foot-copy">{t("footerCopy")}</span>
             </div>
           </div>
@@ -2063,6 +2103,41 @@ function WhatsAppChat() {
   );
 }
 
+// PM 2026-06-22 (B): MediaImg = wrapper sobre <img> con 3 estados:
+//   - loading: skeleton shimmer (gradient animado) mientras la red trae el byte
+//   - error/empty: placeholder elegante (icono + texto opcional)
+//   - ok: la imagen normal con fade-in al cargar
+// Se usa en cards de tours / aliados / news donde antes <img> con src vacía
+// dejaba un cuadrado negro sin contexto. La imagen NUNCA se monta si src no
+// existe (evita pedido HTTP roto y el "alt text feo" visible).
+function MediaImg({ src, alt, className, style, label }) {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+  const showPlaceholder = !src || errored;
+  return (
+    <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(255,255,255,.04)", ...(style || {}) }}>
+      {!showPlaceholder && !loaded && (
+        <div className="media-skeleton" aria-hidden="true" />
+      )}
+      {!showPlaceholder && (
+        <img
+          src={src}
+          alt={alt || ""}
+          onLoad={() => setLoaded(true)}
+          onError={() => setErrored(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: loaded ? 1 : 0, transition: "opacity .25s ease" }}
+        />
+      )}
+      {showPlaceholder && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, color: "rgba(255,255,255,.35)", background: "linear-gradient(135deg, rgba(245,166,35,.06), rgba(141,198,63,.04))" }}>
+          <ImageIcon style={{ width: 28, height: 28 }} />
+          {label && <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", maxWidth: "90%", lineHeight: 1.3 }}>{label}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Aviso bilingüe pedido por el cliente: el turista debe saber que los tours
 // son liderados en español con apoyo en inglés. Se muestra siempre el par EN
 // + ES (no depende del idioma seleccionado) porque el aviso debe llegar al
@@ -2070,8 +2145,10 @@ function WhatsAppChat() {
 // Variant 'compact' = chip pequeño para hero (no rompe layout); 'full' =
 // panel con dos líneas para detail pages donde hay más aire.
 function BilingualNotice({ style, variant = "full" }) {
-  const en = "Tours in Spanish · English assistance available";
-  const es = "Tours en español · Asistencia en inglés disponible";
+  // PM 2026-06-22: el cliente pidió cambiar el aviso por su propio tagline
+  // bilingüe que vende la propuesta de valor (no solo "tours en español").
+  const en = "Tourist transportation and authentic experiences with bilingual support";
+  const es = "Transportación turística y experiencias auténticas con apoyo bilingüe";
   if (variant === "compact") {
     return (
       <div
@@ -2284,55 +2361,40 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
-      {/* PM 2026-06-22: las 3 cards principales pasan a ser CATEGORÍAS DE
-          EXPERIENCIA (Beach Escape / River & Mountain Adventure / UTV Tours
-          in West Coast), no tours individuales. Cada card es clickable y
-          lleva a /tours?category=X donde se ven los tours clasificados.
-          Tours sin clasificar (experience_category=NULL) no aparecen en
-          ninguna card pero sí en /tours general — "Ver todos los tours".
-          Si una categoría no tiene tours publicados, se oculta. */}
+      {/* PM 2026-06-22 (B): las 3 cards principales pasan a ser ALIADOS
+          (partners), no categorías de experiencia. Cliente: "en vez de
+          mostrar servicios de Tours en general, muestra tres tarjetas de
+          aliados específicos; al hacer click te lleva a sus servicios"
+          (paridad con el filtro por aliado que ya existe en /stays).
+          Tomamos hasta 3 aliados activos que tengan AL MENOS 1 tour
+          publicado. Si ninguno califica, fallback al CTA "Ver todos los tours". */}
       {(() => {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
         if (published.length === 0) return null;
 
-        const EXPERIENCES = [
-          {
-            key: "beach_escape",
-            color: "sky",
-            titleES: "Beach Escape",
-            titleEN: "Beach Escape",
-            descES: "Playas espectaculares de aguas cristalinas: snorkeling, jet ski, banana boat, relajación y paisajes costeros inolvidables.",
-            descEN: "Discover spectacular beaches with crystal-clear waters, snorkeling, jet ski, banana boat, relaxation and unforgettable coastal scenery.",
-          },
-          {
-            key: "river_mountain",
-            color: "green",
-            titleES: "River & Mountain Adventure",
-            titleEN: "River & Mountain Adventure",
-            descES: "Ríos cristalinos, charcos naturales, cascadas y paisajes de montaña que dejan sin aliento.",
-            descEN: "Explore crystal-clear rivers, natural pools, waterfalls, and breathtaking mountain scenery.",
-          },
-          {
-            key: "utv_west_coast",
-            color: "orange",
-            titleES: "UTV Tours in West Coast",
-            titleEN: "UTV Tours in West Coast",
-            descES: "Elegí cómo vivirlo: conducí tu propio UTV en convoy con guía, o viajá de pasajero mientras recorrés rutas costeras.",
-            descEN: "Choose how you want to experience it – drive your own UTV in a guide convoy or ride along with a guide while exploring scenic coastal routes.",
-          },
-        ];
-
-        // Filtramos a las experiencias que tengan AL MENOS 1 tour clasificado.
-        const cards = EXPERIENCES
-          .map(exp => {
-            const toursInCat = published.filter(tr => tr.experienceCategory === exp.key);
-            const cover = toursInCat.find(tr => tr.img)?.img || "";
-            return { ...exp, toursInCat, cover };
+        // Contamos tours por aliado y ordenamos por # de tours desc (los más
+        // relevantes primero). Tomamos los primeros 3.
+        const partnerCounts = {};
+        for (const tr of published) {
+          if (!tr.partnerId) continue;
+          partnerCounts[tr.partnerId] = (partnerCounts[tr.partnerId] || 0) + 1;
+        }
+        const accent = ["sky", "green", "orange"];
+        const cards = Object.keys(partnerCounts)
+          .map((pid) => {
+            const p = PARTNERS.find((x) => x.id === pid);
+            if (!p || p.active === false || p.deleted_at) return null;
+            const toursOfPartner = published.filter((tr) => tr.partnerId === pid);
+            const cover = toursOfPartner.find((tr) => tr.img)?.img || p.logo || "";
+            return { partner: p, count: toursOfPartner.length, cover };
           })
-          .filter(exp => exp.toursInCat.length > 0);
+          .filter(Boolean)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3)
+          .map((c, i) => ({ ...c, color: accent[i % accent.length] }));
 
-        // Si todavía nadie clasificó ningún tour → no rendereamos la sección
-        // por categorías; el "Ver todos los tours" sigue disponible abajo.
+        // Si ningún tour publicado tiene partner_id, no hay nada que mostrar
+        // en formato "por aliado" — mantenemos el CTA "Ver todos los tours".
         if (cards.length === 0) {
           return (
             <section className="svc">
@@ -2341,8 +2403,8 @@ function HomePage() {
                   <div className="tag">{t("ourToursTag")}</div>
                   <h2>{t("curatedExp")}</h2>
                   <p>{lang === "es"
-                    ? "Estamos clasificando los tours por experiencia. Mientras tanto, podés ver el catálogo completo."
-                    : "We're sorting the tours by experience. In the meantime, browse the full catalog."}</p>
+                    ? "Estamos asociando los tours con sus aliados. Mientras tanto, podés ver el catálogo completo."
+                    : "We're linking tours to their partners. In the meantime, browse the full catalog."}</p>
                 </div>
                 <div style={{ textAlign: "center", marginTop: 32 }}>
                   <NavLink to="/tours" className="cta-sec" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px" }}>
@@ -2355,29 +2417,43 @@ function HomePage() {
           );
         }
 
+        const partnerDesc = (p, lang) => {
+          // Tomamos el primer texto disponible (notes_*), trunc para que entre
+          // en la card. Sin texto → label genérico bilingüe.
+          const raw = lang === "es"
+            ? (p.notes_es || p.notes_en || "")
+            : (p.notes_en || p.notes_es || "");
+          if (raw) return raw.length > 180 ? raw.slice(0, 177) + "…" : raw;
+          return lang === "es"
+            ? "Tours operados por este aliado de confianza."
+            : "Tours operated by this trusted partner.";
+        };
+
         return (
       <section className="svc">
         <div className="container">
           <div className="sec-head">
             <div className="tag">{t("ourToursTag")}</div>
             <h2>{t("curatedExp")}</h2>
-            <p>{t("curatedExpSub")}</p>
+            <p>{lang === "es"
+              ? "Explorá los tours organizados por nuestros aliados de confianza."
+              : "Browse tours organized by our trusted partners."}</p>
           </div>
           <>
           <div className="svc-grid">
-            {cards.map((exp) => (
-              <NavLink to={`/tours?category=${exp.key}`} key={exp.key} className="svc-card">
+            {cards.map(({ partner, count, cover, color }) => (
+              <NavLink to={`/tours?partnerId=${partner.id}`} key={partner.id} className="svc-card">
                 <div className="svc-pic">
-                  {exp.cover ? <img src={exp.cover} alt={lang === "es" ? exp.titleES : exp.titleEN} /> : <div style={{ width: "100%", height: "100%", background: `linear-gradient(135deg, ${COLORS[exp.color]}33, ${COLORS[exp.color]}11)` }} />}
-                  <div className="svc-badge" style={{ background: COLORS[exp.color] }}>
-                    {exp.toursInCat.length} {lang === "es" ? (exp.toursInCat.length === 1 ? "tour" : "tours") : (exp.toursInCat.length === 1 ? "tour" : "tours")}
+                  <MediaImg src={cover} alt={partner.name} label={partner.name} />
+                  <div className="svc-badge" style={{ background: COLORS[color] }}>
+                    {count} {count === 1 ? "tour" : "tours"}
                   </div>
                 </div>
                 <div className="svc-info">
-                  <h3>{(lang === "es" ? exp.titleES : exp.titleEN).toUpperCase()}</h3>
-                  <p>{lang === "es" ? exp.descES : exp.descEN}</p>
-                  <span className="svc-link" style={{ color: COLORS[exp.color] }}>
-                    {lang === "es" ? "Explorar" : "Explore"} <ArrowRight />
+                  <h3>{(partner.name || "").toUpperCase()}</h3>
+                  <p>{partnerDesc(partner, lang)}</p>
+                  <span className="svc-link" style={{ color: COLORS[color] }}>
+                    {lang === "es" ? "Ver tours" : "View tours"} <ArrowRight />
                   </span>
                 </div>
               </NavLink>
@@ -2418,7 +2494,7 @@ function HomePage() {
                 {homeStays.map((h) => (
                   <NavLink to={`/stay?id=${h.id}`} key={h.id} className="svc-card">
                     <div className="svc-pic">
-                      <img src={h.img} alt={h.name} />
+                      <MediaImg src={h.img} alt={h.name} label={L(h.name, h.nameES)} />
                       <div className="svc-badge" style={{ background: COLORS[h.color] }}>{h.zone || (lang === "es" ? "Estadía" : "Stay")}</div>
                     </div>
                     <div className="svc-info">
@@ -2588,7 +2664,7 @@ function HotelsList() {
                   return (
                     <div key={h.id} className="listing-card">
                       <div className="listing-pic">
-                        <img src={h.img} alt={h.name} />
+                        <MediaImg src={h.img} alt={h.name} label={h.name} />
                         <div className="listing-badge" style={{ background: COLORS[h.color] }}>{h.zone}</div>
                       </div>
                       <div className="listing-body">
@@ -2632,41 +2708,26 @@ function ToursList({ params }) {
   const { t, lang } = useLang();
   const L = (en, es) => (lang === "es" && es) ? es : en;
 
-  // PM 2026-06-22: filtrado por experiencia desde el Home. Si la URL no
-  // trae ?category=, mostramos TODOS los tours en grid plano (comportamiento
-  // previo). Si la trae, mostramos solo los de esa categoría agrupados por
-  // colaborador (partner_name) — esto satisface el pedido del cliente de
-  // "ver tours clasificados por aliado al hacer click en la card".
+  // PM 2026-06-22 (B): filtrado por aliado. El Home manda /tours?partnerId=X.
+  // Se preserva ?category=X como fallback no usado en el flujo actual por si
+  // queremos volver a categorías de experiencia más adelante.
+  const partnerIdFilter = params?.get?.("partnerId") || "";
   const categoryFilter = params?.get?.("category") || "";
-  const CATEGORY_META = {
-    beach_escape: {
-      titleES: "Beach Escape",
-      titleEN: "Beach Escape",
-      subtitleES: "Playas, snorkel, jet ski, banana boat y más.",
-      subtitleEN: "Beaches, snorkeling, jet ski, banana boat and more.",
-    },
-    river_mountain: {
-      titleES: "River & Mountain Adventure",
-      titleEN: "River & Mountain Adventure",
-      subtitleES: "Ríos, charcos, cascadas y montañas.",
-      subtitleEN: "Rivers, natural pools, waterfalls and mountains.",
-    },
-    utv_west_coast: {
-      titleES: "UTV Tours in West Coast",
-      titleEN: "UTV Tours in West Coast",
-      subtitleES: "Recorridos en UTV por la costa oeste.",
-      subtitleEN: "UTV rides along the west coast.",
-    },
-  };
-  const meta = CATEGORY_META[categoryFilter];
+  const partnerObj = partnerIdFilter ? PARTNERS.find((p) => p.id === partnerIdFilter) : null;
 
-  const pageTitle = meta ? (lang === "es" ? meta.titleES : meta.titleEN) : t("availTours");
-  const pageSubtitle = meta ? (lang === "es" ? meta.subtitleES : meta.subtitleEN) : "";
+  const pageTitle = partnerObj
+    ? (partnerObj.name || t("availTours"))
+    : t("availTours");
+  const pageSubtitle = partnerObj
+    ? (lang === "es"
+        ? (partnerObj.notes_es || partnerObj.notes_en || "")
+        : (partnerObj.notes_en || partnerObj.notes_es || ""))
+    : "";
 
   const renderTourCard = (tr) => (
     <div key={tr.id} className="listing-card">
       <div className="listing-pic">
-        <img src={tr.img} alt={tr.name} />
+        <MediaImg src={tr.img} alt={tr.name} label={L(tr.name, tr.nameES)} />
         <div className="listing-badge" style={{ background: COLORS[tr.color] }}>{tr.day}</div>
       </div>
       <div className="listing-body">
@@ -2712,19 +2773,22 @@ function ToursList({ params }) {
         <div className="inner-wrap">
           <BilingualNotice style={{ marginBottom: 22 }} />
 
-          {meta && (
+          {(partnerObj || categoryFilter) && (
             <div style={{ marginBottom: 18 }}>
               <NavLink to="/tours" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--gold)", textDecoration: "none" }}>
-                ← {lang === "es" ? "Volver a todas las experiencias" : "Back to all experiences"}
+                ← {lang === "es" ? "Ver todos los tours" : "View all tours"}
               </NavLink>
             </div>
           )}
 
           {(() => {
             const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
-            const filtered = categoryFilter
-              ? visibleTours.filter(tr => tr.experienceCategory === categoryFilter)
-              : visibleTours;
+            let filtered = visibleTours;
+            if (partnerIdFilter) {
+              filtered = filtered.filter((tr) => tr.partnerId === partnerIdFilter);
+            } else if (categoryFilter) {
+              filtered = filtered.filter((tr) => tr.experienceCategory === categoryFilter);
+            }
 
             if (filtered.length === 0) {
               return (
@@ -2732,8 +2796,8 @@ function ToursList({ params }) {
                   <div style={{ gridColumn: "1 / -1", padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.55)", background: "rgba(255,255,255,.03)", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 14 }}>
                     <MapPin style={{ width: 36, height: 36, opacity: .35, marginBottom: 10 }} />
                     <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", marginBottom: 6 }}>
-                      {categoryFilter
-                        ? (lang === "es" ? "Aún no hay tours en esta categoría" : "No tours in this category yet")
+                      {partnerIdFilter || categoryFilter
+                        ? (lang === "es" ? "Aún no hay tours en este filtro" : "No tours under this filter yet")
                         : (lang === "es" ? "Aún no hay tours publicados" : "No tours published yet")}
                     </h3>
                     <p style={{ fontSize: 13 }}>
@@ -2744,37 +2808,7 @@ function ToursList({ params }) {
               );
             }
 
-            // Vista sin filtro: grid plano (comportamiento previo).
-            if (!categoryFilter) {
-              return <div className="card-grid">{filtered.map(renderTourCard)}</div>;
-            }
-
-            // Vista filtrada: agrupar por partner_name. Tours sin colaborador
-            // van bajo un grupo "Otros / Other".
-            const groups = {};
-            for (const tr of filtered) {
-              const key = (tr.partnerName || "").trim() || (lang === "es" ? "Otros" : "Other");
-              (groups[key] ||= []).push(tr);
-            }
-            const groupNames = Object.keys(groups).sort();
-
-            return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-                {groupNames.map(name => (
-                  <div key={name}>
-                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-                      <h2 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".05em", color: "var(--gold)", margin: 0 }}>{name}</h2>
-                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
-                        {groups[name].length} {lang === "es" ? (groups[name].length === 1 ? "tour" : "tours") : (groups[name].length === 1 ? "tour" : "tours")}
-                      </span>
-                    </div>
-                    <div className="card-grid">
-                      {groups[name].map(renderTourCard)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
+            return <div className="card-grid">{filtered.map(renderTourCard)}</div>;
           })()}
         </div>
       </div>
@@ -4735,7 +4769,7 @@ function ServicesPage() {
                   onMouseLeave={(e) => e.currentTarget.style.transform = "none"}
                 >
                   <div style={{ position: "relative", height: 340, overflow: "hidden" }}>
-                    <img src={featured.img || IMG_PALM} alt={featured.title} style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform .6s" }} />
+                    <MediaImg src={featured.img} alt={featured.title} label={featured.title} />
                     <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(14,24,36,0) 30%,rgba(14,24,36,.5) 65%,rgba(14,24,36,.95) 100%)" }} />
                     <div style={{ position: "absolute", top: 18, left: 18, display: "flex", gap: 6, alignItems: "center" }}>
                       {featured.featured && (
@@ -4773,7 +4807,7 @@ function ServicesPage() {
                       onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.03)"; e.currentTarget.style.transform = "none"; }}
                     >
                       <div style={{ height: 140, overflow: "hidden", position: "relative" }}>
-                        <img src={n.img || IMG_PALM} alt={n.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <MediaImg src={n.img} alt={n.title} label={n.title} />
                         {n.category && (
                           <span style={{ position: "absolute", top: 10, left: 10, fontSize: 9, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "4px 9px", borderRadius: 99, background: "var(--gold)", color: "#0c1318" }}>{n.category}</span>
                         )}
@@ -4920,28 +4954,41 @@ function AboutPage() {
       <PageHero tag={t("about")} title="WE ARE" titleEm="PRDISE" subtitle={t("aboutHeroSub")} />
       <div className="inner-page">
         <div className="inner-wrap">
-          {/* STORY */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 48, alignItems: "center", marginBottom: 80 }} className="about-story-grid">
-            <div style={{ position: "relative" }}>
-              <div style={{ borderRadius: 24, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,.3)" }}>
-                <img src={IMG_PALM} alt="Our team" style={{ width: "100%", height: 440, objectFit: "cover" }} />
+          {/* STORY — PM 2026-06-22 (B): editable desde admin → Settings →
+              Página About. Defaults = los textos i18n previos. Si el admin
+              borra cualquier campo, getSetting() devuelve el default. */}
+          {(() => {
+            const sImg = getSetting("about_story_image");
+            const sTag = getSetting(lang === "es" ? "about_story_tag_es" : "about_story_tag_en");
+            const sTitle = getSetting(lang === "es" ? "about_story_title_es" : "about_story_title_en");
+            const sSubtitle = getSetting(lang === "es" ? "about_story_subtitle_es" : "about_story_subtitle_en");
+            const sP1 = getSetting(lang === "es" ? "about_story_p1_es" : "about_story_p1_en");
+            const sP2 = getSetting(lang === "es" ? "about_story_p2_es" : "about_story_p2_en");
+            const sP3 = getSetting(lang === "es" ? "about_story_p3_es" : "about_story_p3_en");
+            return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 48, alignItems: "center", marginBottom: 80 }} className="about-story-grid">
+              <div style={{ position: "relative" }}>
+                <div style={{ borderRadius: 24, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,.3)", height: 440 }}>
+                  <MediaImg src={sImg || IMG_PALM} alt={sTitle} label={sTitle} />
+                </div>
+                <div style={{ position: "absolute", bottom: -18, right: -14, width: 160, height: 160, borderRadius: 20, overflow: "hidden", border: "6px solid var(--deep)", boxShadow: "0 12px 32px rgba(0,0,0,.4)" }}>
+                  <img src={IMG_SUNSET_JETSKI} alt="Experience" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+                <div style={{ position: "absolute", top: -14, left: -14, width: 64, height: 64, borderRadius: 16, background: "var(--orange)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(239,108,43,.45)" }}>
+                  <Heart style={{ width: 28, height: 28, color: "#fff", fill: "#fff" }} />
+                </div>
               </div>
-              <div style={{ position: "absolute", bottom: -18, right: -14, width: 160, height: 160, borderRadius: 20, overflow: "hidden", border: "6px solid var(--deep)", boxShadow: "0 12px 32px rgba(0,0,0,.4)" }}>
-                <img src={IMG_SUNSET_JETSKI} alt="Experience" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </div>
-              <div style={{ position: "absolute", top: -14, left: -14, width: 64, height: 64, borderRadius: 16, background: "var(--orange)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(239,108,43,.45)" }}>
-                <Heart style={{ width: 28, height: 28, color: "#fff", fill: "#fff" }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".3em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 10 }}>{sTag}</div>
+                <h2 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.5rem)", letterSpacing: ".03em", marginBottom: 8, lineHeight: 1 }}>{sTitle}</h2>
+                <div style={{ fontFamily: "Dancing Script", fontSize: 22, color: "rgba(255,255,255,.7)", marginBottom: 22 }}>{sSubtitle}</div>
+                {sP1 && <p style={{ fontSize: 15, lineHeight: 1.8, color: "rgba(255,255,255,.75)", marginBottom: 14, whiteSpace: "pre-wrap" }}>{sP1}</p>}
+                {sP2 && <p style={{ fontSize: 15, lineHeight: 1.8, color: "rgba(255,255,255,.75)", marginBottom: 14, whiteSpace: "pre-wrap" }}>{sP2}</p>}
+                {sP3 && <p style={{ fontSize: 15, lineHeight: 1.8, color: "rgba(255,255,255,.75)", whiteSpace: "pre-wrap" }}>{sP3}</p>}
               </div>
             </div>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".3em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 10 }}>{t("ourStory")}</div>
-              <h2 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2.2rem,5vw,3.5rem)", letterSpacing: ".03em", marginBottom: 8, lineHeight: 1 }}>{t("bornIn")}</h2>
-              <div style={{ fontFamily: "Dancing Script", fontSize: 22, color: "rgba(255,255,255,.7)", marginBottom: 22 }}>{t("loveLetter")}</div>
-              <p style={{ fontSize: 15, lineHeight: 1.8, color: "rgba(255,255,255,.75)", marginBottom: 14 }}>{t("aboutP1")}</p>
-              <p style={{ fontSize: 15, lineHeight: 1.8, color: "rgba(255,255,255,.75)", marginBottom: 14 }}>{t("aboutP2")}<strong style={{ color: "#fff" }}>{t("aboutP2b")}</strong>{t("aboutP2c")}</p>
-              <p style={{ fontSize: 15, lineHeight: 1.8, color: "rgba(255,255,255,.75)" }}>{t("aboutP3a")}<strong style={{ color: "#fff" }}>{t("aboutP3b")}</strong>{t("aboutP3c")}</p>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* VALUES */}
           <div style={{ padding: "48px 0", borderTop: "1px solid rgba(255,255,255,.06)", borderBottom: "1px solid rgba(255,255,255,.06)", marginBottom: 64 }}>
@@ -5038,7 +5085,13 @@ function ContactPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 28 }} className="layout-2col">
             <div className="step-card">
               <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".04em", marginBottom: 6 }}>{t("sendMessage").toUpperCase()}</h2>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", marginBottom: 20 }}>{t("letsChat")}</p>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", marginBottom: 10 }}>{t("letsChat")}</p>
+              {/* PM 2026-06-22 (B): aviso del medio de respuesta. Editable
+                  desde admin → Settings → Mensajes. */}
+              <p style={{ fontSize: 12, color: "rgba(245,166,35,.85)", marginBottom: 20, padding: "8px 12px", borderRadius: 8, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.18)", display: "flex", alignItems: "flex-start", gap: 8, lineHeight: 1.55 }}>
+                <Mail style={{ width: 13, height: 13, marginTop: 2, flexShrink: 0 }} />
+                <span>{getSetting(lang === "es" ? "contact_form_notice_es" : "contact_form_notice_en")}</span>
+              </p>
               {sent ? (
                 <div style={{ padding: 28, borderRadius: 16, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.3)", textAlign: "center" }}>
                   <div style={{ width: 50, height: 50, borderRadius: "50%", background: "var(--green)", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}><Check style={{ color: "#fff", strokeWidth: 3 }} /></div>
@@ -6269,6 +6322,26 @@ function AdminPanel({ onClose }) {
     // por el cliente para reflejar cambios de alcance geográfico sin deploy.
     whatsapp_prefill_es: SITE_SETTINGS.whatsapp_prefill_es ?? "",
     whatsapp_prefill_en: SITE_SETTINGS.whatsapp_prefill_en ?? "",
+    // PM 2026-06-22 (B): redes sociales + aviso del contact form + sección
+    // About editable.
+    instagram_url: SITE_SETTINGS.instagram_url ?? "",
+    facebook_url: SITE_SETTINGS.facebook_url ?? "",
+    tiktok_url: SITE_SETTINGS.tiktok_url ?? "",
+    contact_form_notice_es: SITE_SETTINGS.contact_form_notice_es ?? "",
+    contact_form_notice_en: SITE_SETTINGS.contact_form_notice_en ?? "",
+    about_story_image: SITE_SETTINGS.about_story_image ?? "",
+    about_story_tag_es: SITE_SETTINGS.about_story_tag_es ?? "",
+    about_story_tag_en: SITE_SETTINGS.about_story_tag_en ?? "",
+    about_story_title_es: SITE_SETTINGS.about_story_title_es ?? "",
+    about_story_title_en: SITE_SETTINGS.about_story_title_en ?? "",
+    about_story_subtitle_es: SITE_SETTINGS.about_story_subtitle_es ?? "",
+    about_story_subtitle_en: SITE_SETTINGS.about_story_subtitle_en ?? "",
+    about_story_p1_es: SITE_SETTINGS.about_story_p1_es ?? "",
+    about_story_p1_en: SITE_SETTINGS.about_story_p1_en ?? "",
+    about_story_p2_es: SITE_SETTINGS.about_story_p2_es ?? "",
+    about_story_p2_en: SITE_SETTINGS.about_story_p2_en ?? "",
+    about_story_p3_es: SITE_SETTINGS.about_story_p3_es ?? "",
+    about_story_p3_en: SITE_SETTINGS.about_story_p3_en ?? "",
   });
   const [companySettings, setCompanySettings] = useState(initCompanySettings);
   const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
@@ -11211,6 +11284,68 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_en} onChange={(e) => updCompanySetting("whatsapp_prefill_en", e.target.value)} /></div>
                 </div>
 
+                {/* PM 2026-06-22 (B): redes sociales editables. Si la URL es
+                    vacía, el ícono se renderea apagado (sin link). */}
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+                    {lang==="es"?"Redes sociales":"Social media"}
+                  </div>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                    {lang==="es"
+                      ? "URL completa de cada perfil. Si dejás un campo vacío, el ícono correspondiente queda apagado en el footer del sitio."
+                      : "Full URL of each profile. Empty fields render the corresponding icon as inactive in the site footer."}
+                  </p>
+                  <div className="adm-fg"><label className="adm-fl">Instagram</label><input className="adm-fi" type="url" placeholder="https://www.instagram.com/…" value={companySettings.instagram_url} onChange={(e) => updCompanySetting("instagram_url", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">Facebook</label><input className="adm-fi" type="url" placeholder="https://www.facebook.com/…" value={companySettings.facebook_url} onChange={(e) => updCompanySetting("facebook_url", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">TikTok</label><input className="adm-fi" type="url" placeholder="https://www.tiktok.com/@…" value={companySettings.tiktok_url} onChange={(e) => updCompanySetting("tiktok_url", e.target.value)} /></div>
+                </div>
+
+                {/* PM 2026-06-22 (B): aviso del formulario de contacto. */}
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+                    {lang==="es"?"Aviso del formulario de contacto":"Contact form notice"}
+                  </div>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                    {lang==="es"
+                      ? "Texto que aparece bajo el título Send Message para explicar al cliente cómo y cuándo le responderemos."
+                      : "Text shown below the Send Message title to explain to the customer how and when they'll get a reply."}
+                  </p>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en español":"Spanish version"}</label><textarea rows={2} className="adm-fi" value={companySettings.contact_form_notice_es} onChange={(e) => updCompanySetting("contact_form_notice_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={2} className="adm-fi" value={companySettings.contact_form_notice_en} onChange={(e) => updCompanySetting("contact_form_notice_en", e.target.value)} /></div>
+                </div>
+
+                {/* PM 2026-06-22 (B): sección "Our Story" / "Born in Cabo
+                    Rojo" de la página About — imagen + 7 textos bilingues. */}
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+                    {lang==="es"?"Página About — Sección \"Nuestra Historia\"":"About page — \"Our Story\" section"}
+                  </div>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                    {lang==="es"
+                      ? "Imagen principal y textos bilingües del bloque \"Born in Cabo Rojo\". Vacíos = se usan los textos por defecto."
+                      : "Main image and bilingual texts for the \"Born in Cabo Rojo\" block. Empty fields fall back to the defaults."}
+                  </p>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"URL de la imagen":"Image URL"}</label><input className="adm-fi" type="url" placeholder="https://… (subila a tu storage o pega un URL público)" value={companySettings.about_story_image} onChange={(e) => updCompanySetting("about_story_image", e.target.value)} /></div>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Etiqueta (ES)":"Tag (ES)"}</label><input className="adm-fi" value={companySettings.about_story_tag_es} onChange={(e) => updCompanySetting("about_story_tag_es", e.target.value)} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Etiqueta (EN)":"Tag (EN)"}</label><input className="adm-fi" value={companySettings.about_story_tag_en} onChange={(e) => updCompanySetting("about_story_tag_en", e.target.value)} /></div>
+                  </div>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Título (ES)":"Title (ES)"}</label><input className="adm-fi" value={companySettings.about_story_title_es} onChange={(e) => updCompanySetting("about_story_title_es", e.target.value)} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Título (EN)":"Title (EN)"}</label><input className="adm-fi" value={companySettings.about_story_title_en} onChange={(e) => updCompanySetting("about_story_title_en", e.target.value)} /></div>
+                  </div>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Subtítulo (ES)":"Subtitle (ES)"}</label><input className="adm-fi" value={companySettings.about_story_subtitle_es} onChange={(e) => updCompanySetting("about_story_subtitle_es", e.target.value)} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Subtítulo (EN)":"Subtitle (EN)"}</label><input className="adm-fi" value={companySettings.about_story_subtitle_en} onChange={(e) => updCompanySetting("about_story_subtitle_en", e.target.value)} /></div>
+                  </div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 1 (ES)":"Paragraph 1 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p1_es} onChange={(e) => updCompanySetting("about_story_p1_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 1 (EN)":"Paragraph 1 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p1_en} onChange={(e) => updCompanySetting("about_story_p1_en", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 2 (ES)":"Paragraph 2 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p2_es} onChange={(e) => updCompanySetting("about_story_p2_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 2 (EN)":"Paragraph 2 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p2_en} onChange={(e) => updCompanySetting("about_story_p2_en", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 3 (ES)":"Paragraph 3 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p3_es} onChange={(e) => updCompanySetting("about_story_p3_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 3 (EN)":"Paragraph 3 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p3_en} onChange={(e) => updCompanySetting("about_story_p3_en", e.target.value)} /></div>
+                </div>
+
                 <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving}>
                   {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
                   {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : companySettingsSaved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : t("adm_save")}
@@ -13032,36 +13167,20 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 </select>
               </div>
             </div>
-            {/* PM 2026-06-22: clasificación pedida por el cliente — agrupa
-                tours del Home en 3 grandes experiencias. Sin clasificar = no
-                aparece en las 3 cards de Home, pero sí en /tours general.
-                `partner_name` agrupa visualmente dentro de cada categoría;
-                `markup_pct` permite excepción por servicio (default 10%, Tanamá 20%). */}
+            {/* PM 2026-06-22 (B): el cliente confirmó que la clasificación
+                del Home se hace por ALIADO (partner_id, que ya existe en
+                el form). Quitamos los campos "Experiencia" y "Colaborador
+                texto libre" del UI para evitar duplicación. La columna DB
+                `experience_category` queda sin uso (compat). Solo dejamos
+                Markup % porque permite la excepción por servicio (default
+                10%, Tanamá Full Day Adventure 20%). */}
             <div className="adm-fg-row">
-              <div className="adm-fg" style={{ flex: 2 }}>
-                <label className="adm-fl">{lang === "es" ? "Experiencia (Home)" : "Experience (Home)"}</label>
-                <select
-                  className="adm-fi"
-                  defaultValue={it.experienceCategory || ""}
-                  onChange={(e) => (it.experienceCategory = e.target.value || null)}
-                >
-                  <option value="">{lang === "es" ? "— Sin clasificar —" : "— Unclassified —"}</option>
-                  <option value="beach_escape">{lang === "es" ? "Beach Escape (playa)" : "Beach Escape"}</option>
-                  <option value="river_mountain">{lang === "es" ? "River & Mountain Adventure" : "River & Mountain Adventure"}</option>
-                  <option value="utv_west_coast">{lang === "es" ? "UTV Tours in West Coast" : "UTV Tours in West Coast"}</option>
-                </select>
-              </div>
-              <div className="adm-fg" style={{ flex: 2 }}>
-                <label className="adm-fl">{lang === "es" ? "Colaborador" : "Partner"}</label>
-                <input
-                  className="adm-fi"
-                  defaultValue={it.partnerName || ""}
-                  onChange={(e) => (it.partnerName = e.target.value)}
-                  placeholder={lang === "es" ? "Ej. Barra Salada, Aventoura…" : "E.g. Barra Salada, Aventoura…"}
-                />
-              </div>
-              <div className="adm-fg" style={{ flex: 1 }}>
-                <label className="adm-fl">{lang === "es" ? "Markup %" : "Markup %"}</label>
+              <div className="adm-fg" style={{ flex: 1, maxWidth: 200 }}>
+                <label className="adm-fl">{lang === "es" ? "Markup %" : "Markup %"}
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                    ({lang === "es" ? "sobre precio del aliado" : "over partner price"})
+                  </span>
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -15228,11 +15347,62 @@ function PostDetail({ params }) {
             <NavLink to="/blog" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--gold)", fontWeight: 700, textDecoration: "none" }}>
               <ArrowRight style={{ width: 14, height: 14, transform: "rotate(180deg)" }} /> {lang === "es" ? "Volver al Blog" : "Back to Blog"}
             </NavLink>
-            <div style={{ display: "flex", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 700, lineHeight: "32px" }}>Share:</span>
-              <button style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Facebook style={{ width: 14, height: 14 }} /></button>
-              <button style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.6)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Send style={{ width: 14, height: 14 }} /></button>
-            </div>
+            {/* PM 2026-06-22 (B): 4 share buttons funcionales. La URL canonica
+                del post es livinginprdise.com/#/post?slug=... — no usamos
+                window.location.href crudo por si el visitante llegó vía
+                preview/iframe. El title viene del post. */}
+            {(() => {
+              const shareUrl = (typeof window !== "undefined" ? window.location.origin : "https://livinginprdise.com") + `/#/post?slug=${post.slug}`;
+              const shareTitle = post.title || "Living in PRdise";
+              const enc = encodeURIComponent;
+              const targets = [
+                {
+                  Icon: Facebook, label: "Facebook", color: "#1877F2",
+                  href: `https://www.facebook.com/sharer/sharer.php?u=${enc(shareUrl)}`,
+                },
+                {
+                  Icon: MessageCircle, label: "WhatsApp", color: "#25D366",
+                  href: `https://api.whatsapp.com/send?text=${enc(shareTitle + " — " + shareUrl)}`,
+                },
+                {
+                  Icon: Twitter, label: "X / Twitter", color: "#fff",
+                  href: `https://twitter.com/intent/tweet?text=${enc(shareTitle)}&url=${enc(shareUrl)}`,
+                },
+                {
+                  Icon: Mail, label: lang === "es" ? "Email" : "Email", color: "#F5A623",
+                  href: `mailto:?subject=${enc(shareTitle)}&body=${enc(shareTitle + "\n\n" + shareUrl)}`,
+                },
+              ];
+              const copyLink = async () => {
+                try {
+                  await navigator.clipboard.writeText(shareUrl);
+                  alert(lang === "es" ? "Enlace copiado al portapapeles" : "Link copied to clipboard");
+                } catch {
+                  alert(lang === "es" ? "No se pudo copiar" : "Could not copy");
+                }
+              };
+              return (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 700, lineHeight: "32px" }}>
+                    {lang === "es" ? "Compartir:" : "Share:"}
+                  </span>
+                  {targets.map(({ Icon, label, color, href }) => (
+                    <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label}
+                      title={label}
+                      style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}
+                    >
+                      <Icon style={{ width: 14, height: 14 }} />
+                    </a>
+                  ))}
+                  <button onClick={copyLink} aria-label={lang === "es" ? "Copiar enlace" : "Copy link"}
+                    title={lang === "es" ? "Copiar enlace" : "Copy link"}
+                    style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Link2 style={{ width: 14, height: 14 }} />
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
