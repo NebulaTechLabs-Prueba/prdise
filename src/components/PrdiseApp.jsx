@@ -265,7 +265,12 @@ function mapStayToHotel(s) {
     sleeps: s.max_guests || 1,
     bedrooms: s.bedrooms || 0,
     bathrooms: s.bathrooms || 0,
-    img: resolveImg(imgs[0]),
+    // PM 2026-06-23 (D): si no hay imagen real, devolvemos "" para que
+    // MediaImg muestre SU placeholder elegante (icono + nombre del stay)
+    // en lugar del IMG_PALM (sunset SVG genérico) que confundía al cliente
+    // ("las imágenes no cargan"). El gallery sí mantiene el fallback para
+    // no romper el carousel del detail page.
+    img: imgs[0] ? resolveImg(imgs[0]) : "",
     gallery: resolveImgs(imgs),
     amenities: Array.isArray(s.amenities) ? s.amenities : [],
     desc: s.short_desc_es || s.short_desc_en || "",
@@ -322,7 +327,9 @@ function mapTourToTour(t) {
     capacity: t.max_pax || 1,
     difficulty: t.difficulty || "Easy",
     type: "beach",
-    img: resolveImg(imgs[0]),
+    // PM 2026-06-23 (D): ver mapStayToHotel — "" cuando no hay imagen real
+    // para que MediaImg use su placeholder elegante en vez del SVG IMG_PALM.
+    img: imgs[0] ? resolveImg(imgs[0]) : "",
     gallery: resolveImgs(imgs),
     includes: Array.isArray(t.includes) ? t.includes : [],
     bring: [],
@@ -2836,16 +2843,9 @@ function HomePage() {
                     <div className="svc-info">
                       <h3>{L(h.name, h.nameES).toUpperCase()}</h3>
                       <p>{L(h.desc, h.descES)}</p>
-                      <div style={{ display: "flex", alignItems: "baseline", marginBottom: 14 }}>
-                        {h.price > 0 ? (
-                          <>
-                            <span className="price" style={{ color: COLORS[h.color] }}>${h.price}</span>
-                            <span className="price-sub">{pricingUnitLabel(h.pricingUnit || "per_night", lang).toUpperCase()}</span>
-                          </>
-                        ) : (
-                          <span className="price" style={{ color: COLORS[h.color], fontSize: 18 }}>{t("onRequest")}</span>
-                        )}
-                      </div>
+                      {/* PM 2026-06-23 (D): cliente pidió NO mostrar precios
+                          en las cards del Home (igual que se hizo con tours).
+                          El precio aparece en el detail y en /stays general. */}
                       <span className="svc-link" style={{ color: COLORS[h.color] }}>{lang === "es" ? "Ver detalle" : "View details"} <ArrowRight /></span>
                     </div>
                   </NavLink>
@@ -5247,7 +5247,7 @@ function ServicesPage() {
                 {publishedStays.slice(0, 6).map((h) => (
                   <NavLink key={h.id} to={`/stay?id=${h.id}`} style={{ borderRadius: 14, overflow: "hidden", textDecoration: "none", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", display: "flex", flexDirection: "column" }}>
                     <div style={{ height: 160, overflow: "hidden", position: "relative" }}>
-                      <img src={h.img} alt={h.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <MediaImg src={h.img} alt={h.name} label={L(h.name, h.nameES)} />
                       <span style={{ position: "absolute", top: 10, right: 10, padding: "4px 10px", borderRadius: 99, background: "rgba(245,166,35,.95)", color: "#0c1318", fontSize: 10, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>{h.zone || (lang === "es" ? "Estadía" : "Stay")}</span>
                     </div>
                     <div style={{ padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
