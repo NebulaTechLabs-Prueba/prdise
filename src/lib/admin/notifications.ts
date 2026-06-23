@@ -18,18 +18,15 @@ import type { Tables } from "@/lib/supabase/database.types";
 
 export type NotificationRow = Tables<"notifications">;
 
+// PM 2026-06-23: cliente confirmó que NO se usarán daily_report ni
+// overbooking. Removidos del enum y del UI de Settings → Notificaciones.
 const KINDS = [
   "new_booking",
   "cancellation",
   "successful_payment",
   "failed_payment",
-  "overbooking",
   "new_review",
-  "daily_report",
   "new_invoice",
-  // PM 2026-06-23: el trigger `trg_contact_message_notify` dispara esto
-  // para todos los admins cada vez que se inserta en contact_messages.
-  // Antes los mensajes del form público quedaban invisibles en DB.
   "new_contact_message",
   "test",
 ] as const;
@@ -193,6 +190,56 @@ export async function createNotificationServer(
 
   if (error) return { ok: false, error: `No se pudo crear: ${error.message}` };
   return { ok: true, data: { id: data!.id } };
+}
+
+// ─── notifyAllAdmins (server-only, NO guard) ───────────────────────────────
+// PM 2026-06-23: invocado desde webhooks (Stripe/PayPal) donde NO hay
+// sesión humana. Bypasea guard — busca todos los admins activos y emite
+// 1 notification por cada uno. Idempotencia no es necesaria; cada evento
+// del webhook ya es único (event.id de Stripe / transmission_id de PayPal)
+// y los reintentos los maneja el webhook (200/500 → backoff).
+const notifyAllSchema = z.object({
+  kind: z.enum(KINDS),
+  title_es: z.string().min(1).max(200),
+  title_en: z.string().min(1).max(200),
+  body_es: z.string().max(2000).optional().nullable(),
+  body_en: z.string().max(2000).optional().nullable(),
+  link: z.string().max(500).optional().nullable(),
+});
+
+export async function notifyAllAdmins(
+  input: z.input<typeof notifyAllSchema>
+): Promise<void> {
+  const parsed = notifyAllSchema.safeParse(input);
+  if (!parsed.success) {
+    console.warn("[notifyAllAdmins] input inválido:", parsed.error.errors[0]?.message);
+    return;
+  }
+
+  const admin = createAdminClient();
+  const { data: admins, error: profErr } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("role", "admin")
+    .or("status.is.null,status.eq.active");
+
+  if (profErr || !admins?.length) {
+    console.warn("[notifyAllAdmins] no se pudieron listar admins:", profErr?.message);
+    return;
+  }
+
+  const rows = admins.map((a) => ({
+    recipient_id: a.id,
+    kind: parsed.data.kind,
+    title_es: parsed.data.title_es,
+    title_en: parsed.data.title_en,
+    body_es: parsed.data.body_es ?? null,
+    body_en: parsed.data.body_en ?? null,
+    link: parsed.data.link ?? null,
+  }));
+
+  const { error } = await admin.from("notifications").insert(rows);
+  if (error) console.warn("[notifyAllAdmins] insert fail:", error.message);
 }
 
 // ─── Preferences (per-user) ────────────────────────────────────────────────

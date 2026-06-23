@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe/client";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyAllAdmins } from "@/lib/admin/notifications";
 
 // El webhook necesita el body crudo para verificar la firma. Forzamos runtime
 // Node (no edge) y deshabilitamos el cache.
@@ -60,8 +61,23 @@ export async function POST(req: NextRequest) {
         await markInvoicePaidFromSession(session);
         break;
       }
-      // Otros eventos (payment_link.created, payment_intent.payment_failed)
-      // se ignoran silenciosamente. Stripe espera 2xx para no reintentar.
+      // PM 2026-06-23: si el cliente tiene este evento configurado en el
+      // dashboard de Stripe ("payment_intent.payment_failed"), notificamos
+      // al admin. No marcamos la invoice como failed automáticamente —
+      // el cliente puede reintentar el mismo payment link.
+      case "payment_intent.payment_failed": {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const reason = pi.last_payment_error?.message || "sin detalle";
+        await notifyAllAdmins({
+          kind: "failed_payment",
+          title_es: "Pago fallido (Stripe)",
+          title_en: "Payment failed (Stripe)",
+          body_es: `PaymentIntent ${pi.id} — motivo: ${reason}`,
+          body_en: `PaymentIntent ${pi.id} — reason: ${reason}`,
+          link: "/admin?section=invoices",
+        });
+        break;
+      }
       default:
         break;
     }
@@ -95,7 +111,16 @@ async function markInvoicePaidFromSession(
   }
 
   const admin = createAdminClient();
-  const { error } = await admin
+  // Buscamos los datos de la invoice ANTES del update para incluirlos en la
+  // notificación (number, total, customer). Solo se notifica si el update
+  // realmente cambió el estado (idempotencia + evita doble bell en reintentos).
+  const { data: inv } = await admin
+    .from("invoices")
+    .select("number, customer_name, total_cents, status")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
+  const { data: updated, error } = await admin
     .from("invoices")
     .update({
       status: "paid",
@@ -105,7 +130,8 @@ async function markInvoicePaidFromSession(
         : session.id,
     })
     .eq("id", invoiceId)
-    .neq("status", "paid"); // idempotente: no re-actualiza si ya está paid
+    .neq("status", "paid") // idempotente: no re-actualiza si ya está paid
+    .select("id");
 
   if (error) {
     console.error(
@@ -113,6 +139,21 @@ async function markInvoicePaidFromSession(
       error.message
     );
     throw error;
+  }
+
+  // PM 2026-06-23: notificar a los admins solo si el update efectivamente
+  // cambió el estado (updated.length > 0). Si ya estaba paid, fue un retry
+  // de Stripe → no spamear.
+  if (updated && updated.length > 0 && inv) {
+    const amount = (inv.total_cents / 100).toFixed(2);
+    await notifyAllAdmins({
+      kind: "successful_payment",
+      title_es: "Pago recibido (Stripe)",
+      title_en: "Payment received (Stripe)",
+      body_es: `Factura ${inv.number} de ${inv.customer_name || "cliente"} — $${amount} pagada vía Stripe.`,
+      body_en: `Invoice ${inv.number} from ${inv.customer_name || "customer"} — $${amount} paid via Stripe.`,
+      link: "/admin?section=invoices",
+    });
   }
 }
 

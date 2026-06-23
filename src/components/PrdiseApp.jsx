@@ -491,6 +491,9 @@ const SITE_SETTINGS_DEFAULTS = {
   about_story_p2_en: "So we built something different — intimate tours, curated stays, and authentic experiences run by locals who actually love this land.",
   about_story_p3_es: "Desde los acantilados del Faro Los Morrillos hasta las aguas luminiscentes de La Parguera, cada viaje está diseñado para mostrarte el verdadero Puerto Rico.",
   about_story_p3_en: "From the cliffs of Los Morrillos Lighthouse to the luminescent waters of La Parguera, every trip is designed to show you the real Puerto Rico.",
+  // PM 2026-06-23: toggle para mostrar/ocultar las pills de aliados en /tours.
+  // "true" o vacío = mostrar. "false" = ocultar.
+  tours_filter_show_pills: "true",
 };
 const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
 function getSetting(key) {
@@ -1356,11 +1359,15 @@ input,select,textarea{font-family:inherit}
    esta clase y los elementos fijos se reacomodan para no superponerse al
    banner. La var --magic-banner-h vive en root; el banner la setea. */
 body.has-magic-banner{padding-top:var(--magic-banner-h,48px)}
-body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,48px))}
+body.has-magic-banner .hero-body{padding-top:calc(170px + var(--magic-banner-h,48px))}
 .nav-color{display:flex;height:3px}.nav-color span{flex:1}
 .nav-color span:nth-child(1){background:var(--gold)}.nav-color span:nth-child(2){background:var(--orange)}
 .nav-color span:nth-child(3){background:var(--green)}.nav-color span:nth-child(4){background:var(--sky)}
-.nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
+/* PM 2026-06-23: navbar alto = logo + breathing room. Antes 68px fijo
+   pero el logo crecido (104px desktop, 85px mobile) se desbordaba.
+   Padding vertical agrega margen visual sin pelear con el flex center. */
+.nav-inner{display:flex;align-items:center;justify-content:space-between;min-height:120px;padding:8px 0;gap:20px}
+@media(max-width:640px){.nav-inner{min-height:100px}}
 .logo{display:flex;align-items:center;gap:14px}
 /* PM 2026-06-22 (C): +15% adicional. Cliente sigue pidiendo más tamaño.
    Tamaños finales:
@@ -1419,8 +1426,9 @@ body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,4
 .hero{position:relative;min-height:100vh;display:flex;align-items:flex-end;overflow:hidden}
 .hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero-grad{position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,19,24,.3) 0%,rgba(12,19,24,.1) 30%,rgba(12,19,24,.85) 75%,var(--deep) 100%)}
-.hero-body{position:relative;z-index:2;padding-top:120px;padding-bottom:80px;width:100%}
-@media(max-width:768px){.hero-body{padding-top:100px;padding-bottom:60px}}
+/* PM 2026-06-23: compensar la nav-inner de 120px (era 68 con padding-top=120 que tapaba justo) */
+.hero-body{position:relative;z-index:2;padding-top:170px;padding-bottom:80px;width:100%}
+@media(max-width:768px){.hero-body{padding-top:140px;padding-bottom:60px}}
 .hero-kicker{display:inline-flex;align-items:center;gap:8px;margin-bottom:28px}
 .hero-kicker i{width:8px;height:8px;border-radius:50%;animation:pulse 2s ease-in-out infinite}
 .hero-kicker i:nth-child(1){background:var(--gold);animation-delay:0s}
@@ -1433,6 +1441,18 @@ body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,4
    para indicar carga sin dejar el cuadrado negro horrible. */
 @keyframes mediaShimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .media-skeleton{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.02) 0%,rgba(255,255,255,.08) 40%,rgba(255,255,255,.02) 80%);background-size:200% 100%;animation:mediaShimmer 1.4s ease-in-out infinite}
+/* PM 2026-06-23: pills horizontales scrollables para /tours. Una sola línea
+   con scroll lateral; scrollbar discreta (oculta en webkit, sutil en FF). */
+.pill-strip{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 12px 2px;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.4) transparent}
+.pill-strip::-webkit-scrollbar{height:6px}
+.pill-strip::-webkit-scrollbar-track{background:transparent}
+.pill-strip::-webkit-scrollbar-thumb{background:rgba(245,166,35,.25);border-radius:99px}
+.pill-strip::-webkit-scrollbar-thumb:hover{background:rgba(245,166,35,.55)}
+.pill-strip button{flex:0 0 auto}
+.pill-strip button:hover:not([data-active="true"]){background:rgba(255,255,255,.09);color:#fff;border-color:rgba(255,255,255,.25)}
+/* PM 2026-06-23: chevron del accordion gira cuando el <details> está abierto. */
+details[open] > summary .collapsible-chev{transform:rotate(180deg)}
+details > summary::-webkit-details-marker{display:none}
 .hero-kicker span{font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.5)}
 /* h1 con min-height fija (basada en la versión EN, que es la más alta).
    Cuando el usuario cambia EN↔ES la ES es más chica pero el bloque h1
@@ -1678,7 +1698,7 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .listing-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(239,108,43,.4);color:#fff}
 
 /* Detail */
-.gallery-hero{padding-top:100px;background:var(--ink)}
+.gallery-hero{padding-top:150px;background:var(--ink)}
 .gallery-hero .inner{max-width:1240px;margin:0 auto;padding:30px 28px}
 .gallery-grid{display:grid;grid-template-columns:1fr;gap:6px;border-radius:18px;overflow:hidden;margin-top:20px}
 .gallery-grid img{width:100%;height:200px;object-fit:cover}
@@ -2100,6 +2120,51 @@ function WhatsAppChat() {
         <MessageCircle />
       </button>
     </div>
+  );
+}
+
+// PM 2026-06-23: Collapsible = accordion reutilizable para las secciones
+// de Settings del admin. Sin librería externa: un <details> nativo del
+// browser con estilos custom (a11y free, sin JS extra).
+function Collapsible({ title, icon: Icon, defaultOpen = false, children, accent = "var(--gold)" }) {
+  return (
+    <details
+      open={defaultOpen}
+      style={{
+        marginBottom: 14,
+        borderRadius: 12,
+        background: "rgba(255,255,255,.03)",
+        border: "1px solid rgba(255,255,255,.08)",
+        overflow: "hidden",
+      }}
+    >
+      <summary
+        style={{
+          listStyle: "none",
+          cursor: "pointer",
+          padding: "14px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: ".08em",
+          textTransform: "uppercase",
+          color: accent,
+          userSelect: "none",
+          transition: "background .15s",
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,.03)"}
+        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+      >
+        {Icon && <Icon style={{ width: 14, height: 14 }} />}
+        <span style={{ flex: 1 }}>{title}</span>
+        <ChevronDown style={{ width: 14, height: 14, transition: "transform .2s", color: "rgba(255,255,255,.5)" }} className="collapsible-chev" />
+      </summary>
+      <div style={{ padding: "8px 18px 18px 18px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -2776,11 +2841,14 @@ function ToursList({ params }) {
         <div className="inner-wrap">
           <BilingualNotice style={{ marginBottom: 22 }} />
 
-          {/* PM 2026-06-23: filtro por aliado con pills. Más visual que el
-              dropdown — el usuario ve de un vistazo los aliados disponibles
-              y la pill activa queda resaltada. Wrap a múltiples filas si
-              hay muchos. */}
+          {/* PM 2026-06-23: filtro por aliado con pills.
+              - 1 sola línea con scroll horizontal (overflow-x:auto en .pill-strip).
+              - Hover sutil en pills inactivas (definido en .pill-strip CSS).
+              - El admin puede ocultar todo el bloque con
+                site_settings.tours_filter_show_pills (default true). */}
           {(() => {
+            const showPills = String(getSetting("tours_filter_show_pills") || "true") !== "false";
+            if (!showPills) return null;
             const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
             const partnerIds = new Set(visibleTours.map(tr => tr.partnerId).filter(Boolean));
             const partnerOpts = PARTNERS
@@ -2798,7 +2866,6 @@ function ToursList({ params }) {
               border: "1px solid rgba(255,255,255,.15)",
               background: "rgba(255,255,255,.04)",
               color: "rgba(255,255,255,.75)",
-              textDecoration: "none",
               whiteSpace: "nowrap",
               display: "inline-flex",
               alignItems: "center",
@@ -2818,9 +2885,10 @@ function ToursList({ params }) {
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.45)", marginBottom: 10 }}>
                   {lang === "es" ? "Filtrar por aliado" : "Filter by partner"}
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div className="pill-strip">
                   <button
                     type="button"
+                    data-active={!partnerIdFilter ? "true" : "false"}
                     onClick={goAll}
                     style={!partnerIdFilter ? pillActive : pillBase}
                   >
@@ -2834,6 +2902,7 @@ function ToursList({ params }) {
                       <button
                         type="button"
                         key={p.id}
+                        data-active={isActive ? "true" : "false"}
                         onClick={() => goPartner(p.id)}
                         style={isActive ? pillActive : pillBase}
                       >
@@ -6408,6 +6477,7 @@ function AdminPanel({ onClose }) {
     about_story_p2_en: SITE_SETTINGS.about_story_p2_en ?? "",
     about_story_p3_es: SITE_SETTINGS.about_story_p3_es ?? "",
     about_story_p3_en: SITE_SETTINGS.about_story_p3_en ?? "",
+    tours_filter_show_pills: SITE_SETTINGS.tours_filter_show_pills ?? "true",
   });
   const [companySettings, setCompanySettings] = useState(initCompanySettings);
   const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
@@ -10713,7 +10783,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
                         <input type="checkbox" checked={editingPartner.active} onChange={() => setEditingPartner({ ...editingPartner, active: !editingPartner.active })} style={{ accentColor: "#8DC63F", width: 16, height: 16 }} />
-                        {lang==="es"?"Activo (visible para reportes internos y splits de comisión)":"Active (visible for internal reports and commission splits)"}
+                        {lang==="es"
+                          ? "Activo (aparece en los selectores de aliado al crear / editar servicios)"
+                          : "Active (appears in partner selectors when creating / editing services)"}
                       </label>
                     </div>
                     {/* PM 2026-06-23: toggle nuevo — el admin elige qué aliados
@@ -10761,6 +10833,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         setPartnersList([...partnersList, { ...editingPartner, id: "p" + Date.now() }]);
                       } else {
                         setPartnersList(partnersList.map(x => x.id === editingPartner.id ? editingPartner : x));
+                      }
+                      // PM 2026-06-23: sincronizar el array global PARTNERS
+                      // que usa el HomePage para decidir qué aliados van en
+                      // las 3 cards (featured_on_home). Sin esto el toggle
+                      // del admin no surte efecto hasta el próximo F5.
+                      if (!isNew) {
+                        const idx = PARTNERS.findIndex(x => x.id === editingPartner.id);
+                        if (idx >= 0) PARTNERS[idx] = { ...PARTNERS[idx], ...editingPartner };
                       }
                       setEditingPartner(null);
                     }}><Check />{lang==="es"?"Guardar":"Save"}</button>
@@ -11456,107 +11536,109 @@ textarea.adm-fi{resize:vertical;min-height:80px}
 
             {settingsTab === "general" && (
               <>
-              <div className="adm-card">
-                <div className="adm-card-head"><div className="adm-card-title">{lang==="es"?"Información de la Empresa":"Company Information"}</div></div>
+              {/* PM 2026-06-23: las secciones del tab General pasan a accordions
+                  (Collapsible) para que el form sea navegable. La primera
+                  (Empresa) queda abierta por default; las demás colapsadas. */}
+              <Collapsible title={lang==="es"?"Información de la Empresa":"Company Information"} icon={Briefcase} defaultOpen={true}>
                 <div className="adm-fg-row">
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre de la Empresa":"Company Name"}</label><input className="adm-fi" value={companySettings.company_name} onChange={(e) => updCompanySetting("company_name", e.target.value)} /></div>
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema":"Tagline"}</label><input className="adm-fi" value={companySettings.tagline} onChange={(e) => updCompanySetting("tagline", e.target.value)} /></div>
                 </div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Correo de Contacto":"Contact Email"}</label><input className="adm-fi" type="email" value={companySettings.contact_email} onChange={(e) => updCompanySetting("contact_email", e.target.value)} /></div>
-                {/* Un solo teléfono: el admin escribe el número como quiera
-                    mostrarlo y derivamos las variantes para `tel:` y `wa.me`
-                    automáticamente al guardar (PM 2026-06-10). */}
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono / WhatsApp":"Phone / WhatsApp"} <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>{lang === "es" ? "(usado para llamadas y WhatsApp)" : "(used for calls and WhatsApp)"}</span></label><input className="adm-fi" type="tel" value={companySettings.contact_phone} onChange={(e) => {
                   const display = e.target.value;
-                  // Variantes derivadas: tel: con + y dígitos; wa.me solo dígitos.
                   const digits = display.replace(/\D/g, "");
                   updCompanySetting("contact_phone", display);
                   updCompanySetting("contact_phone_tel", digits ? "+" + digits : "");
                   updCompanySetting("whatsapp_phone", digits);
                 }} placeholder="+1 (787) 237-9519" /></div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" value={companySettings.address} onChange={(e) => updCompanySetting("address", e.target.value)} /></div>
+              </Collapsible>
 
-                {/* PM 2026-06-22: plantillas editables del FAB WhatsApp/SMS. */}
-                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
-                    {lang==="es"?"Mensaje pre-relleno (WhatsApp / SMS)":"Pre-filled message (WhatsApp / SMS)"}
-                  </div>
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
-                    {lang==="es"
-                      ? "Este texto aparece pre-cargado cuando un cliente abre el chat o SMS desde el botón flotante. Se muestra según el idioma activo del visitante."
-                      : "This text shows up pre-loaded when a customer opens the chat or SMS from the floating button. Displayed based on the visitor's active language."}
-                  </p>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en español":"Spanish version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_es} onChange={(e) => updCompanySetting("whatsapp_prefill_es", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_en} onChange={(e) => updCompanySetting("whatsapp_prefill_en", e.target.value)} /></div>
+              <Collapsible title={lang==="es"?"Mensaje pre-relleno (WhatsApp / SMS)":"Pre-filled message (WhatsApp / SMS)"} icon={MessageCircle}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {lang==="es"
+                    ? "Este texto aparece pre-cargado cuando un cliente abre el chat o SMS desde el botón flotante. Se muestra según el idioma activo del visitante."
+                    : "This text shows up pre-loaded when a customer opens the chat or SMS from the floating button. Displayed based on the visitor's active language."}
+                </p>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en español":"Spanish version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_es} onChange={(e) => updCompanySetting("whatsapp_prefill_es", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={3} className="adm-fi" value={companySettings.whatsapp_prefill_en} onChange={(e) => updCompanySetting("whatsapp_prefill_en", e.target.value)} /></div>
+              </Collapsible>
+
+              <Collapsible title={lang==="es"?"Redes sociales":"Social media"} icon={Globe}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {lang==="es"
+                    ? "URL completa de cada perfil. Si dejás un campo vacío, el ícono correspondiente queda apagado en el footer del sitio."
+                    : "Full URL of each profile. Empty fields render the corresponding icon as inactive in the site footer."}
+                </p>
+                <div className="adm-fg"><label className="adm-fl">Instagram</label><input className="adm-fi" type="url" placeholder="https://www.instagram.com/…" value={companySettings.instagram_url} onChange={(e) => updCompanySetting("instagram_url", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">Facebook</label><input className="adm-fi" type="url" placeholder="https://www.facebook.com/…" value={companySettings.facebook_url} onChange={(e) => updCompanySetting("facebook_url", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">TikTok</label><input className="adm-fi" type="url" placeholder="https://www.tiktok.com/@…" value={companySettings.tiktok_url} onChange={(e) => updCompanySetting("tiktok_url", e.target.value)} /></div>
+              </Collapsible>
+
+              <Collapsible title={lang==="es"?"Aviso del formulario de contacto":"Contact form notice"} icon={Mail}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {lang==="es"
+                    ? "Texto que aparece bajo el título Send Message para explicar al cliente cómo y cuándo le responderemos."
+                    : "Text shown below the Send Message title to explain to the customer how and when they'll get a reply."}
+                </p>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en español":"Spanish version"}</label><textarea rows={2} className="adm-fi" value={companySettings.contact_form_notice_es} onChange={(e) => updCompanySetting("contact_form_notice_es", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={2} className="adm-fi" value={companySettings.contact_form_notice_en} onChange={(e) => updCompanySetting("contact_form_notice_en", e.target.value)} /></div>
+              </Collapsible>
+
+              {/* PM 2026-06-23: toggle nuevo — el admin decide si mostrar las
+                  pills de filtro en /tours. Útil si hay 1 solo aliado o no
+                  quiere el ruido visual. */}
+              <Collapsible title={lang==="es"?"Página de Tours":"Tours page"} icon={Compass}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {lang==="es"
+                    ? "Configuración visual de la página pública /tours."
+                    : "Visual configuration of the public /tours page."}
+                </p>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
+                  <input
+                    type="checkbox"
+                    checked={String(companySettings.tours_filter_show_pills || "true") !== "false"}
+                    onChange={(e) => updCompanySetting("tours_filter_show_pills", e.target.checked ? "true" : "false")}
+                    style={{ accentColor: "#F5A623", width: 16, height: 16 }}
+                  />
+                  {lang==="es"
+                    ? "Mostrar barra de filtro por aliado (pills horizontales sobre el grid de tours)"
+                    : "Show partner filter bar (horizontal pills above the tour grid)"}
+                </label>
+              </Collapsible>
+
+              <Collapsible title={lang==="es"?"Página About — Sección Nuestra Historia":"About page — Our Story section"} icon={Edit}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {lang==="es"
+                    ? "Imagen principal y textos bilingües del bloque \"Born in Cabo Rojo\". Vacíos = se usan los textos por defecto."
+                    : "Main image and bilingual texts for the \"Born in Cabo Rojo\" block. Empty fields fall back to the defaults."}
+                </p>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"URL de la imagen":"Image URL"}</label><input className="adm-fi" type="url" placeholder="https://… (subila a tu storage o pega un URL público)" value={companySettings.about_story_image} onChange={(e) => updCompanySetting("about_story_image", e.target.value)} /></div>
+                <div className="adm-fg-row">
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Etiqueta (ES)":"Tag (ES)"}</label><input className="adm-fi" value={companySettings.about_story_tag_es} onChange={(e) => updCompanySetting("about_story_tag_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Etiqueta (EN)":"Tag (EN)"}</label><input className="adm-fi" value={companySettings.about_story_tag_en} onChange={(e) => updCompanySetting("about_story_tag_en", e.target.value)} /></div>
                 </div>
-
-                {/* PM 2026-06-22 (B): redes sociales editables. Si la URL es
-                    vacía, el ícono se renderea apagado (sin link). */}
-                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
-                    {lang==="es"?"Redes sociales":"Social media"}
-                  </div>
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
-                    {lang==="es"
-                      ? "URL completa de cada perfil. Si dejás un campo vacío, el ícono correspondiente queda apagado en el footer del sitio."
-                      : "Full URL of each profile. Empty fields render the corresponding icon as inactive in the site footer."}
-                  </p>
-                  <div className="adm-fg"><label className="adm-fl">Instagram</label><input className="adm-fi" type="url" placeholder="https://www.instagram.com/…" value={companySettings.instagram_url} onChange={(e) => updCompanySetting("instagram_url", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">Facebook</label><input className="adm-fi" type="url" placeholder="https://www.facebook.com/…" value={companySettings.facebook_url} onChange={(e) => updCompanySetting("facebook_url", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">TikTok</label><input className="adm-fi" type="url" placeholder="https://www.tiktok.com/@…" value={companySettings.tiktok_url} onChange={(e) => updCompanySetting("tiktok_url", e.target.value)} /></div>
+                <div className="adm-fg-row">
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Título (ES)":"Title (ES)"}</label><input className="adm-fi" value={companySettings.about_story_title_es} onChange={(e) => updCompanySetting("about_story_title_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Título (EN)":"Title (EN)"}</label><input className="adm-fi" value={companySettings.about_story_title_en} onChange={(e) => updCompanySetting("about_story_title_en", e.target.value)} /></div>
                 </div>
-
-                {/* PM 2026-06-22 (B): aviso del formulario de contacto. */}
-                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
-                    {lang==="es"?"Aviso del formulario de contacto":"Contact form notice"}
-                  </div>
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
-                    {lang==="es"
-                      ? "Texto que aparece bajo el título Send Message para explicar al cliente cómo y cuándo le responderemos."
-                      : "Text shown below the Send Message title to explain to the customer how and when they'll get a reply."}
-                  </p>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en español":"Spanish version"}</label><textarea rows={2} className="adm-fi" value={companySettings.contact_form_notice_es} onChange={(e) => updCompanySetting("contact_form_notice_es", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Versión en inglés":"English version"}</label><textarea rows={2} className="adm-fi" value={companySettings.contact_form_notice_en} onChange={(e) => updCompanySetting("contact_form_notice_en", e.target.value)} /></div>
+                <div className="adm-fg-row">
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Subtítulo (ES)":"Subtitle (ES)"}</label><input className="adm-fi" value={companySettings.about_story_subtitle_es} onChange={(e) => updCompanySetting("about_story_subtitle_es", e.target.value)} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Subtítulo (EN)":"Subtitle (EN)"}</label><input className="adm-fi" value={companySettings.about_story_subtitle_en} onChange={(e) => updCompanySetting("about_story_subtitle_en", e.target.value)} /></div>
                 </div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 1 (ES)":"Paragraph 1 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p1_es} onChange={(e) => updCompanySetting("about_story_p1_es", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 1 (EN)":"Paragraph 1 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p1_en} onChange={(e) => updCompanySetting("about_story_p1_en", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 2 (ES)":"Paragraph 2 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p2_es} onChange={(e) => updCompanySetting("about_story_p2_es", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 2 (EN)":"Paragraph 2 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p2_en} onChange={(e) => updCompanySetting("about_story_p2_en", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 3 (ES)":"Paragraph 3 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p3_es} onChange={(e) => updCompanySetting("about_story_p3_es", e.target.value)} /></div>
+                <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 3 (EN)":"Paragraph 3 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p3_en} onChange={(e) => updCompanySetting("about_story_p3_en", e.target.value)} /></div>
+              </Collapsible>
 
-                {/* PM 2026-06-22 (B): sección "Our Story" / "Born in Cabo
-                    Rojo" de la página About — imagen + 7 textos bilingues. */}
-                <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
-                    {lang==="es"?"Página About — Sección \"Nuestra Historia\"":"About page — \"Our Story\" section"}
-                  </div>
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
-                    {lang==="es"
-                      ? "Imagen principal y textos bilingües del bloque \"Born in Cabo Rojo\". Vacíos = se usan los textos por defecto."
-                      : "Main image and bilingual texts for the \"Born in Cabo Rojo\" block. Empty fields fall back to the defaults."}
-                  </p>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"URL de la imagen":"Image URL"}</label><input className="adm-fi" type="url" placeholder="https://… (subila a tu storage o pega un URL público)" value={companySettings.about_story_image} onChange={(e) => updCompanySetting("about_story_image", e.target.value)} /></div>
-                  <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Etiqueta (ES)":"Tag (ES)"}</label><input className="adm-fi" value={companySettings.about_story_tag_es} onChange={(e) => updCompanySetting("about_story_tag_es", e.target.value)} /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Etiqueta (EN)":"Tag (EN)"}</label><input className="adm-fi" value={companySettings.about_story_tag_en} onChange={(e) => updCompanySetting("about_story_tag_en", e.target.value)} /></div>
-                  </div>
-                  <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Título (ES)":"Title (ES)"}</label><input className="adm-fi" value={companySettings.about_story_title_es} onChange={(e) => updCompanySetting("about_story_title_es", e.target.value)} /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Título (EN)":"Title (EN)"}</label><input className="adm-fi" value={companySettings.about_story_title_en} onChange={(e) => updCompanySetting("about_story_title_en", e.target.value)} /></div>
-                  </div>
-                  <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Subtítulo (ES)":"Subtitle (ES)"}</label><input className="adm-fi" value={companySettings.about_story_subtitle_es} onChange={(e) => updCompanySetting("about_story_subtitle_es", e.target.value)} /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Subtítulo (EN)":"Subtitle (EN)"}</label><input className="adm-fi" value={companySettings.about_story_subtitle_en} onChange={(e) => updCompanySetting("about_story_subtitle_en", e.target.value)} /></div>
-                  </div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 1 (ES)":"Paragraph 1 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p1_es} onChange={(e) => updCompanySetting("about_story_p1_es", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 1 (EN)":"Paragraph 1 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p1_en} onChange={(e) => updCompanySetting("about_story_p1_en", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 2 (ES)":"Paragraph 2 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p2_es} onChange={(e) => updCompanySetting("about_story_p2_es", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 2 (EN)":"Paragraph 2 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p2_en} onChange={(e) => updCompanySetting("about_story_p2_en", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 3 (ES)":"Paragraph 3 (ES)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p3_es} onChange={(e) => updCompanySetting("about_story_p3_es", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Párrafo 3 (EN)":"Paragraph 3 (EN)"}</label><textarea rows={3} className="adm-fi" value={companySettings.about_story_p3_en} onChange={(e) => updCompanySetting("about_story_p3_en", e.target.value)} /></div>
-                </div>
-
-                <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving}>
-                  {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
-                  {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : companySettingsSaved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : t("adm_save")}
-                </button>
-              </div>
+              <button className="adm-btn adm-btn-primary" onClick={saveCompanySettings} disabled={companySettingsSaving} style={{ marginTop: 8 }}>
+                {companySettingsSaving ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+                {companySettingsSaving ? (lang === "es" ? "Guardando…" : "Saving…") : companySettingsSaved ? (lang === "es" ? "Guardado ✓" : "Saved ✓") : t("adm_save")}
+              </button>
 
               {/* Language Settings */}
               <div className="adm-card" style={{ marginTop: 16 }}>
@@ -14045,14 +14127,18 @@ function NotifMatrixCard({ prefs, onChange, onSave, saving, savedFlag, onTest })
   // al cargar el panel). Se eliminaron las columnas Correo/Push — ahora hay
   // un solo toggle por evento ("Notificarme") y los prefs persisten en
   // profiles.notification_prefs.
+  // PM 2026-06-23: cliente confirmó que NO usará daily_report ni
+  // overbooking — los removimos del UI y del enum KINDS. Agregamos
+  // new_contact_message (mensajes del formulario público; trigger DB
+  // dispara). Los otros 6 tienen triggers/callers reales después de la
+  // tanda actual de fixes.
   const events = [
+    { id: "new_contact_message", label: lang==="es"?"Nuevo mensaje de contacto":"New contact message" },
     { id: "new_booking", label: lang==="es"?"Nueva reserva":"New booking" },
     { id: "cancellation", label: lang==="es"?"Cancelación":"Cancellation" },
     { id: "successful_payment", label: lang==="es"?"Pago exitoso":"Successful payment" },
     { id: "failed_payment", label: lang==="es"?"Pago fallido":"Failed payment" },
-    { id: "overbooking", label: lang==="es"?"Sobreventa":"Overbooking" },
     { id: "new_review", label: lang==="es"?"Nueva reseña":"New review" },
-    { id: "daily_report", label: lang==="es"?"Reporte diario":"Daily report" },
     { id: "new_invoice", label: lang==="es"?"Nueva factura":"New invoice" },
   ];
   // Default: todos activos si la key no está en prefs.

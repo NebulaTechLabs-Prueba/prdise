@@ -4,6 +4,7 @@ import {
   verifyWebhookSignature,
 } from "@/lib/paypal/client";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyAllAdmins } from "@/lib/admin/notifications";
 
 // Body crudo + ejecución Node (firma se calcula sobre el JSON exacto que
 // recibió PayPal; el edge runtime puede normalizar y romper la verificación).
@@ -69,9 +70,22 @@ export async function POST(req: NextRequest) {
     const eventType = String(body.event_type ?? "");
     if (eventType === "PAYMENT.CAPTURE.COMPLETED") {
       await markInvoicePaidFromCapture(body);
+    } else if (eventType === "PAYMENT.CAPTURE.DENIED" || eventType === "PAYMENT.CAPTURE.DECLINED") {
+      // PM 2026-06-23: notificar pagos fallidos al admin. No tocamos el
+      // estado de la invoice — el cliente puede reintentar el mismo
+      // approve URL de PayPal y volverá a disparar COMPLETED si sale OK.
+      const resource = (body.resource ?? {}) as { id?: string; status_details?: { reason?: string } };
+      const reason = resource.status_details?.reason || "sin detalle";
+      await notifyAllAdmins({
+        kind: "failed_payment",
+        title_es: "Pago fallido (PayPal)",
+        title_en: "Payment failed (PayPal)",
+        body_es: `Capture ${resource.id || "?"} — motivo: ${reason}`,
+        body_en: `Capture ${resource.id || "?"} — reason: ${reason}`,
+        link: "/admin?section=invoices",
+      });
     }
-    // Otros eventos (CHECKOUT.ORDER.APPROVED, PAYMENT.CAPTURE.DENIED, etc.)
-    // se ignoran silenciosamente — PayPal espera 2xx para no reintentar.
+    // Otros eventos (CHECKOUT.ORDER.APPROVED, etc.) se ignoran silenciosamente.
   } catch (e) {
     console.error("[paypal-webhook] handler error:", e);
     // 500 → PayPal reintenta con backoff (igual semántica que Stripe)
@@ -120,7 +134,14 @@ async function markInvoicePaidFromCapture(
   }
 
   const admin = createAdminClient();
-  const { error } = await admin
+  // Datos antes del update para incluirlos en la notificación.
+  const { data: inv } = await admin
+    .from("invoices")
+    .select("number, customer_name, total_cents, status")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
+  const { data: updated, error } = await admin
     .from("invoices")
     .update({
       status: "paid",
@@ -128,7 +149,22 @@ async function markInvoicePaidFromCapture(
       payment_ref: resource.id ?? null,
     })
     .eq("id", invoiceId)
-    .neq("status", "paid"); // idempotente
+    .neq("status", "paid") // idempotente
+    .select("id");
+
+  // PM 2026-06-23: notificar solo si el update efectivamente marcó la
+  // invoice (no en reintentos de webhook sobre invoices ya pagadas).
+  if (!error && updated && updated.length > 0 && inv) {
+    const amount = (inv.total_cents / 100).toFixed(2);
+    await notifyAllAdmins({
+      kind: "successful_payment",
+      title_es: "Pago recibido (PayPal)",
+      title_en: "Payment received (PayPal)",
+      body_es: `Factura ${inv.number} de ${inv.customer_name || "cliente"} — $${amount} pagada vía PayPal.`,
+      body_en: `Invoice ${inv.number} from ${inv.customer_name || "customer"} — $${amount} paid via PayPal.`,
+      link: "/admin?section=invoices",
+    });
+  }
 
   if (error) {
     console.error(
