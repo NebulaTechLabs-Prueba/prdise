@@ -41,6 +41,7 @@ export async function createPartner(formData: FormData): Promise<ActionResult> {
     utm_source: formData.get("utm_source") ?? "",
     affiliate_code: formData.get("affiliate_code") ?? "",
     active: asBool(formData, "active"),
+    featured_on_home: asBool(formData, "featured_on_home"),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -64,6 +65,7 @@ export async function createPartner(formData: FormData): Promise<ActionResult> {
       utm_source: d.utm_source,
       affiliate_code: d.affiliate_code || null,
       active: d.active,
+      featured_on_home: d.featured_on_home,
       created_by: actorId,
     })
     .select("id")
@@ -100,6 +102,7 @@ export async function updatePartner(formData: FormData): Promise<ActionResult> {
     utm_source: formData.get("utm_source") ?? "",
     affiliate_code: formData.get("affiliate_code") ?? "",
     active: asBool(formData, "active"),
+    featured_on_home: asBool(formData, "featured_on_home"),
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -123,6 +126,7 @@ export async function updatePartner(formData: FormData): Promise<ActionResult> {
       utm_source: d.utm_source,
       affiliate_code: d.affiliate_code || null,
       active: d.active,
+      featured_on_home: d.featured_on_home,
     })
     .eq("id", id);
 

@@ -1362,14 +1362,14 @@ body.has-magic-banner .hero-body{padding-top:calc(120px + var(--magic-banner-h,4
 .nav-color span:nth-child(3){background:var(--green)}.nav-color span:nth-child(4){background:var(--sky)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .logo{display:flex;align-items:center;gap:14px}
-/* PM 2026-06-22 (B): +20% sobre el +30% previo. Cliente quiere todavía
-   más protagonismo de la firma. Tamaños finales:
-   - desktop nav: 90px (era 75, +20%)  ·  hero: 144px (era 120, +20%)
-   - mobile nav: 74px (era 62, +20%)   ·  hero: 120px (era 100, +20%) */
-.logo-img{display:block;height:90px;width:auto;max-width:410px}
-.logo-img-sm{height:74px}
-.logo-img-lg{height:144px;max-width:560px}
-@media(max-width:640px){.logo-img{height:74px;max-width:310px}.logo-img-lg{height:120px;max-width:430px}}
+/* PM 2026-06-22 (C): +15% adicional. Cliente sigue pidiendo más tamaño.
+   Tamaños finales:
+   - desktop nav: 104px (era 90, +15%)  ·  hero: 166px (era 144, +15%)
+   - mobile nav: 85px (era 74, +15%)    ·  hero: 138px (era 120, +15%) */
+.logo-img{display:block;height:104px;width:auto;max-width:470px}
+.logo-img-sm{height:85px}
+.logo-img-lg{height:166px;max-width:640px}
+@media(max-width:640px){.logo-img{height:85px;max-width:360px}.logo-img-lg{height:138px;max-width:490px}}
 .logo-shapes{display:flex;gap:3px;height:34px}
 .logo-shapes i{display:block;width:12px;border-radius:3px;transform:perspective(200px) rotateY(-6deg)}
 .logo-shapes i:nth-child(1){background:var(--gold)}.logo-shapes i:nth-child(2){background:var(--orange)}
@@ -1569,11 +1569,11 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .foot-bottom{border-top:1px solid rgba(255,255,255,.06);padding-top:24px;padding-bottom:16px;display:flex;flex-direction:column;align-items:center;gap:14px}
 @media(min-width:640px){.foot-bottom{flex-direction:row;justify-content:space-between;padding-right:96px}}
 .foot-copy{font-size:11px;color:rgba(255,255,255,.25)}
-/* PM 2026-06-22: +20% para dar protagonismo a redes sociales del cliente. */
-.foot-socs{display:flex;gap:10px}
-.foot-socs a,.foot-socs button{padding:12px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:inherit;text-decoration:none}
+/* PM 2026-06-22 (C): +15% adicional sobre el +20% previo. */
+.foot-socs{display:flex;gap:12px;align-items:center}
+.foot-socs a,.foot-socs button,.foot-socs span{padding:14px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:inherit;text-decoration:none;line-height:0}
 .foot-socs a:hover,.foot-socs button:hover{background:rgba(255,255,255,.06)}
-.foot-socs svg{width:22px;height:22px}
+.foot-socs svg{width:26px;height:26px}
 
 .wa-fab-wrap{position:fixed;bottom:24px;right:24px;z-index:150;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
 .wa-float{width:56px;height:56px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(37,211,102,.45);transition:transform .3s,box-shadow .3s;color:#fff;border:none;cursor:pointer;padding:0}
@@ -2372,26 +2372,29 @@ function HomePage() {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
         if (published.length === 0) return null;
 
-        // Contamos tours por aliado y ordenamos por # de tours desc (los más
-        // relevantes primero). Tomamos los primeros 3.
+        // PM 2026-06-23: el admin marca qué aliados aparecen en el Home
+        // vía partners.featured_on_home. Si NINGUNO está marcado, fallback
+        // a los 3 con más tours publicados (preserva el comportamiento
+        // previo para no dejar el Home vacío si el admin nunca toca el toggle).
         const partnerCounts = {};
         for (const tr of published) {
           if (!tr.partnerId) continue;
           partnerCounts[tr.partnerId] = (partnerCounts[tr.partnerId] || 0) + 1;
         }
+        const eligible = PARTNERS.filter(
+          (p) => p && p.active !== false && !p.deleted_at && (partnerCounts[p.id] || 0) > 0
+        );
+        const featured = eligible.filter((p) => p.featured_on_home);
+        const chosen = (featured.length > 0
+          ? featured
+          : [...eligible].sort((a, b) => (partnerCounts[b.id] || 0) - (partnerCounts[a.id] || 0))
+        ).slice(0, 3);
         const accent = ["sky", "green", "orange"];
-        const cards = Object.keys(partnerCounts)
-          .map((pid) => {
-            const p = PARTNERS.find((x) => x.id === pid);
-            if (!p || p.active === false || p.deleted_at) return null;
-            const toursOfPartner = published.filter((tr) => tr.partnerId === pid);
-            const cover = toursOfPartner.find((tr) => tr.img)?.img || p.logo || "";
-            return { partner: p, count: toursOfPartner.length, cover };
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 3)
-          .map((c, i) => ({ ...c, color: accent[i % accent.length] }));
+        const cards = chosen.map((p, i) => {
+          const toursOfPartner = published.filter((tr) => tr.partnerId === p.id);
+          const cover = toursOfPartner.find((tr) => tr.img)?.img || p.logo || "";
+          return { partner: p, count: toursOfPartner.length, cover, color: accent[i % accent.length] };
+        });
 
         // Si ningún tour publicado tiene partner_id, no hay nada que mostrar
         // en formato "por aliado" — mantenemos el CTA "Ver todos los tours".
@@ -2773,13 +2776,76 @@ function ToursList({ params }) {
         <div className="inner-wrap">
           <BilingualNotice style={{ marginBottom: 22 }} />
 
-          {(partnerObj || categoryFilter) && (
-            <div style={{ marginBottom: 18 }}>
-              <NavLink to="/tours" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--gold)", textDecoration: "none" }}>
-                ← {lang === "es" ? "Ver todos los tours" : "View all tours"}
-              </NavLink>
-            </div>
-          )}
+          {/* PM 2026-06-23: filtro por aliado con pills. Más visual que el
+              dropdown — el usuario ve de un vistazo los aliados disponibles
+              y la pill activa queda resaltada. Wrap a múltiples filas si
+              hay muchos. */}
+          {(() => {
+            const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
+            const partnerIds = new Set(visibleTours.map(tr => tr.partnerId).filter(Boolean));
+            const partnerOpts = PARTNERS
+              .filter(p => p && p.active !== false && !p.deleted_at && partnerIds.has(p.id))
+              .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            if (partnerOpts.length === 0) return null;
+            const pillBase = {
+              padding: "8px 16px",
+              borderRadius: 99,
+              fontSize: 12.5,
+              fontWeight: 700,
+              letterSpacing: ".02em",
+              cursor: "pointer",
+              transition: "all .18s ease",
+              border: "1px solid rgba(255,255,255,.15)",
+              background: "rgba(255,255,255,.04)",
+              color: "rgba(255,255,255,.75)",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            };
+            const pillActive = {
+              ...pillBase,
+              background: "linear-gradient(135deg,var(--gold),var(--orange))",
+              color: "#0c1318",
+              border: "1px solid transparent",
+              boxShadow: "0 4px 14px rgba(245,166,35,.3)",
+            };
+            const goAll = () => { window.location.hash = "#/tours"; };
+            const goPartner = (pid) => { window.location.hash = `#/tours?partnerId=${pid}`; };
+            return (
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.45)", marginBottom: 10 }}>
+                  {lang === "es" ? "Filtrar por aliado" : "Filter by partner"}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={goAll}
+                    style={!partnerIdFilter ? pillActive : pillBase}
+                  >
+                    {lang === "es" ? "Todos" : "All"}
+                    <span style={{ fontSize: 10, opacity: 0.7 }}>({visibleTours.length})</span>
+                  </button>
+                  {partnerOpts.map(p => {
+                    const count = visibleTours.filter(tr => tr.partnerId === p.id).length;
+                    const isActive = partnerIdFilter === p.id;
+                    return (
+                      <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => goPartner(p.id)}
+                        style={isActive ? pillActive : pillBase}
+                      >
+                        {p.name}
+                        <span style={{ fontSize: 10, opacity: 0.7 }}>({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {(() => {
             const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
@@ -6897,7 +6963,12 @@ function AdminPanel({ onClose }) {
     ]},
     { group: t("adm_operations"), items: [
       { id: "invoices", label: t("adm_invoices"), Icon: Briefcase, permModule: "invoices" },
-      { id: "contacts", label: t("adm_contacts"), Icon: Mail, permModule: "contacts" },
+      // PM 2026-06-23: nuevo inbox para los mensajes del formulario de
+      // contacto público. Antes se guardaban en contact_messages pero no
+      // había UI ni notificación; ahora viven acá + un trigger DB notifica
+      // a todos los admins al insertar.
+      { id: "contact-inbox", label: lang === "es" ? "Buzón" : "Inbox", Icon: Mail, permModule: "contacts" },
+      { id: "contacts", label: t("adm_contacts"), Icon: Users, permModule: "contacts" },
     ]},
     { group: t("adm_system"), items: [
       { id: "settings", label: t("adm_settings"), Icon: Settings },
@@ -7621,7 +7692,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         { label: lang === "es" ? "Nueva ruta" : "New route", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("routes"); setEditing({ type: "route", isNew: true }); } },
                         { label: lang === "es" ? "Nuevo destino" : "New location", icon: MapPin, action: () => { setSection("transfers"); setTransferTab("locations"); setEditingLocation({ id: "new", name: "", label_es: "", label_en: "", sort_order: 100, active: true }); } },
                         { label: lang === "es" ? "Nuevo vehículo" : "New vehicle", icon: Car, action: () => { setSection("transfers"); setTransferTab("vehicles"); setEditingVehicle({ id: "new", name: "", type: "", plate: "", seats: 4, bags: 2, driver: "", base: 0, trips: 0, status: "available", features: [], desc: "", perKm: null }); } },
-                        { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true }); } },
+                        { label: lang === "es" ? "Nuevo partner" : "New partner", icon: ExternalLink, action: () => { setSection("partners"); setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true, featured_on_home: false }); } },
                         { label: lang === "es" ? "Nuevo post" : "New post", icon: Edit, action: () => { setSection("posts"); setEditing({ type: "post", isNew: true }); } },
                       ].map((it, i) => (
                         <button key={i} onClick={() => { it.action(); setQuickActionOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 8, background: "transparent", border: "none", color: "rgba(255,255,255,.85)", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left", transition: "background .15s" }} onMouseEnter={(e) => e.currentTarget.style.background = "rgba(245,166,35,.1)"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
@@ -10282,6 +10353,128 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           );
         })()}
 
+        {section === "contact-inbox" && (
+          <>
+            {/* PM 2026-06-23: Inbox del formulario público. Antes los mensajes
+                quedaban invisibles (sólo en DB). Ahora hay tabla + acciones
+                rápidas: marcar leído/respondido/spam, abrir WhatsApp, abrir
+                email. El trigger DB notifica al admin al recibir cada uno. */}
+            <div className="adm-ph">
+              <div>
+                <h1>{lang==="es"?"":""}<em>{lang==="es"?"BUZÓN":"INBOX"}</em></h1>
+                <p className="sub">{lang==="es"?"Mensajes recibidos desde el formulario de contacto público.":"Messages received from the public contact form."}</p>
+              </div>
+            </div>
+
+            <div className="adm-card">
+              <div className="adm-card-head">
+                <div className="adm-card-title">
+                  <Mail />{lang==="es"?"MENSAJES":"MESSAGES"}
+                  <span className="adm-pill">{contacts.length}</span>
+                  {contacts.filter(c => c.status === "new").length > 0 && (
+                    <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "#EF6C2B", color: "#fff", fontWeight: 800 }}>
+                      {contacts.filter(c => c.status === "new").length} {lang==="es"?"nuevos":"new"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {contacts.length === 0 ? (
+                <div style={{ padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.5)" }}>
+                  <Mail style={{ width: 36, height: 36, opacity: 0.3, marginBottom: 12 }} />
+                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".05em", marginBottom: 6 }}>
+                    {lang === "es" ? "Aún no hay mensajes" : "No messages yet"}
+                  </h3>
+                  <p style={{ fontSize: 13 }}>
+                    {lang === "es" ? "Cuando alguien complete el formulario en /contact, aparecerá acá." : "When someone submits the form at /contact, it will show up here."}
+                  </p>
+                </div>
+              ) : (
+                <div className="adm-tbl-wrap">
+                  <table className="adm-tbl">
+                    <thead><tr>
+                      <th>{lang==="es"?"De":"From"}</th>
+                      <th>{lang==="es"?"Mensaje":"Message"}</th>
+                      <th>{lang==="es"?"Fecha":"Date"}</th>
+                      <th>{lang==="es"?"Estado":"Status"}</th>
+                      <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
+                    </tr></thead>
+                    <tbody>
+                      {contacts.map((c) => {
+                        const setStatus = async (next) => {
+                          const fd = new FormData();
+                          fd.append("id", c.id);
+                          fd.append("status", next);
+                          const res = await sbUpdateContactStatus(fd);
+                          if (res?.ok) setContacts(arr => arr.map(x => x.id === c.id ? { ...x, status: next } : x));
+                        };
+                        const statusBg = {
+                          new: "#EF6C2B",
+                          read: "rgba(255,255,255,.18)",
+                          replied: "#22C55E",
+                          spam: "rgba(255,255,255,.08)",
+                        }[c.status] || "rgba(255,255,255,.1)";
+                        const statusLab = {
+                          new: lang === "es" ? "Nuevo" : "New",
+                          read: lang === "es" ? "Leído" : "Read",
+                          replied: lang === "es" ? "Respondido" : "Replied",
+                          spam: "Spam",
+                        }[c.status] || c.status;
+                        const phoneDigits = (c.phone || "").replace(/\D/g, "");
+                        return (
+                          <tr key={c.id}>
+                            <td>
+                              <div style={{ fontWeight: 600, color: "#fff" }}>{c.name || "—"}</div>
+                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{c.email || "—"}{c.phone ? ` · ${c.phone}` : ""}</div>
+                            </td>
+                            <td style={{ maxWidth: 460, color: "rgba(255,255,255,.75)", fontSize: 12.5, lineHeight: 1.5 }}>
+                              {(c.message || "").length > 220 ? (c.message || "").slice(0, 217) + "…" : c.message}
+                            </td>
+                            <td style={{ fontSize: 12, color: "rgba(255,255,255,.55)", whiteSpace: "nowrap" }}>{c.date}</td>
+                            <td>
+                              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 99, background: statusBg, color: c.status === "read" || c.status === "spam" ? "rgba(255,255,255,.7)" : "#fff" }}>
+                                {statusLab}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="adm-row-actions" style={{ justifyContent: "flex-end" }}>
+                                {c.email && (
+                                  <a className="adm-icon-btn" href={`mailto:${c.email}?subject=${encodeURIComponent("Re: " + (lang === "es" ? "Tu mensaje a Living in PRdise" : "Your message to Living in PRdise"))}`} title={lang === "es" ? "Responder por correo" : "Reply via email"}>
+                                    <Mail />
+                                  </a>
+                                )}
+                                {phoneDigits && (
+                                  <a className="adm-icon-btn" href={`https://wa.me/${phoneDigits}`} target="_blank" rel="noopener noreferrer" title="WhatsApp" style={{ color: "#25D366" }}>
+                                    <MessageCircle />
+                                  </a>
+                                )}
+                                {c.status === "new" && (
+                                  <button className="adm-icon-btn" onClick={() => setStatus("read")} title={lang === "es" ? "Marcar leído" : "Mark read"}>
+                                    <Eye />
+                                  </button>
+                                )}
+                                {c.status !== "replied" && (
+                                  <button className="adm-icon-btn" onClick={() => setStatus("replied")} title={lang === "es" ? "Marcar respondido" : "Mark replied"} style={{ color: "#22C55E" }}>
+                                    <Check />
+                                  </button>
+                                )}
+                                {c.status !== "spam" && (
+                                  <button className="adm-icon-btn" onClick={() => setStatus("spam")} title="Spam">
+                                    <X />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {section === "contacts" && (
           <>
             {/* PM 2026-06-11: la sección antes pretendía ser un CRM (leads del
@@ -10448,7 +10641,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <h1>{lang==="es"?"GESTIÓN DE":"PARTNER"} <em>{lang==="es"?"ALIANZAS":"MANAGEMENT"}</em></h1>
                 <p className="sub">{lang==="es"?"Empresas aliadas que proveen servicios bajo la marca PRDISE. Se usan internamente para reportes de comisión y splits de revenue — el cliente nunca ve estos enlaces.":"Partner companies providing services under the PRDISE brand. Used internally for commission reports and revenue splits — never shown to customers."}</p>
               </div>
-              <button className="adm-btn adm-btn-primary" onClick={() => setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true })}><Plus />{lang==="es"?"Nueva alianza":"New partner"}</button>
+              <button className="adm-btn adm-btn-primary" onClick={() => setEditingPartner({ id: "new", name: "", slug: "", base_url: "", logo: "", contact_email: "", contact_phone: "", notes_es: "", notes_en: "", utm_source: "prdise", affiliate_code: "", active: true, featured_on_home: false })}><Plus />{lang==="es"?"Nueva alianza":"New partner"}</button>
             </div>
             <div className="adm-card">
               <div className="adm-card-head">
@@ -10523,6 +10716,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         {lang==="es"?"Activo (visible para reportes internos y splits de comisión)":"Active (visible for internal reports and commission splits)"}
                       </label>
                     </div>
+                    {/* PM 2026-06-23: toggle nuevo — el admin elige qué aliados
+                        aparecen en las 3 cards del Home. Si ninguno está
+                        marcado, fallback automático a los 3 con más tours. */}
+                    <div className="adm-fg" style={{ gridColumn: "1/-1" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
+                        <input type="checkbox" checked={!!editingPartner.featured_on_home} onChange={() => setEditingPartner({ ...editingPartner, featured_on_home: !editingPartner.featured_on_home })} style={{ accentColor: "#F5A623", width: 16, height: 16 }} />
+                        {lang==="es"
+                          ? "Mostrar en el Home (entra en las 3 cards principales — máximo 3)"
+                          : "Show on Home (appears in the 3 main cards — max 3)"}
+                      </label>
+                    </div>
                   </div>
                   <div className="adm-modal-actions">
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingPartner(null)}>{lang==="es"?"Cancelar":"Cancel"}</button>
@@ -10546,6 +10750,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         if (editingPartner.utm_source) fd.append("utm_source", editingPartner.utm_source);
                         if (editingPartner.affiliate_code) fd.append("affiliate_code", editingPartner.affiliate_code);
                         fd.append("active", editingPartner.active ? "true" : "false");
+                        // PM 2026-06-23: flag de inclusión en el Home.
+                        fd.append("featured_on_home", editingPartner.featured_on_home ? "true" : "false");
                         const action = isNew ? sbCreatePartner : sbUpdatePartner;
                         res = await action(fd);
                       } catch (e) { res = { ok: false, error: e?.message || String(e) }; }

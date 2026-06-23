@@ -27,6 +27,10 @@ const KINDS = [
   "new_review",
   "daily_report",
   "new_invoice",
+  // PM 2026-06-23: el trigger `trg_contact_message_notify` dispara esto
+  // para todos los admins cada vez que se inserta en contact_messages.
+  // Antes los mensajes del form público quedaban invisibles en DB.
+  "new_contact_message",
   "test",
 ] as const;
 

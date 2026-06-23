@@ -887,6 +887,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           deleted_at: string | null
+          featured_on_home: boolean
           id: string
           logo: string | null
           name: string
@@ -905,6 +906,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
+          featured_on_home?: boolean
           id?: string
           logo?: string | null
           name: string
@@ -923,6 +925,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
+          featured_on_home?: boolean
           id?: string
           logo?: string | null
           name?: string

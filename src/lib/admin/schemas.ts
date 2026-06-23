@@ -574,6 +574,10 @@ const partnerBaseSchema = z.object({
   ),
   affiliate_code: optionalText(120, "Código afiliado"),
   active: booleanFlagSchema.default(true),
+  // PM 2026-06-23: flag para que el admin elija qué aliados aparecen en
+  // las 3 cards del Home. Default false; si nadie tilda, el Home cae al
+  // top-3 por # de tours (ver Home render).
+  featured_on_home: booleanFlagSchema.default(false),
 });
 
 export const createPartnerSchema = partnerBaseSchema;
