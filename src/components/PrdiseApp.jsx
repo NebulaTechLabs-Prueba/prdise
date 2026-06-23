@@ -379,12 +379,35 @@ function mapVehicleToVehicle(v) {
   };
 }
 
+// PM 2026-06-23: helper compartido. Calcula el precio que se muestra al
+// cliente público para UNA leg (from→to + km) usando UN vehículo, según
+// el `pricing_mode` que el admin eligió para la ruta correspondiente.
+//   - route_price       → base de la ruta tal cual (ignora vehículo+km)
+//   - vehicle_formula   → vehículo.base + vehículo.perKm × km
+//   - route_plus_vehicle → suma de los dos anteriores
+// Si la leg no matchea ninguna ruta del admin (estimada), cae a
+// vehicle_formula porque no tenemos un precio explícito que respetar.
+function computeLegPrice({ route, vehicle, km }) {
+  if (!vehicle) return 0;
+  const base = vehicle.base || 0;
+  const perKm = vehicle.perKm || 0;
+  const formula = base + perKm * (Number(km) || 0);
+  if (!route) return formula; // leg estimada, sin ruta admin
+  const mode = route.pricingMode || "route_price";
+  const routeOnly = route.price || 0;
+  if (mode === "route_price") return routeOnly;
+  if (mode === "route_plus_vehicle") return routeOnly + formula;
+  // vehicle_formula
+  return formula;
+}
+
 function mapRouteToRoute(r) {
   return {
     id: r.id,
     from: r.from_location,
     to: r.to_location,
     price: Math.round((r.base_price_cents || 0) / 100),
+    priceCents: r.base_price_cents || 0,
     maxPax: r.max_pax || 4,
     distanceKm: r.distance_km == null ? null : Number(r.distance_km),
     durationMinutes: r.duration_minutes ?? null,
@@ -397,6 +420,15 @@ function mapRouteToRoute(r) {
     pricingUnit: r.pricing_unit || "per_unit",
     // PM 2026-06-11: vehicle FK opcional en DB pero requerido en UI nueva.
     vehicleId: r.vehicle_id || null,
+    // PM 2026-06-23: descripción corta editable desde admin (visible en
+    // Servicios → Popular Routes y en /transfer-results).
+    descES: r.description_es || "",
+    descEN: r.description_en || "",
+    // pricing_mode: cómo se calcula el precio mostrado al cliente final.
+    //   route_price        → usa solo route.priceCents
+    //   vehicle_formula    → usa vehículo.base + vehículo.perKm × km
+    //   route_plus_vehicle → suma ambos
+    pricingMode: r.pricing_mode || "route_price",
   };
 }
 
@@ -988,6 +1020,55 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
   const waHref = buildWhatsAppHref({ user, lang, service });
   const smsHref = buildSmsHref({ user, lang, service });
   const labelMain = lang === "es" ? "Consultar" : "Ask us";
+
+  // PM 2026-06-23: el flujo es referral por WhatsApp/SMS — la conversación
+  // sigue fuera del sistema. Antes de abrir el canal, persistimos un
+  // contact_message para que el admin tenga registro 100% del lead
+  // (cliente: "el sistema no debe perder el 100% del contacto o pedido").
+  // El trigger DB existente notifica al admin via bell.
+  const KIND_TAG = ({ stay: "STAY", tour: "TOUR", transfer: "TRANSFER" }[service?.kind] || "GENERAL");
+  const recordAndOpen = (channel, href) => {
+    try {
+      const fullName = (user?.firstName || user?.name || "").trim();
+      const name = fullName || (lang === "es" ? "Visitante anónimo" : "Anonymous visitor");
+      // contact_messages.email es NOT NULL en DB. Si el visitante no está
+      // logueado, usamos un sentinel para no perder el lead. El admin lo
+      // ve igual en el Buzón (el name + el body del mensaje describen el
+      // contexto). Si querés en el futuro respetar la privacidad y no
+      // guardar nada de anónimos, este es el lugar para devolver early.
+      const email = user?.email || "anon@livinginprdise.local";
+      const phone = user?.phone || "";
+      const channelLab = channel === "whatsapp" ? "WhatsApp" : "SMS";
+      const priceVal = Number(service?.priceUsd);
+      const hasPrice = Number.isFinite(priceVal) && priceVal > 0;
+      const priceLine = hasPrice
+        ? (lang === "es" ? `\nPrecio referencia: $${priceVal.toFixed(0)} USD` : `\nReference price: $${priceVal.toFixed(0)} USD`)
+        : "";
+      const detailsLine = service?.details
+        ? (lang === "es" ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
+        : "";
+      const intro = lang === "es"
+        ? `[${KIND_TAG}] [${channelLab}] El visitante inició contacto por ${channelLab} para: ${service?.name || "(servicio sin nombre)"}.`
+        : `[${KIND_TAG}] [${channelLab}] Visitor started contact via ${channelLab} for: ${service?.name || "(unnamed service)"}.`;
+      const message = intro + priceLine + detailsLine;
+      const fd = new FormData();
+      fd.append("name", name);
+      fd.append("email", email);
+      if (phone) fd.append("phone", phone);
+      fd.append("message", message);
+      // Best-effort: NO bloqueamos al usuario. Si falla el insert, el
+      // referral sigue abriendo wa.me/sms igual.
+      sbSubmitContact(fd).catch(() => {});
+    } catch { /* never break the referral flow */ }
+    // Abrimos el canal. WhatsApp en nueva pestaña; SMS dispara la app
+    // nativa del SO (mejor en _self para mobile).
+    if (channel === "whatsapp") {
+      window.open(href, "_blank", "noopener,noreferrer");
+    } else {
+      window.location.href = href;
+    }
+    setOpen(false);
+  };
   const colorMap = {
     gold: { bg: "linear-gradient(135deg,#F5A623,#EF6C2B)", border: "transparent", fg: "#fff" },
     green: { bg: "rgba(141,198,63,.18)", border: "rgba(141,198,63,.5)", fg: "#8DC63F" },
@@ -1027,10 +1108,15 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* PM 2026-06-23: onClick → recordAndOpen para que cada referral
+              quede registrado en contact_messages (trigger DB notifica al
+              admin). preventDefault evita que el browser navegue antes de
+              que el insert se dispare. */}
           <a
             href={waHref}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => { e.preventDefault(); recordAndOpen("whatsapp", waHref); }}
             style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 8, textDecoration: "none", color: "#fff", fontSize: 12.5, fontWeight: 600, transition: "background .15s" }}
             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(37,211,102,.18)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
@@ -1040,6 +1126,7 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
           </a>
           <a
             href={smsHref}
+            onClick={(e) => { e.preventDefault(); recordAndOpen("sms", smsHref); }}
             style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 8, textDecoration: "none", color: "#fff", fontSize: 12.5, fontWeight: 600, transition: "background .15s" }}
             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(245,166,35,.18)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
@@ -2074,6 +2161,10 @@ function WhatsAppChat() {
   // WhatsApp (chat) y SMS (texto). El número de WhatsApp y el de teléfono
   // tradicional vienen de site_settings (whatsapp_phone y contact_phone_tel)
   // para que se puedan administrar sin tocar código.
+  // PM 2026-06-23: NO se hookea a contact_messages — el mensaje pre-relleno
+  // es plantilla genérica (sin servicio asociado) y para el admin no aporta
+  // valor de seguimiento. Sólo los referrals desde stay/tour/transfer
+  // (ContactSplitButton) persisten en el Buzón.
   const { lang } = useLang();
   const [open, setOpen] = useState(false);
   const waPhone = getSetting("whatsapp_phone");
@@ -3553,11 +3644,27 @@ function TransferSearchPage() {
   const { t, lang } = useLang();
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = toISO(tomorrow);
-  // Read query params from quick search
+  // Read query params from quick search.
+  // PM 2026-06-23: el dropdown usa el label LOCALIZADO como `value` del
+  // option. Si la URL trae "?from=SJU Airport (San Juan)" (EN) y el idioma
+  // activo es ES, el option no matchea y el dropdown queda vacío.
+  // Resolvemos buscando el location por label_es OR label_en y devolviendo
+  // el label que corresponde al idioma actual.
   const qs = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  const resolveLocLabel = (raw) => {
+    if (!raw) return "";
+    const norm = raw.trim().toLowerCase();
+    const found = (Array.isArray(TRANSFER_LOCATIONS) ? TRANSFER_LOCATIONS : []).find(
+      (l) => (l.label_es || "").trim().toLowerCase() === norm
+          || (l.label_en || "").trim().toLowerCase() === norm
+          || (l.name || "").trim().toLowerCase() === norm
+    );
+    if (!found) return raw; // dejamos lo que vino — quizá es texto libre
+    return lang === "es" ? (found.label_es || found.label_en || raw) : (found.label_en || found.label_es || raw);
+  };
   const [form, setForm] = useState({
-    from: qs.get("from") || "",
-    to: qs.get("to") || "",
+    from: resolveLocLabel(qs.get("from") || ""),
+    to: resolveLocLabel(qs.get("to") || ""),
     // PM 2026-06-11: cuando se elige "Otro/Other", abrimos un text input para
     // que el cliente ingrese el punto en cuestión (lugar no en el catálogo).
     fromCustom: "",
@@ -3637,6 +3744,31 @@ function TransferSearchPage() {
       <PageHero tag={t("transfers")} title={t("transferHeroTitle")} titleEm={t("transferHeroBold")} subtitle={t("transferHeroSub")} />
       <div className="inner-page">
         <div className="inner-wrap">
+
+          {/* PM 2026-06-23: stats arriba del form para que el visitante vea
+              alcance antes de pedir cotización. Las cifras se calculan en
+              vivo desde el catálogo cargado. */}
+          {(() => {
+            const activeRoutes = (Array.isArray(ROUTES) ? ROUTES : []).filter(r => r.active !== false);
+            const activeVehicles = (Array.isArray(VEHICLES) ? VEHICLES : []).filter(v => v.active !== false);
+            const activeLocs = (Array.isArray(TRANSFER_LOCATIONS) ? TRANSFER_LOCATIONS : []).filter(l => l.active !== false);
+            const STATS = [
+              { label: lang === "es" ? "Rutas activas" : "Active routes",  value: activeRoutes.length,  c: "var(--sky)" },
+              { label: lang === "es" ? "Vehículos"      : "Vehicles",      value: activeVehicles.length, c: "var(--green)" },
+              { label: lang === "es" ? "Destinos"       : "Destinations",  value: activeLocs.length,     c: "var(--gold)" },
+              { label: lang === "es" ? "Multi-tramo"    : "Multi-leg",     value: "✓",                   c: "var(--orange)" },
+            ];
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 22 }}>
+                {STATS.map((s) => (
+                  <div key={s.label} style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 6 }}>{s.label}</div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 28, color: s.c }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           <div className="search-form">
             {/* PM 2026-06-15: copy contextual en preguntas — labels puntuales
@@ -3858,6 +3990,14 @@ function TransferResultsPage() {
   const { lang } = useLang();
   const [search, setSearch] = useState(null);
   const [user, setUser] = useState(null);
+  // PM 2026-06-23 — toggle "vehículo distinto por recorrido" (cliente:
+  // "evitarle por default al cliente tener que seleccionar el mismo vehículo
+  // en cada viaje que añada"). Default OFF = 1 mismo vehículo para todo;
+  // si lo activa, por cada leg aparece un selector individual.
+  const [distinctVehiclesPerLeg, setDistinctVehiclesPerLeg] = useState(false);
+  // Cuando está distinctVehiclesPerLeg activo, guardamos el vehiculo
+  // elegido por cada leg-index. La leg 0 = primary.
+  const [perLegVehicle, setPerLegVehicle] = useState({});
   useEffect(() => {
     const s = PRDISE.load("transferSearch", null);
     if (!s) { nav("/transfer-search"); return; }
@@ -3866,22 +4006,12 @@ function TransferResultsPage() {
     if (u) setUser(u);
   }, []);
   if (!search) return null;
-  // Capacidad requerida: el vehículo debe cubrir el recorrido más exigente
-  // (más pasajeros + más maletas de cualquier recorrido del servicio).
+
   const trips = Array.isArray(search.trips) ? search.trips : [];
-  const maxPax = Math.max(search.pax || 1, ...trips.map((tp) => tp.pax || 1));
-  const maxBags = Math.max(search.bags || 0, ...trips.map((tp) => tp.bags || 0));
-  const eligible = VEHICLES.filter((v) => v.seats >= maxPax && v.bags >= maxBags);
   const tripCount = 1 + trips.length;
-  // PM 2026-06-17: precio total = suma de TODOS los recorridos (cada uno
-  // cuenta como un viaje completo, ej: round-trip o 3 viajes en días
-  // distintos). Antes el cálculo usaba solo search.km del recorrido primario,
-  // ignorando trips[] → quedaba con el precio inicial sin importar cuántas
-  // paradas/días extra agregara el cliente.
-  //
-  // Cada leg tiene un flag `estimated` = true cuando no encontramos la ruta
-  // en ROUTES (admin no la configuró). En ese caso usamos DEFAULT_KM como
-  // km estimado y el UI muestra disclaimer "precio aproximado".
+  // Lookup de ruta por (from, to). Soporta el caso inverso (mismo trayecto
+  // al revés). Si no matchea, la leg queda "estimated" y se usa
+  // DEFAULT_KM_ESTIMATE para el cálculo del vehículo.
   const DEFAULT_KM_ESTIMATE = 50;
   const findRoute = (from, to) =>
     ROUTES.find((r) => r.from === from && r.to === to)
@@ -3889,25 +4019,93 @@ function TransferResultsPage() {
   const primaryRoute = findRoute(search.from, search.to);
   const allLegs = [
     {
+      idx: 0,
       from: search.from,
       to: search.to,
+      pax: search.pax || 1,
+      bags: search.bags || 0,
       km: primaryRoute ? primaryRoute.km : (search.km || DEFAULT_KM_ESTIMATE),
       time_est: primaryRoute?.time || search.time_est || "",
       estimated: !primaryRoute,
+      route: primaryRoute || null,
     },
-    ...trips.map((tp) => {
+    ...trips.map((tp, i) => {
       const r = findRoute(tp.from, tp.to);
       return {
+        idx: i + 1,
         from: tp.from,
         to: tp.to,
+        pax: tp.pax || 1,
+        bags: tp.bags || 0,
         km: r ? r.km : DEFAULT_KM_ESTIMATE,
         time_est: r?.time || "",
         estimated: !r,
+        route: r || null,
       };
     }),
   ];
   const totalKm = allLegs.reduce((s, l) => s + (Number(l.km) || 0), 0);
   const hasEstimatedLegs = allLegs.some((l) => l.estimated);
+  // Capacidad mínima requerida para satisfacer TODOS los legs con UN solo
+  // vehículo (modo default). Necesario para filtrar la lista del select.
+  const maxPax = Math.max(...allLegs.map((l) => l.pax));
+  const maxBags = Math.max(...allLegs.map((l) => l.bags));
+  const fitsAll = (v) => (v.seats || 0) >= maxPax && (v.bags || 0) >= maxBags;
+  const fitsLeg = (v, leg) => (v.seats || 0) >= leg.pax && (v.bags || 0) >= leg.bags;
+  // PM 2026-06-23 — vehículo recomendado por la ruta del admin (si la
+  // primary route lo tiene asignado y cumple capacidad). Lo destacamos.
+  const recommendedVehicle = primaryRoute?.vehicleId
+    ? VEHICLES.find((v) => v.id === primaryRoute.vehicleId && fitsAll(v)) || null
+    : null;
+  const eligibleAll = VEHICLES.filter((v) => v.active !== false && fitsAll(v));
+  // Si no hay vehículos que cumplan TODAS las capacidades, recomendamos los
+  // 3 más cercanos (los que más se acerquen al requerimiento) — cliente:
+  // "se le recomienda el más cercano o cuál es la ruta de acción".
+  const nearestFallback = eligibleAll.length === 0
+    ? VEHICLES.filter((v) => v.active !== false)
+        .slice()
+        .sort((a, b) => {
+          const aGap = Math.max(0, maxPax - (a.seats || 0)) + Math.max(0, maxBags - (a.bags || 0));
+          const bGap = Math.max(0, maxPax - (b.seats || 0)) + Math.max(0, maxBags - (b.bags || 0));
+          return aGap - bGap;
+        })
+        .slice(0, 3)
+    : [];
+  // Reordenamos: el recomendado primero (con flag para destacarlo en el UI).
+  const orderedEligible = recommendedVehicle
+    ? [recommendedVehicle, ...eligibleAll.filter((v) => v.id !== recommendedVehicle.id)]
+    : eligibleAll;
+
+  // PM 2026-06-23 — precio por vehículo cuando se usa el MISMO para todas
+  // las legs: Σ computeLegPrice(legi, V). Cada leg respeta su pricing_mode.
+  const totalForVehicle = (v) => allLegs.reduce(
+    (s, l) => s + computeLegPrice({ route: l.route, vehicle: v, km: l.km }),
+    0
+  );
+  // Cuando distinctVehiclesPerLeg=true, sumamos lo que el usuario eligió
+  // por cada leg. Si una leg aún no tiene vehículo, se cuenta como $0
+  // (el resumen incompleto se ve en el UI hasta que elija todos).
+  const totalPerLegMode = allLegs.reduce((s, l) => {
+    const vid = perLegVehicle[l.idx];
+    const v = vid ? VEHICLES.find((x) => x.id === vid) : null;
+    return s + (v ? computeLegPrice({ route: l.route, vehicle: v, km: l.km }) : 0);
+  }, 0);
+  const allLegsHaveVehicle = allLegs.every((l) => perLegVehicle[l.idx]);
+
+  // Texto del WhatsApp / SMS — siempre incluye el desglose por leg.
+  const buildDetails = (vehicleResolver) => {
+    const tag = (i) => `${lang === "es" ? "R" : "T"}${i + 1}`;
+    const lines = allLegs.map((l) => {
+      const v = vehicleResolver(l);
+      const price = v ? computeLegPrice({ route: l.route, vehicle: v, km: l.km }) : 0;
+      const dateLine = l.idx === 0
+        ? `${search.date}${search.time ? ` ${search.time}` : ""}`
+        : `${trips[l.idx - 1]?.date || ""}${trips[l.idx - 1]?.time ? ` ${trips[l.idx - 1].time}` : ""}`;
+      return `${tag(l.idx)}: ${l.from} → ${l.to} · ${dateLine} · ${l.pax} pax · ${l.bags} bags${v ? ` · ${v.name} · $${price.toFixed(0)}` : ""}`;
+    });
+    return lines.join("\n");
+  };
+
   return (
     <>
       <PageHero
@@ -3923,22 +4121,50 @@ function TransferResultsPage() {
 
           <div className="search-summary">
             <div style={{ fontSize: 13, color: "rgba(255,255,255,.75)", flex: 1 }}>
-              <div><strong>{search.from}</strong> → <strong>{search.to}</strong> · {search.date}{search.time ? ` ${search.time}` : ""} · {search.pax} pax · {search.bags} bags</div>
-              {trips.map((tp, i) => (
-                <div key={i} style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,.6)" }}>
-                  <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(245,166,35,.15)", color: "var(--gold)", fontWeight: 700, marginRight: 6 }}>
-                    {lang === "es" ? `R${i + 2}` : `T${i + 2}`}
-                  </span>
-                  <strong>{tp.from}</strong> → <strong>{tp.to}</strong> · {tp.date}{tp.time ? ` ${tp.time}` : ""} · {tp.pax} pax · {tp.bags} bags
+              <div>
+                <strong>{search.from}</strong> → <strong>{search.to}</strong> · {search.date}{search.time ? ` ${search.time}` : ""} · {search.pax} pax · {search.bags} bags
+              </div>
+              {/* PM 2026-06-23: si la primary route tiene descripción, la
+                  mostramos aquí. Ayuda al cliente a confirmar qué incluye. */}
+              {(primaryRoute && (lang === "es" ? primaryRoute.descES : primaryRoute.descEN)) && (
+                <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,.6)", fontStyle: "italic" }}>
+                  {lang === "es" ? primaryRoute.descES : primaryRoute.descEN}
                 </div>
-              ))}
+              )}
+              {trips.map((tp, i) => {
+                const r = findRoute(tp.from, tp.to);
+                const desc = r ? (lang === "es" ? r.descES : r.descEN) : "";
+                return (
+                  <div key={i} style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,.6)" }}>
+                    <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(245,166,35,.15)", color: "var(--gold)", fontWeight: 700, marginRight: 6 }}>
+                      {lang === "es" ? `R${i + 2}` : `T${i + 2}`}
+                    </span>
+                    <strong>{tp.from}</strong> → <strong>{tp.to}</strong> · {tp.date}{tp.time ? ` ${tp.time}` : ""} · {tp.pax} pax · {tp.bags} bags
+                    {desc && <div style={{ marginLeft: 28, fontStyle: "italic", color: "rgba(255,255,255,.5)" }}>{desc}</div>}
+                  </div>
+                );
+              })}
             </div>
             <NavLink to="/transfer-search" className="cta-sec" style={{ padding: "8px 16px", fontSize: 10 }}>{lang === "es" ? "Modificar" : "Modify Search"}</NavLink>
           </div>
+
+          {/* PM 2026-06-23: toggle vehículo único vs distinto por leg. Default
+              OFF = 1 vehículo para todo el servicio (más simple). */}
+          {tripCount > 1 && (
+            <label style={{ maxWidth: 900, margin: "0 auto 12px", display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.25)", cursor: "pointer" }}>
+              <input type="checkbox" checked={distinctVehiclesPerLeg} onChange={(e) => { setDistinctVehiclesPerLeg(e.target.checked); setPerLegVehicle({}); }} style={{ accentColor: "#29ABE2", width: 16, height: 16 }} />
+              <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.85)", lineHeight: 1.45 }}>
+                <strong>{lang === "es" ? "Vehículos distintos por recorrido" : "Different vehicle per trip"}</strong>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                  {lang === "es"
+                    ? "Por default usamos el mismo vehículo para todos los recorridos. Activá esto solo si necesitás cambiar entre legs."
+                    : "By default we use the same vehicle for all trips. Enable only if you need a different vehicle per leg."}
+                </div>
+              </div>
+            </label>
+          )}
+
           {hasEstimatedLegs && (
-            // PM 2026-06-17: si alguna leg no estaba configurada como ruta
-            // por el admin, el km es una estimación. El precio mostrado es
-            // aproximado y se confirma vía WhatsApp.
             <div style={{ maxWidth: 900, margin: "0 auto 12px", padding: "10px 14px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.3)", display: "flex", alignItems: "flex-start", gap: 8 }}>
               <Info style={{ width: 15, height: 15, color: "var(--gold)", flexShrink: 0, marginTop: 1 }} />
               <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.75)", margin: 0, lineHeight: 1.5 }}>
@@ -3948,61 +4174,163 @@ function TransferResultsPage() {
               </p>
             </div>
           )}
-          <div style={{ maxWidth: 900, margin: "0 auto" }}>
-            {eligible.length === 0 ? (
-              <div style={{ padding: 60, textAlign: "center" }}>
-                <h3 style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "rgba(255,255,255,.6)", marginBottom: 8 }}>No vehicles available</h3>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,.4)", marginBottom: 20 }}>For {search.pax} passengers and {search.bags} bags. Contact us for a custom solution.</p>
-                <NavLink to="/contact" className="cta-pri">Contact Us</NavLink>
-              </div>
-            ) : eligible.map((v) => {
-              // PM 2026-06-17: total = Σ (base + perKm × km_i) por cada
-              // recorrido. Antes era solo (base + perKm × km_primario), por
-              // eso agregar más paradas o días no cambiaba el precio.
-              // perKm es por VEHÍCULO (sale de DB, ya no es 2.5 hardcoded).
-              const total = allLegs.reduce((s, l) => s + v.base + v.perKm * (l.km || 0), 0);
-              // El detalle del mensaje a WhatsApp incluye todos los recorridos
-              // del servicio (no solo el principal). El equipo PRDISE recibe
-              // el desglose completo para cotizar y coordinar el operativo.
-              const primaryLine = `${search.from} → ${search.to} · ${search.date}${search.time ? " " + search.time : ""} · ${search.pax} pax · ${search.bags} bags`;
-              const tripLines = trips.map((tp, i) => `${lang === "es" ? "R" : "T"}${i + 2}: ${tp.from} → ${tp.to} · ${tp.date}${tp.time ? " " + tp.time : ""} · ${tp.pax} pax · ${tp.bags} bags`);
-              const detailsCombined = trips.length > 0
-                ? [`${lang === "es" ? "R1" : "T1"}: ${primaryLine}`, ...tripLines].join("\n")
-                : primaryLine;
-              const serviceForCta = {
-                kind: "transfer",
-                name: v.name,
-                priceUsd: total,
-                details: detailsCombined,
-              };
-              return (
-                <div key={v.id} className="veh-row">
-                  <div className="veh-pic">{VEHICLE_ICONS[v.id]}</div>
-                  <div className="veh-info">
-                    <h3>{v.name}</h3>
-                    {v.desc && <p className="desc">{v.desc}</p>}
-                    <div className="veh-meta">
-                      <div className="veh-meta-item"><Users />Up to {v.seats} seats</div>
-                      <div className="veh-meta-item"><Briefcase />{v.bags} bags</div>
-                      {tripCount > 1 ? (
-                        <div className="veh-meta-item"><Clock />{tripCount} {lang === "es" ? "recorridos" : "trips"} · ~{totalKm}km</div>
-                      ) : (
-                        search.time_est && <div className="veh-meta-item"><Clock />~{search.time_est}</div>
+
+          {/* MODO A — distinto vehículo por leg */}
+          {distinctVehiclesPerLeg && (
+            <div style={{ maxWidth: 900, margin: "0 auto" }}>
+              {allLegs.map((l) => {
+                const legEligible = VEHICLES.filter((v) => v.active !== false && fitsLeg(v, l));
+                const selectedId = perLegVehicle[l.idx] || "";
+                const selectedV = selectedId ? VEHICLES.find((x) => x.id === selectedId) : null;
+                const legPrice = selectedV ? computeLegPrice({ route: l.route, vehicle: selectedV, km: l.km }) : null;
+                return (
+                  <div key={l.idx} style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(245,166,35,.18)", color: "var(--gold)", fontWeight: 800, marginRight: 8 }}>
+                        {lang === "es" ? `R${l.idx + 1}` : `T${l.idx + 1}`}
+                      </span>
+                      <strong style={{ color: "#fff" }}>{l.from} → {l.to}</strong> · {l.pax} pax · {l.bags} {lang === "es" ? "maletas" : "bags"} · ~{l.km}km
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <select
+                        value={selectedId}
+                        onChange={(e) => setPerLegVehicle((m) => ({ ...m, [l.idx]: e.target.value }))}
+                        style={{ flex: 1, minWidth: 240, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.15)", color: "#fff", padding: "10px 12px", borderRadius: 9, fontSize: 13 }}
+                      >
+                        <option value="">{lang === "es" ? "— Elegir vehículo —" : "— Choose vehicle —"}</option>
+                        {legEligible.map((v) => {
+                          const p = computeLegPrice({ route: l.route, vehicle: v, km: l.km });
+                          const isRouteVeh = l.route?.vehicleId === v.id;
+                          return (
+                            <option key={v.id} value={v.id}>
+                              {isRouteVeh ? "★ " : ""}{v.name} · ${p.toFixed(0)}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {legPrice != null && (
+                        <span style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "var(--gold)" }}>${legPrice.toFixed(0)}</span>
                       )}
                     </div>
-                    {(v.features || []).length > 0 && (
-                      <div className="veh-features">{v.features.map((f) => <span key={f}>{f}</span>)}</div>
-                    )}
                   </div>
-                  <div className="veh-cta">
-                    <span className="veh-price">{fmt(total).replace(/\.00$/, "")}</span>
-                    <span className="veh-price-sub">total fare</span>
-                    <ContactSplitButton user={user} lang={lang} color="gold" service={serviceForCta} />
+                );
+              })}
+              <div style={{ padding: "16px 20px", borderRadius: 14, background: "linear-gradient(135deg,rgba(245,166,35,.12),rgba(239,108,43,.08))", border: "1px solid rgba(245,166,35,.3)", marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(255,255,255,.5)" }}>
+                    {lang === "es" ? "Total estimado" : "Estimated total"}
                   </div>
+                  <div style={{ fontFamily: "Bebas Neue", fontSize: 32, color: "var(--gold)" }}>${totalPerLegMode.toFixed(0)}</div>
                 </div>
-              );
-            })}
-          </div>
+                {allLegsHaveVehicle ? (
+                  <ContactSplitButton
+                    user={user}
+                    lang={lang}
+                    color="gold"
+                    service={{
+                      kind: "transfer",
+                      name: lang === "es" ? "Servicio multi-recorrido" : "Multi-trip service",
+                      priceUsd: totalPerLegMode,
+                      details: buildDetails((l) => VEHICLES.find((x) => x.id === perLegVehicle[l.idx]) || null),
+                    }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,.55)" }}>
+                    {lang === "es" ? "Elegí un vehículo para cada recorrido" : "Pick a vehicle for each trip"}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MODO B (default) — un mismo vehículo para todo el servicio */}
+          {!distinctVehiclesPerLeg && (
+            <div style={{ maxWidth: 900, margin: "0 auto" }}>
+              {orderedEligible.length === 0 ? (
+                <div style={{ padding: 60, textAlign: "center", background: "rgba(255,255,255,.03)", borderRadius: 14, border: "1px dashed rgba(255,255,255,.1)" }}>
+                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 24, color: "rgba(255,255,255,.7)", marginBottom: 8 }}>
+                    {lang === "es" ? "Ningún vehículo cubre toda tu solicitud" : "No vehicle fits your full request"}
+                  </h3>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", marginBottom: 20, lineHeight: 1.5 }}>
+                    {lang === "es"
+                      ? `Pediste ${maxPax} pasajeros y ${maxBags} maletas, pero ninguno de nuestros vehículos llega a esa capacidad combinada. Te sugerimos las opciones más cercanas — el equipo te confirma por WhatsApp si podemos hacer 2 viajes, sumar un vehículo de apoyo o coordinar otra alternativa.`
+                      : `You requested ${maxPax} passengers and ${maxBags} bags, but no single vehicle covers that combined capacity. We suggest the closest options below — the team will confirm via WhatsApp if we can run 2 trips, add a support vehicle or arrange another option.`}
+                  </p>
+                  {nearestFallback.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20, maxWidth: 520, marginLeft: "auto", marginRight: "auto", textAlign: "left" }}>
+                      {nearestFallback.map((v) => (
+                        <div key={v.id} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                          <div>
+                            <div style={{ fontWeight: 700, color: "#fff" }}>{v.name}</div>
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)" }}>{v.seats} {lang === "es" ? "pax" : "seats"} · {v.bags} {lang === "es" ? "maletas" : "bags"}</div>
+                          </div>
+                          <ContactSplitButton
+                            user={user}
+                            lang={lang}
+                            color="gold"
+                            service={{
+                              kind: "transfer",
+                              name: `${v.name} (${lang === "es" ? "capacidad limitada" : "limited capacity"})`,
+                              priceUsd: totalForVehicle(v),
+                              details: (lang === "es"
+                                ? `⚠ Capacidad insuficiente: cliente pidió ${maxPax} pax / ${maxBags} maletas; este vehículo cubre ${v.seats} / ${v.bags}.\n`
+                                : `⚠ Capacity short: customer requested ${maxPax} pax / ${maxBags} bags; this vehicle covers ${v.seats} / ${v.bags}.\n`)
+                                + buildDetails(() => v),
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <NavLink to="/contact" className="cta-pri">{lang === "es" ? "Pedido custom por contacto" : "Custom request via contact"}</NavLink>
+                </div>
+              ) : orderedEligible.map((v) => {
+                const total = totalForVehicle(v);
+                const isRecommended = recommendedVehicle?.id === v.id;
+                const serviceForCta = {
+                  kind: "transfer",
+                  name: v.name,
+                  priceUsd: total,
+                  details: buildDetails(() => v),
+                };
+                return (
+                  <div
+                    key={v.id}
+                    className="veh-row"
+                    style={isRecommended ? { boxShadow: "0 0 0 2px var(--gold)", position: "relative" } : undefined}
+                  >
+                    {isRecommended && (
+                      <span style={{ position: "absolute", top: -10, left: 16, fontSize: 9.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", padding: "3px 10px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#0c1318" }}>
+                        ★ {lang === "es" ? "Vehículo de esta ruta" : "Route's vehicle"}
+                      </span>
+                    )}
+                    <div className="veh-pic">{VEHICLE_ICONS[v.id]}</div>
+                    <div className="veh-info">
+                      <h3>{v.name}</h3>
+                      {v.desc && <p className="desc">{v.desc}</p>}
+                      <div className="veh-meta">
+                        <div className="veh-meta-item"><Users />{lang === "es" ? `Hasta ${v.seats} pasajeros` : `Up to ${v.seats} seats`}</div>
+                        <div className="veh-meta-item"><Briefcase />{v.bags} {lang === "es" ? "maletas" : "bags"}</div>
+                        {tripCount > 1 ? (
+                          <div className="veh-meta-item"><Clock />{tripCount} {lang === "es" ? "recorridos" : "trips"} · ~{totalKm}km</div>
+                        ) : (
+                          search.time_est && <div className="veh-meta-item"><Clock />~{search.time_est}</div>
+                        )}
+                      </div>
+                      {(v.features || []).length > 0 && (
+                        <div className="veh-features">{v.features.map((f) => <span key={f}>{f}</span>)}</div>
+                      )}
+                    </div>
+                    <div className="veh-cta">
+                      <span className="veh-price">{fmt(total).replace(/\.00$/, "")}</span>
+                      <span className="veh-price-sub">{lang === "es" ? "total estimado" : "total fare"}</span>
+                      <ContactSplitButton user={user} lang={lang} color="gold" service={serviceForCta} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -4790,7 +5118,16 @@ function ServicesPage() {
                         {lang === "es" ? "Rutas populares" : "Popular routes"}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
-                        {top.map((r) => (
+                        {top.map((r) => {
+                          // PM 2026-06-23: enriquecer la card con el vehículo
+                          // asignado por el admin + descripción corta, datos
+                          // que antes solo vivían en el form admin sin
+                          // exponerse al cliente público.
+                          const veh = r.vehicleId
+                            ? (Array.isArray(VEHICLES) ? VEHICLES : []).find((v) => v.id === r.vehicleId)
+                            : null;
+                          const desc = lang === "es" ? (r.descES || "") : (r.descEN || "");
+                          return (
                           <NavLink
                             key={r.id}
                             to={`/transfer-search?from=${encodeURIComponent(r.from || "")}&to=${encodeURIComponent(r.to || "")}`}
@@ -4817,6 +5154,17 @@ function ServicesPage() {
                               <ArrowRight style={{ width: 10, height: 10 }} />
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff", fontWeight: 600 }}>{r.to}</span>
                             </div>
+                            {desc && (
+                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", lineHeight: 1.4, paddingLeft: 18, fontStyle: "italic" }}>
+                                {desc}
+                              </div>
+                            )}
+                            {veh && (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 18, fontSize: 11, color: "rgba(141,198,63,.85)" }}>
+                                <Car style={{ width: 11, height: 11 }} />
+                                <span>{veh.name}{veh.seats ? ` · ${veh.seats} ${lang === "es" ? "pax" : "seats"}` : ""}{veh.bags ? ` · ${veh.bags} ${lang === "es" ? "maletas" : "bags"}` : ""}</span>
+                              </div>
+                            )}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.05)" }}>
                               <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)" }}>
                                 {r.distanceKm ? `${r.distanceKm} km` : ""}{r.distanceKm && r.durationMinutes ? " · " : ""}{r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}min` : ""}
@@ -4827,7 +5175,8 @@ function ServicesPage() {
                                 : <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)" }}>{lang === "es" ? "A consultar" : "On request"}</span>}
                             </div>
                           </NavLink>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -12530,6 +12879,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               // PM 2026-06-11: vehicle FK requerido para nuevas rutas.
               if (ownedUpdate.vehicleId) fd.append("vehicle_id", ownedUpdate.vehicleId);
+              // PM 2026-06-23: descripción corta bilingüe + estrategia de
+              // precio elegida por el admin.
+              fd.append("description_es", ownedUpdate.descES || "");
+              fd.append("description_en", ownedUpdate.descEN || "");
+              fd.append("pricing_mode", ownedUpdate.pricingMode || "route_price");
               const action = editing.isNew ? sbCreateRoute : sbUpdateRoute;
               if (!editing.isNew) fd.append("id", ownedUpdate.id || "");
               saveResult = await action(fd);
@@ -12723,6 +13077,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [routePricingUnit, setRoutePricingUnit] = useState(it.pricingUnit || "per_unit");
   // PM 2026-06-11: cada ruta-template debe tener un vehículo asignado.
   const [routeVehicleId, setRouteVehicleId] = useState(it.vehicleId || "");
+  // PM 2026-06-23: descripción corta bilingüe + pricing_mode.
+  const [routeDescES, setRouteDescES] = useState(it.descES || "");
+  const [routeDescEN, setRouteDescEN] = useState(it.descEN || "");
+  const [routePricingMode, setRoutePricingMode] = useState(it.pricingMode || "route_price");
   // Pricing mixto + categoría (PM 2026-06-10): aplica a stays/tours/route.
   const defaultPricingUnit = type === "hotel" ? "per_night" : type === "tour" ? "per_person" : "per_unit";
   const [pricingUnit, setPricingUnit] = useState(it.pricingUnit || defaultPricingUnit);
@@ -13187,6 +13545,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.featured = !!routeFeatured;
       updated.pricingUnit = routePricingUnit || "per_unit";
       updated.vehicleId = routeVehicleId || null;
+      // PM 2026-06-23: descripción + estrategia de precio.
+      updated.descES = routeDescES.trim();
+      updated.descEN = routeDescEN.trim();
+      updated.pricingMode = routePricingMode || "route_price";
       // Estado activa/inactiva derivado del toggle del form de ruta.
       updated.active = status === "published" || status === "active";
       // Mantenemos `status` consistente para que la tabla refleje el cambio
@@ -13196,7 +13558,22 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // inmediato sin un round-trip.
       if (!updated.from) { alert(lang === "es" ? "El campo 'Desde' es obligatorio." : "'From' is required."); return; }
       if (!updated.to) { alert(lang === "es" ? "El campo 'Hasta' es obligatorio." : "'To' is required."); return; }
-      if (!routePrice || updated.price <= 0) { alert(lang === "es" ? "Ingresá un precio base mayor a cero." : "Enter a base price greater than zero."); return; }
+      // PM 2026-06-23: el precio base solo es obligatorio si pricing_mode lo
+       // usa (route_price o route_plus_vehicle). En vehicle_formula puede ser 0.
+      if ((routePricingMode === "route_price" || routePricingMode === "route_plus_vehicle")
+          && (!routePrice || updated.price <= 0)) {
+        alert(lang === "es"
+          ? "Con este modo de precio necesitás un precio base mayor a cero."
+          : "This pricing mode requires a base price greater than zero.");
+        return;
+      }
+      if ((routePricingMode === "vehicle_formula" || routePricingMode === "route_plus_vehicle")
+          && (!updated.distanceKm || updated.distanceKm <= 0)) {
+        alert(lang === "es"
+          ? "Con este modo de precio necesitás indicar la distancia (km) de la ruta."
+          : "This pricing mode requires the route distance (km).");
+        return;
+      }
       if (!routeVehicleId) { alert(lang === "es" ? "Asigná un vehículo a la ruta antes de guardar." : "Assign a vehicle to the route before saving."); return; }
     }
     // Pricing mixto + categoría — aplica a stays/tours (route ya tiene su propio
@@ -13633,7 +14010,42 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 </div>
               )}
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", marginTop: 6 }}>
+            {/* PM 2026-06-23: descripción corta bilingüe de la ruta. Se
+                muestra en Servicios → Popular Routes y en /transfer-results
+                (debajo de los datos numéricos). */}
+            <div className="adm-fg-row" style={{ marginTop: 6 }}>
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Descripción corta (ES)" : "Short description (ES)"}</label>
+                <input className="adm-fi" value={routeDescES} onChange={(e) => setRouteDescES(e.target.value)} placeholder={lang === "es" ? "Ej: ruta directa, sin paradas" : "E.g. direct route, no stops"} maxLength={500} />
+              </div>
+              <div className="adm-fg">
+                <label className="adm-fl">{lang === "es" ? "Descripción corta (EN)" : "Short description (EN)"}</label>
+                <input className="adm-fi" value={routeDescEN} onChange={(e) => setRouteDescEN(e.target.value)} placeholder={lang === "es" ? "Opcional" : "Optional"} maxLength={500} />
+              </div>
+            </div>
+
+            {/* PM 2026-06-23: cómo se calcula el precio mostrado al cliente. */}
+            <div className="adm-fg" style={{ marginTop: 6 }}>
+              <label className="adm-fl">{lang === "es" ? "Cómo calcular el precio público" : "How to compute public price"}</label>
+              <select className="adm-fi" value={routePricingMode} onChange={(e) => setRoutePricingMode(e.target.value)}>
+                <option value="route_price">
+                  {lang === "es" ? "Usar precio base de la ruta (lo que cargué arriba)" : "Use route base price (set above)"}
+                </option>
+                <option value="vehicle_formula">
+                  {lang === "es" ? "Calcular por vehículo: base + (precio/km × km)" : "Compute from vehicle: base + (price/km × km)"}
+                </option>
+                <option value="route_plus_vehicle">
+                  {lang === "es" ? "Sumar ambos: precio de la ruta + cálculo por vehículo" : "Sum both: route price + vehicle formula"}
+                </option>
+              </select>
+              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", marginTop: 4, lineHeight: 1.45 }}>
+                {routePricingMode === "vehicle_formula" || routePricingMode === "route_plus_vehicle"
+                  ? (lang === "es" ? "El campo \"Distancia (km)\" se vuelve obligatorio porque se usa para el cálculo." : "The \"Distance (km)\" field becomes required because it's used in the calculation.")
+                  : (lang === "es" ? "El precio mostrado al cliente será exactamente el \"Precio base\" cargado arriba." : "The public price will be exactly the \"Base price\" loaded above.")}
+              </div>
+            </div>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", marginTop: 10 }}>
               <input type="checkbox" checked={routeFeatured} onChange={(e) => setRouteFeatured(e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }}>

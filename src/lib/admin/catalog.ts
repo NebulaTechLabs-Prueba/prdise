@@ -540,6 +540,9 @@ export async function createTransferRoute(
     active: asBool(formData, "active"),
     featured: asBool(formData, "featured"),
     vehicle_id: formData.get("vehicle_id") ?? "",
+    description_es: formData.get("description_es") ?? "",
+    description_en: formData.get("description_en") ?? "",
+    pricing_mode: formData.get("pricing_mode") ?? "route_price",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -562,6 +565,9 @@ export async function createTransferRoute(
       active: d.active,
       featured: d.featured,
       vehicle_id: d.vehicle_id || null,
+      description_es: d.description_es || null,
+      description_en: d.description_en || null,
+      pricing_mode: d.pricing_mode,
     })
     .select("id")
     .single();
@@ -605,6 +611,9 @@ export async function updateTransferRoute(
     active: asBool(formData, "active"),
     featured: asBool(formData, "featured"),
     vehicle_id: formData.get("vehicle_id") ?? "",
+    description_es: formData.get("description_es") ?? "",
+    description_en: formData.get("description_en") ?? "",
+    pricing_mode: formData.get("pricing_mode") ?? "route_price",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -627,6 +636,9 @@ export async function updateTransferRoute(
       active: d.active,
       featured: d.featured,
       vehicle_id: d.vehicle_id || null,
+      description_es: d.description_es || null,
+      description_en: d.description_en || null,
+      pricing_mode: d.pricing_mode,
     })
     .eq("id", id);
 

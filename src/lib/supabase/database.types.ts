@@ -1800,12 +1800,15 @@ export type Database = {
           active: boolean
           base_price_cents: number
           created_at: string
+          description_en: string | null
+          description_es: string | null
           distance_km: number | null
           duration_minutes: number | null
           featured: boolean
           from_location: string
           id: string
           max_pax: number
+          pricing_mode: string
           pricing_unit: string | null
           to_location: string
           updated_at: string
@@ -1815,12 +1818,15 @@ export type Database = {
           active?: boolean
           base_price_cents: number
           created_at?: string
+          description_en?: string | null
+          description_es?: string | null
           distance_km?: number | null
           duration_minutes?: number | null
           featured?: boolean
           from_location: string
           id?: string
           max_pax?: number
+          pricing_mode?: string
           pricing_unit?: string | null
           to_location: string
           updated_at?: string
@@ -1830,12 +1836,15 @@ export type Database = {
           active?: boolean
           base_price_cents?: number
           created_at?: string
+          description_en?: string | null
+          description_es?: string | null
           distance_km?: number | null
           duration_minutes?: number | null
           featured?: boolean
           from_location?: string
           id?: string
           max_pax?: number
+          pricing_mode?: string
           pricing_unit?: string | null
           to_location?: string
           updated_at?: string

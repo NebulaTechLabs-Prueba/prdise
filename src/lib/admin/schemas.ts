@@ -367,6 +367,14 @@ const transferRouteBaseSchema = z.object({
   // Nullable en DB para no romper rutas legacy; el formulario nuevo lo
   // requiere y valida acá si está vacío.
   vehicle_id: uuidSchema.optional().nullable().or(z.literal("")),
+  // PM 2026-06-23: descripción corta bilingüe (visible en Servicios →
+  // Popular Routes y en /transfer-results). Y pricing_mode para que el
+  // admin elija cómo calcular el precio mostrado al cliente público.
+  description_es: optionalText(500, "Descripción (ES)"),
+  description_en: optionalText(500, "Descripción (EN)"),
+  pricing_mode: z
+    .enum(["route_price", "vehicle_formula", "route_plus_vehicle"])
+    .default("route_price"),
 });
 
 export const createTransferRouteSchema = transferRouteBaseSchema;
