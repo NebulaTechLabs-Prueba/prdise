@@ -6702,6 +6702,17 @@ function ServiceDropdown({ hotels, tours, routes, onSelect, lang }) {
 function AdminPanel({ onClose }) {
   const { lang, setLang, t } = useLang();
   const [section, setSection] = useState(() => {
+    // PM 2026-06-23 (D): si una notification dejó un hint en sessionStorage
+    // (ej. "contact-inbox" tras click en una notif de mensaje nuevo),
+    // arrancamos en esa sección. Consumimos el flag para que no se aplique
+    // dos veces.
+    try {
+      const hinted = typeof window !== "undefined" ? sessionStorage.getItem("prdise_admin_section") : null;
+      if (hinted) {
+        sessionStorage.removeItem("prdise_admin_section");
+        return hinted;
+      }
+    } catch {}
     const sess = PRDISE.load("session", null) || PRDISE.load("adminSession", null) || {};
     // Employees go to hotels by default (most common starting point), admin to dashboard
     return sess.role === "employee" ? "hotels" : "dash";
@@ -7203,6 +7214,14 @@ function AdminPanel({ onClose }) {
   // suena un beep sutil si hay nuevas (una sola vez por carga).
   const [notifs, setNotifs] = useState([]);
   const [notifsOpen, setNotifsOpen] = useState(false);
+  // PM 2026-06-23 (D): modal para ver la notification completa sin truncar.
+  // Cliente reportó "el texto se resume en ..." al final si es demasiado.
+  // Acá guardamos la notif seleccionada; el render abajo dibuja un modal.
+  const [notifModal, setNotifModal] = useState(null);
+  // PM 2026-06-23 (D): id del contact_message a resaltar en el Buzón
+  // cuando se entra desde el modal de notification. Se resuelve por email
+  // match contra el body de la notif. Auto-clear tras 4s.
+  const [inboxHighlightId, setInboxHighlightId] = useState(null);
   const [notifPrefs, setNotifPrefs] = useState({});
   const [notifPrefsSaved, setNotifPrefsSaved] = useState(false);
   const soundPlayedRef = useRef(false);
@@ -8284,11 +8303,21 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 notifs.map((n) => {
                   const title = lang === "es" ? n.title_es : n.title_en;
                   const body = lang === "es" ? n.body_es : n.body_en;
-                  // PM 2026-06-23 (D): click sobre el cuerpo de la
-                  // notification navega a su `link` y la marca como leída
-                  // (best-effort). Los botones de acción siguen funcionando
-                  // independiente.
-                  const openLink = async () => {
+                  // PM 2026-06-23 (D): el body suele empezar con [TAGS]
+                  // (ej. "[TRANSFER] [WhatsApp] ..."). Los parseamos para
+                  // mostrarlos como badges + el resto del body limpio.
+                  const tags = [];
+                  let bodyClean = body || "";
+                  const tagRegex = /^\s*(\[[^\]]+\])\s*/;
+                  let mm;
+                  while ((mm = bodyClean.match(tagRegex))) {
+                    tags.push(mm[1].replace(/^\[|\]$/g, ""));
+                    bodyClean = bodyClean.slice(mm[0].length);
+                  }
+                  // Click sobre el cuerpo → ABRE MODAL (no navega directo).
+                  // Cliente: "el texto se resume en ... ¿se puede arreglar
+                  // con un modal?". Marcar leída al abrir.
+                  const openModal = async () => {
                     if (!n.read_at) {
                       try {
                         const fd = new FormData();
@@ -8298,41 +8327,43 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       } catch { /* best-effort */ }
                     }
                     setNotifsOpen(false);
-                    if (n.link) {
-                      // n.link viene como "/admin?section=contact-inbox" o "/X".
-                      // Para que el router por hash lo entienda, prefijamos "#".
-                      const target = n.link.startsWith("#") ? n.link : "#" + n.link;
-                      window.location.hash = target;
-                      // Si la sección destino es del admin, además seteamos
-                      // el section state via querystring leído por el panel.
-                      const m = n.link.match(/section=([\w-]+)/);
-                      if (m) {
-                        try { sessionStorage.setItem("prdise_admin_section", m[1]); } catch {}
-                      }
-                    }
+                    setNotifModal({ ...n, _tags: tags, _bodyClean: bodyClean.trim() });
                   };
                   return (
                     <div key={n.id} style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,.05)", background: n.read_at ? "transparent" : "rgba(245,166,35,.06)", display: "flex", gap: 10, alignItems: "flex-start" }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 6, background: n.read_at ? "rgba(255,255,255,.15)" : "#EF6C2B" }} />
                       <button
                         type="button"
-                        onClick={openLink}
-                        style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", textAlign: "left", cursor: n.link ? "pointer" : "default", padding: 0, color: "inherit", fontFamily: "inherit" }}
-                        title={n.link ? (lang === "es" ? "Abrir" : "Open") : ""}
+                        onClick={openModal}
+                        style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", textAlign: "left", cursor: "pointer", padding: 0, color: "inherit", fontFamily: "inherit" }}
+                        title={lang === "es" ? "Abrir" : "Open"}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{title}</div>
-                        {body && <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", lineHeight: 1.45, marginBottom: 4 }}>{body}</div>}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>{title}</div>
+                        {tags.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                            {tags.map((tg, i) => (
+                              <span key={i} style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 99, background: "rgba(245,166,35,.18)", color: "var(--gold)" }}>
+                                {tg}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {bodyClean && (
+                          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.65)", lineHeight: 1.45, marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                            {bodyClean.trim()}
+                          </div>
+                        )}
                         <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>
                           {new Date(n.created_at).toLocaleString(lang === "es" ? "es-PR" : "en-US", { dateStyle: "short", timeStyle: "short" })}
                         </div>
                       </button>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {!n.read_at && (
-                          <button onClick={async () => { const fd = new FormData(); fd.append("id", n.id); const res = await sbMarkNotificationRead(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Marcar como leída" : "Mark as read"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
+                          <button onClick={async (e) => { e.stopPropagation(); const fd = new FormData(); fd.append("id", n.id); const res = await sbMarkNotificationRead(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Marcar como leída" : "Mark as read"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
                             <Check style={{ width: 12, height: 12 }} />
                           </button>
                         )}
-                        <button onClick={async () => { const fd = new FormData(); fd.append("id", n.id); const res = await sbDeleteNotification(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Eliminar" : "Delete"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
+                        <button onClick={async (e) => { e.stopPropagation(); const fd = new FormData(); fd.append("id", n.id); const res = await sbDeleteNotification(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Eliminar" : "Delete"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
                           <X style={{ width: 12, height: 12 }} />
                         </button>
                       </div>
@@ -8344,6 +8375,98 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
         )}
       </div>
+
+      {/* PM 2026-06-23 (D): modal con el contenido completo de la notif.
+          Sin truncado de texto. Mantiene los tags como badges al tope y
+          un botón "Ir al destino" si la notif trae link (extrae section
+          + msg id para que el AdminPanel los consuma). */}
+      {notifModal && (() => {
+        const fullTitle = lang === "es" ? notifModal.title_es : notifModal.title_en;
+        const fullBody = (lang === "es" ? notifModal.body_es : notifModal.body_en) || "";
+        const tags = notifModal._tags || [];
+        const bodyClean = notifModal._bodyClean || fullBody;
+        const goToTarget = () => {
+          if (!notifModal.link) return;
+          const m = notifModal.link.match(/section=([\w-]+)/);
+          if (m) {
+            try {
+              sessionStorage.setItem("prdise_admin_section", m[1]);
+              // Pasamos también un hint con el origen para que el destino
+              // pueda resaltar el item correspondiente. El Buzón hace match
+              // por email extraído del body.
+              const emailMatch = fullBody.match(/<([^>]+@[^>]+)>/);
+              if (emailMatch) {
+                sessionStorage.setItem("prdise_inbox_highlight_email", emailMatch[1]);
+              }
+              sessionStorage.setItem("prdise_inbox_highlight_notif_at", notifModal.created_at || "");
+            } catch {}
+          }
+          setSection(m ? m[1] : section);
+          setNotifModal(null);
+        };
+        return (
+          <div
+            onClick={() => setNotifModal(null)}
+            style={{ position: "fixed", inset: 0, zIndex: 800, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 560, width: "100%", maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column", background: "linear-gradient(135deg,#0a1628,#0e1a2e)", border: "1px solid rgba(245,166,35,.3)", borderRadius: 16, color: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,.5)" }}
+            >
+              <div style={{ padding: "18px 22px 14px 22px", borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".04em", margin: 0, marginBottom: 6 }}>{fullTitle}</h3>
+                  {tags.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {tags.map((tg, i) => (
+                        <span key={i} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", padding: "3px 9px", borderRadius: 99, background: "rgba(245,166,35,.18)", color: "var(--gold)" }}>{tg}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNotifModal(null)}
+                  style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 4 }}
+                  aria-label="Cerrar"
+                >
+                  <X style={{ width: 18, height: 18 }} />
+                </button>
+              </div>
+              <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
+                {bodyClean
+                  ? <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.85)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{bodyClean}</div>
+                  : <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)", fontStyle: "italic" }}>
+                      {lang === "es" ? "Sin contenido adicional." : "No additional content."}
+                    </div>
+                }
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 18 }}>
+                  {new Date(notifModal.created_at).toLocaleString(lang === "es" ? "es-PR" : "en-US", { dateStyle: "long", timeStyle: "short" })}
+                </div>
+              </div>
+              <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(255,255,255,.08)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setNotifModal(null)}
+                  style={{ padding: "9px 16px", borderRadius: 9, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.8)", fontSize: 12, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}
+                >
+                  {lang === "es" ? "Cerrar" : "Close"}
+                </button>
+                {notifModal.link && (
+                  <button
+                    type="button"
+                    onClick={goToTarget}
+                    style={{ padding: "9px 18px", borderRadius: 9, background: "linear-gradient(135deg,var(--gold),var(--orange))", border: "1px solid transparent", color: "#0c1318", fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+                  >
+                    {lang === "es" ? "Ir al destino" : "Open destination"}
+                    <ArrowRight style={{ width: 12, height: 12 }} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <aside className={`adm-sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="adm-brand"><img src={LOGO_SRC} alt="Living in PRDISE" /></div>
@@ -11095,7 +11218,33 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           );
         })()}
 
-        {section === "contact-inbox" && (
+        {section === "contact-inbox" && (() => {
+          // PM 2026-06-23 (D): cuando entramos al inbox desde una notif,
+          // hacemos match por email + fecha cercana para identificar la
+          // fila. Highlight aplicado vía state, auto-clear en 4s, scroll
+          // al row.
+          if (typeof window !== "undefined") {
+            try {
+              const targetEmail = sessionStorage.getItem("prdise_inbox_highlight_email");
+              if (targetEmail && !inboxHighlightId && Array.isArray(contacts) && contacts.length) {
+                const match = contacts.find((c) => (c.email || "").toLowerCase() === targetEmail.toLowerCase());
+                if (match) {
+                  // setTimeout para escapar el render actual.
+                  setTimeout(() => {
+                    setInboxHighlightId(match.id);
+                    sessionStorage.removeItem("prdise_inbox_highlight_email");
+                    sessionStorage.removeItem("prdise_inbox_highlight_notif_at");
+                    setTimeout(() => {
+                      const el = document.querySelector(`[data-inbox-row="${match.id}"]`);
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }, 60);
+                    setTimeout(() => setInboxHighlightId(null), 4000);
+                  }, 0);
+                }
+              }
+            } catch {}
+          }
+          return (
           <>
             {/* PM 2026-06-23: Inbox del formulario público. Antes los mensajes
                 quedaban invisibles (sólo en DB). Ahora hay tabla + acciones
@@ -11162,8 +11311,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           spam: "Spam",
                         }[c.status] || c.status;
                         const phoneDigits = (c.phone || "").replace(/\D/g, "");
+                        const isHighlighted = inboxHighlightId === c.id;
                         return (
-                          <tr key={c.id}>
+                          <tr
+                            key={c.id}
+                            data-inbox-row={c.id}
+                            style={isHighlighted ? {
+                              background: "rgba(245,166,35,.14)",
+                              boxShadow: "inset 0 0 0 2px var(--gold)",
+                              transition: "background .4s ease, box-shadow .4s ease",
+                            } : { transition: "background .4s ease, box-shadow .4s ease" }}
+                          >
                             <td>
                               <div style={{ fontWeight: 600, color: "#fff" }}>{c.name || "—"}</div>
                               <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{c.email || "—"}{c.phone ? ` · ${c.phone}` : ""}</div>
@@ -11215,7 +11373,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               )}
             </div>
           </>
-        )}
+          );
+        })()}
 
         {section === "contacts" && (
           <>
