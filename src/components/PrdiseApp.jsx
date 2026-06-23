@@ -526,6 +526,13 @@ const SITE_SETTINGS_DEFAULTS = {
   // PM 2026-06-23: toggle para mostrar/ocultar las pills de aliados en /tours.
   // "true" o vacío = mostrar. "false" = ocultar.
   tours_filter_show_pills: "true",
+  // PM 2026-06-23 (C): modo mantenimiento administrado. Cuando está activo,
+  // los visitantes anónimos y clientes ven una pantalla; el admin sigue
+  // entrando para poder trabajar.
+  site_maintenance_mode: "false",
+  site_maintenance_message_es: "Estamos actualizando el sitio para que tu próxima experiencia sea aún mejor. En breve volvemos a recibirte. Si tu consulta no puede esperar, escribinos por WhatsApp y te respondemos personalmente.",
+  site_maintenance_message_en: "We're updating the site so your next experience is even better. We'll be back shortly. If your request can't wait, message us on WhatsApp and we'll reply personally.",
+  site_maintenance_eta: "",
 };
 const SITE_SETTINGS = { ...SITE_SETTINGS_DEFAULTS };
 function getSetting(key) {
@@ -2214,6 +2221,104 @@ function WhatsAppChat() {
   );
 }
 
+// PM 2026-06-23 (C): pantalla de mantenimiento. Se muestra cuando el admin
+// activó site_maintenance_mode = "true" en site_settings. Los visitantes
+// anónimos y clientes la ven; el admin sigue navegando con normalidad para
+// poder gestionar y desactivar el modo cuando termine.
+//
+// El gate se aplica desde MaintenanceGate (envuelve el árbol normal).
+// Esta pantalla NO depende de que loadInitialData haya terminado —
+// puede leer SITE_SETTINGS directo (poblado por loadInitialData) o usar
+// el default. Si nada está cargado todavía, el splash original sigue
+// hasta que dataReady llegue.
+function MaintenanceScreen({ lang }) {
+  const message = getSetting(lang === "es" ? "site_maintenance_message_es" : "site_maintenance_message_en");
+  const eta = getSetting("site_maintenance_eta");
+  const waPhone = getSetting("whatsapp_phone");
+  const waMsg = getSetting(lang === "es" ? "whatsapp_prefill_es" : "whatsapp_prefill_en");
+  const waHref = waPhone
+    ? `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg || "")}`
+    : null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9000,
+        background: "linear-gradient(135deg,#0C1318 0%,#1A2634 100%)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div style={{ maxWidth: 540, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
+        <img src={LOGO_SRC} alt="Living in PRDISE" style={{ width: "auto", height: 140, maxWidth: 520 }} />
+        <div style={{ height: 4, width: 120, background: "linear-gradient(90deg,#F5A623,#EF6C2B,#8DC63F,#29ABE2)", borderRadius: 99 }} />
+        <h1 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: "clamp(2rem, 5vw, 2.6rem)", letterSpacing: ".04em", color: "#fff", margin: 0 }}>
+          {lang === "es" ? "ESTAMOS EN MANTENIMIENTO" : "WE'RE UNDER MAINTENANCE"}
+        </h1>
+        <p style={{ fontSize: 15, lineHeight: 1.7, color: "rgba(255,255,255,.75)", margin: 0, whiteSpace: "pre-wrap" }}>
+          {message}
+        </p>
+        {eta && (
+          <div style={{ padding: "10px 18px", borderRadius: 99, background: "rgba(245,166,35,.12)", border: "1px solid rgba(245,166,35,.35)", fontSize: 12.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--gold)", textTransform: "uppercase" }}>
+            {lang === "es" ? "Estimado:" : "ETA:"} {eta}
+          </div>
+        )}
+        {waHref && (
+          <a
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "14px 28px", borderRadius: 99,
+              background: "linear-gradient(135deg,#25D366,#128C7E)",
+              color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".12em",
+              textTransform: "uppercase", textDecoration: "none",
+              boxShadow: "0 8px 28px rgba(37,211,102,.35)",
+            }}
+          >
+            <MessageCircle style={{ width: 16, height: 16 }} />
+            {lang === "es" ? "Escribinos por WhatsApp" : "Message us on WhatsApp"}
+          </a>
+        )}
+        <p style={{ fontFamily: "'Dancing Script', cursive", fontSize: 18, color: "rgba(255,255,255,.5)", marginTop: 8 }}>
+          Living in Paradise
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// MaintenanceGate: decide si renderea la pantalla de mantenimiento o pasa
+// a los children. Lee la sesión local para identificar admin (que siempre
+// pasa). Reactivo a cambios de SITE_SETTINGS (se vuelve a evaluar cada vez
+// que cambia el hash, lo que es suficiente para nuestra UX).
+function MaintenanceGate({ children }) {
+  const { lang } = useLang();
+  const { path } = useHashRoute();
+  // Recalculamos en cada render por seguridad (es cheap — solo lecturas).
+  const maintenance = String(getSetting("site_maintenance_mode") || "false").toLowerCase() === "true";
+  if (!maintenance) return children;
+  // Permitir al admin entrar para gestionar. Detección: sesión local con
+  // role=admin o adminSession presente.
+  let isAdmin = false;
+  if (typeof window !== "undefined") {
+    try {
+      const sess = PRDISE.load("session", null) || PRDISE.load("adminSession", null);
+      if (sess && sess.role === "admin") isAdmin = true;
+    } catch {}
+  }
+  // Pasos del admin: dejamos pasar al login + al admin panel y todo lo
+  // necesario para operar. La pantalla se muestra a cualquier otro path.
+  if (isAdmin) return children;
+  // El admin no logueado pero que quiere entrar necesita /login accesible.
+  if (path === "/login" || path === "/admin" || path.startsWith("/auth")) return children;
+  return <MaintenanceScreen lang={lang} />;
+}
+
 // PM 2026-06-23: Collapsible = accordion reutilizable para las secciones
 // de Settings del admin. Sin librería externa: un <details> nativo del
 // browser con estilos custom (a11y free, sin JS extra).
@@ -2540,11 +2645,17 @@ function HomePage() {
         const eligible = PARTNERS.filter(
           (p) => p && p.active !== false && !p.deleted_at && (partnerCounts[p.id] || 0) > 0
         );
+        // PM 2026-06-23 (B): si el admin marca menos de 3, RELLENAMOS con los
+        // top-por-tours restantes para que siempre se vean 3 cards (asumiendo
+        // que haya tantos partners elegibles). Antes la lógica era "si hay
+        // featured, usá SOLO esos" → 1-2 marcados = 1-2 cards (cliente lo
+        // reportó como bug visual). Ahora: featured primero (en orden estable),
+        // luego completar hasta 3 con los más relevantes que no estén ya.
         const featured = eligible.filter((p) => p.featured_on_home);
-        const chosen = (featured.length > 0
-          ? featured
-          : [...eligible].sort((a, b) => (partnerCounts[b.id] || 0) - (partnerCounts[a.id] || 0))
-        ).slice(0, 3);
+        const restByCount = eligible
+          .filter((p) => !p.featured_on_home)
+          .sort((a, b) => (partnerCounts[b.id] || 0) - (partnerCounts[a.id] || 0));
+        const chosen = [...featured, ...restByCount].slice(0, 3);
         const accent = ["sky", "green", "orange"];
         const cards = chosen.map((p, i) => {
           const toursOfPartner = published.filter((tr) => tr.partnerId === p.id);
@@ -3777,30 +3888,45 @@ function TransferSearchPage() {
                 afectar el sidebar de tours, que usa los mismos sustantivos. */}
             <h3>{t("xferTripDetails").toUpperCase()}</h3>
             <div className="f-row">
-              <div>
-                <label className="f-lab">{t("xferFrom")} *</label>
-                <select className={`f-in ${errors.from?"err":""}`} value={form.from} onChange={(e) => upd("from", e.target.value)}>
-                  <option value="">{t("xferSelectOrigin")}</option>
-                  {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === form.to}>{o}</option>)}
-                </select>
-                {errors.from && <p className="err-msg">{errors.from}</p>}
-                {isOtherFrom && (
-                  <input
-                    className={`f-in ${errors.fromCustom ? "err" : ""}`}
-                    style={{ marginTop: 8 }}
-                    placeholder={lang === "es" ? "Indicá el punto de origen…" : "Type the origin point…"}
-                    value={form.fromCustom}
-                    onChange={(e) => upd("fromCustom", e.target.value)}
-                  />
-                )}
-                {errors.fromCustom && <p className="err-msg">{errors.fromCustom}</p>}
-              </div>
-              <div>
-                <label className="f-lab">{t("xferTo")} *</label>
-                <select className={`f-in ${errors.to?"err":""}`} value={form.to} onChange={(e) => upd("to", e.target.value)}>
-                  <option value="">{t("xferSelectDest")}</option>
-                  {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === form.from}>{d}</option>)}
-                </select>
+              {/* PM 2026-06-23 (C): tolerar valores legacy en URL/saved que
+                  no matcheen exactamente las options del catálogo (rutas
+                  viejas con texto libre tipo "SJU Airport (San Juan)"
+                  cuando el location es "SJU Airport"). Si el value actual
+                  no está en options, lo agregamos como option virtual
+                  marcado para que se vea seleccionado y el usuario no
+                  pierda la elección que vino del card de origen. */}
+              {(() => {
+                const baseOpts = getTransferLocationsList(lang);
+                const missingFrom = form.from && !baseOpts.includes(form.from);
+                const missingTo = form.to && !baseOpts.includes(form.to);
+                return (
+                  <>
+                    <div>
+                      <label className="f-lab">{t("xferFrom")} *</label>
+                      <select className={`f-in ${errors.from?"err":""}`} value={form.from} onChange={(e) => upd("from", e.target.value)}>
+                        <option value="">{t("xferSelectOrigin")}</option>
+                        {missingFrom && <option value={form.from}>{form.from}</option>}
+                        {baseOpts.map((o) => <option key={o} disabled={o === form.to}>{o}</option>)}
+                      </select>
+                      {errors.from && <p className="err-msg">{errors.from}</p>}
+                      {isOtherFrom && (
+                        <input
+                          className={`f-in ${errors.fromCustom ? "err" : ""}`}
+                          style={{ marginTop: 8 }}
+                          placeholder={lang === "es" ? "Indicá el punto de origen…" : "Type the origin point…"}
+                          value={form.fromCustom}
+                          onChange={(e) => upd("fromCustom", e.target.value)}
+                        />
+                      )}
+                      {errors.fromCustom && <p className="err-msg">{errors.fromCustom}</p>}
+                    </div>
+                    <div>
+                      <label className="f-lab">{t("xferTo")} *</label>
+                      <select className={`f-in ${errors.to?"err":""}`} value={form.to} onChange={(e) => upd("to", e.target.value)}>
+                        <option value="">{t("xferSelectDest")}</option>
+                        {missingTo && <option value={form.to}>{form.to}</option>}
+                        {baseOpts.map((d) => <option key={d} disabled={d === form.from}>{d}</option>)}
+                      </select>
                 {errors.to && <p className="err-msg">{errors.to}</p>}
                 {isOtherTo && (
                   <input
@@ -3813,6 +3939,9 @@ function TransferSearchPage() {
                 )}
                 {errors.toCustom && <p className="err-msg">{errors.toCustom}</p>}
               </div>
+                  </>
+                );
+              })()}
             </div>
             <div className="f-row">
               <div>
@@ -3867,6 +3996,7 @@ function TransferSearchPage() {
                       <label className="f-lab">{t("xferFrom")} *</label>
                       <select className={`f-in ${errors[eKey("from")] ? "err" : ""}`} value={tp.from} onChange={(e) => updTrip(tp.id, "from", e.target.value)}>
                         <option value="">{t("xferSelectOrigin")}</option>
+                        {tp.from && !getTransferLocationsList(lang).includes(tp.from) && <option value={tp.from}>{tp.from}</option>}
                         {getTransferLocationsList(lang).map((o) => <option key={o} disabled={o === tp.to}>{o}</option>)}
                       </select>
                       {errors[eKey("from")] && <p className="err-msg">{errors[eKey("from")]}</p>}
@@ -3885,6 +4015,7 @@ function TransferSearchPage() {
                       <label className="f-lab">{t("xferTo")} *</label>
                       <select className={`f-in ${errors[eKey("to")] ? "err" : ""}`} value={tp.to} onChange={(e) => updTrip(tp.id, "to", e.target.value)}>
                         <option value="">{t("xferSelectDest")}</option>
+                        {tp.to && !getTransferLocationsList(lang).includes(tp.to) && <option value={tp.to}>{tp.to}</option>}
                         {getTransferLocationsList(lang).map((d) => <option key={d} disabled={d === tp.from}>{d}</option>)}
                       </select>
                       {errors[eKey("to")] && <p className="err-msg">{errors[eKey("to")]}</p>}
@@ -5160,9 +5291,18 @@ function ServicesPage() {
                               </div>
                             )}
                             {veh && (
+                              // PM 2026-06-23: mostrar TIPO de vehículo
+                              // (van/sedan/etc.), no el modelo. El modelo
+                              // completo vive en el mensaje de WhatsApp al
+                              // reservar. La card debe ser informativa, no
+                              // técnica.
                               <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 18, fontSize: 11, color: "rgba(141,198,63,.85)" }}>
                                 <Car style={{ width: 11, height: 11 }} />
-                                <span>{veh.name}{veh.seats ? ` · ${veh.seats} ${lang === "es" ? "pax" : "seats"}` : ""}{veh.bags ? ` · ${veh.bags} ${lang === "es" ? "maletas" : "bags"}` : ""}</span>
+                                <span>
+                                  {(veh.type || (lang === "es" ? "Vehículo" : "Vehicle"))}
+                                  {veh.seats ? ` · ${veh.seats} ${lang === "es" ? "pax" : "seats"}` : ""}
+                                  {veh.bags ? ` · ${veh.bags} ${lang === "es" ? "maletas" : "bags"}` : ""}
+                                </span>
                               </div>
                             )}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.05)" }}>
@@ -6827,6 +6967,10 @@ function AdminPanel({ onClose }) {
     about_story_p3_es: SITE_SETTINGS.about_story_p3_es ?? "",
     about_story_p3_en: SITE_SETTINGS.about_story_p3_en ?? "",
     tours_filter_show_pills: SITE_SETTINGS.tours_filter_show_pills ?? "true",
+    site_maintenance_mode: SITE_SETTINGS.site_maintenance_mode ?? "false",
+    site_maintenance_message_es: SITE_SETTINGS.site_maintenance_message_es ?? "",
+    site_maintenance_message_en: SITE_SETTINGS.site_maintenance_message_en ?? "",
+    site_maintenance_eta: SITE_SETTINGS.site_maintenance_eta ?? "",
   });
   const [companySettings, setCompanySettings] = useState(initCompanySettings);
   const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
@@ -11957,6 +12101,42 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </label>
               </Collapsible>
 
+              {/* PM 2026-06-23: modo mantenimiento (admin-controlado). Cuando
+                  está activo, los visitantes ven una pantalla con el mensaje
+                  + ETA + botón de WhatsApp. El admin sigue navegando normal. */}
+              <Collapsible title={lang==="es"?"Modo mantenimiento":"Maintenance mode"} icon={AlertTriangle} accent={String(companySettings.site_maintenance_mode || "false") === "true" ? "#EF6C2B" : "var(--gold)"}>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
+                  {lang==="es"
+                    ? "Cuando está activo, el sitio público muestra una pantalla con el mensaje y opción de WhatsApp. Vos como administrador seguís navegando con normalidad para poder gestionar y desactivarlo cuando termines."
+                    : "When active, the public site shows a screen with the message and WhatsApp option. You as admin keep navigating normally so you can manage and turn it off when you're done."}
+                </p>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)", padding: "10px 12px", borderRadius: 9, background: String(companySettings.site_maintenance_mode || "false") === "true" ? "rgba(239,108,43,.1)" : "rgba(255,255,255,.03)", border: String(companySettings.site_maintenance_mode || "false") === "true" ? "1px solid rgba(239,108,43,.4)" : "1px solid rgba(255,255,255,.08)" }}>
+                  <input
+                    type="checkbox"
+                    checked={String(companySettings.site_maintenance_mode || "false") === "true"}
+                    onChange={(e) => updCompanySetting("site_maintenance_mode", e.target.checked ? "true" : "false")}
+                    style={{ accentColor: "#EF6C2B", width: 16, height: 16 }}
+                  />
+                  <strong>
+                    {lang==="es"
+                      ? "Activar modo mantenimiento ahora"
+                      : "Activate maintenance mode now"}
+                  </strong>
+                </label>
+                <div className="adm-fg" style={{ marginTop: 12 }}>
+                  <label className="adm-fl">{lang==="es"?"Mensaje al visitante (ES)":"Visitor message (ES)"}</label>
+                  <textarea rows={3} className="adm-fi" value={companySettings.site_maintenance_message_es} onChange={(e) => updCompanySetting("site_maintenance_message_es", e.target.value)} />
+                </div>
+                <div className="adm-fg">
+                  <label className="adm-fl">{lang==="es"?"Mensaje al visitante (EN)":"Visitor message (EN)"}</label>
+                  <textarea rows={3} className="adm-fi" value={companySettings.site_maintenance_message_en} onChange={(e) => updCompanySetting("site_maintenance_message_en", e.target.value)} />
+                </div>
+                <div className="adm-fg">
+                  <label className="adm-fl">{lang==="es"?"Tiempo estimado (opcional)":"Estimated time (optional)"}</label>
+                  <input className="adm-fi" value={companySettings.site_maintenance_eta} onChange={(e) => updCompanySetting("site_maintenance_eta", e.target.value)} placeholder={lang==="es"?"Ej. 15 minutos · esta noche · hasta mañana 8am":"E.g. 15 minutes · tonight · until tomorrow 8am"} />
+                </div>
+              </Collapsible>
+
               <Collapsible title={lang==="es"?"Página About — Sección Nuestra Historia":"About page — Our Story section"} icon={Edit}>
                 <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", marginBottom: 12, lineHeight: 1.5 }}>
                   {lang==="es"
@@ -16270,9 +16450,14 @@ export default function PrdiseApp() {
           self-oculta si la sesión no es magic-link o si el usuario ya
           estableció password en este browser. */}
       <MagicLinkPasswordPrompt />
-      {!isAdminRoute && <Navbar />}
-      {page}
-      {!isAdminRoute && <Footer />}
+      {/* PM 2026-06-23: el MaintenanceGate envuelve el árbol normal. Si
+          site_maintenance_mode=true y el visitante NO es admin, muestra
+          la pantalla y oculta navbar/footer/contenido. */}
+      <MaintenanceGate>
+        {!isAdminRoute && <Navbar />}
+        {page}
+        {!isAdminRoute && <Footer />}
+      </MaintenanceGate>
     </>
   );
 }
