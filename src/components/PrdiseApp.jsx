@@ -2627,49 +2627,51 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
-      {/* PM 2026-06-22 (B): las 3 cards principales pasan a ser ALIADOS
-          (partners), no categorías de experiencia. Cliente: "en vez de
-          mostrar servicios de Tours en general, muestra tres tarjetas de
-          aliados específicos; al hacer click te lleva a sus servicios"
-          (paridad con el filtro por aliado que ya existe en /stays).
-          Tomamos hasta 3 aliados activos que tengan AL MENOS 1 tour
-          publicado. Si ninguno califica, fallback al CTA "Ver todos los tours". */}
+      {/* PM 2026-06-23 (D): las 3 cards principales son CATEGORÍAS DE
+          EXPERIENCIA (Beach Escape / River & Mountain / UTV West Coast)
+          según el review original del cliente. Al hacer click se navega a
+          /tours?category=X donde los tours se muestran agrupados por
+          aliado. Si una experiencia no tiene tours clasificados (campo
+          tours.experience_category NULL), esa card se oculta. Si NINGUNA
+          tiene tours, fallback al CTA "Ver todos los tours". */}
       {(() => {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
         if (published.length === 0) return null;
+        const EXPERIENCES = [
+          {
+            key: "beach_escape",
+            color: "sky",
+            titleES: "Beach Escape",
+            titleEN: "Beach Escape",
+            descES: "Playas espectaculares de aguas cristalinas: snorkel, jet ski, banana boat, relajación y paisajes costeros inolvidables.",
+            descEN: "Discover spectacular beaches with crystal-clear waters, snorkeling, jet ski, banana boat, relaxation and unforgettable coastal scenery.",
+          },
+          {
+            key: "river_mountain",
+            color: "green",
+            titleES: "River & Mountain Adventure",
+            titleEN: "River & Mountain Adventure",
+            descES: "Ríos cristalinos, charcos naturales, cascadas y paisajes de montaña que dejan sin aliento.",
+            descEN: "Explore crystal-clear rivers, natural pools, waterfalls, and breathtaking mountain scenery.",
+          },
+          {
+            key: "utv_west_coast",
+            color: "orange",
+            titleES: "UTV Tours in West Coast",
+            titleEN: "UTV Tours in West Coast",
+            descES: "Elegí cómo vivirlo: conducí tu propio UTV en convoy con guía, o viajá como pasajero mientras recorrés rutas costeras.",
+            descEN: "Choose how you want to experience it – drive your own UTV in a guide convoy or ride along with a guide while exploring scenic coastal routes.",
+          },
+        ];
 
-        // PM 2026-06-23: el admin marca qué aliados aparecen en el Home
-        // vía partners.featured_on_home. Si NINGUNO está marcado, fallback
-        // a los 3 con más tours publicados (preserva el comportamiento
-        // previo para no dejar el Home vacío si el admin nunca toca el toggle).
-        const partnerCounts = {};
-        for (const tr of published) {
-          if (!tr.partnerId) continue;
-          partnerCounts[tr.partnerId] = (partnerCounts[tr.partnerId] || 0) + 1;
-        }
-        const eligible = PARTNERS.filter(
-          (p) => p && p.active !== false && !p.deleted_at && (partnerCounts[p.id] || 0) > 0
-        );
-        // PM 2026-06-23 (B): si el admin marca menos de 3, RELLENAMOS con los
-        // top-por-tours restantes para que siempre se vean 3 cards (asumiendo
-        // que haya tantos partners elegibles). Antes la lógica era "si hay
-        // featured, usá SOLO esos" → 1-2 marcados = 1-2 cards (cliente lo
-        // reportó como bug visual). Ahora: featured primero (en orden estable),
-        // luego completar hasta 3 con los más relevantes que no estén ya.
-        const featured = eligible.filter((p) => p.featured_on_home);
-        const restByCount = eligible
-          .filter((p) => !p.featured_on_home)
-          .sort((a, b) => (partnerCounts[b.id] || 0) - (partnerCounts[a.id] || 0));
-        const chosen = [...featured, ...restByCount].slice(0, 3);
-        const accent = ["sky", "green", "orange"];
-        const cards = chosen.map((p, i) => {
-          const toursOfPartner = published.filter((tr) => tr.partnerId === p.id);
-          const cover = toursOfPartner.find((tr) => tr.img)?.img || p.logo || "";
-          return { partner: p, count: toursOfPartner.length, cover, color: accent[i % accent.length] };
-        });
+        const cards = EXPERIENCES
+          .map(exp => {
+            const toursInCat = published.filter(tr => tr.experienceCategory === exp.key);
+            const cover = toursInCat.find(tr => tr.img)?.img || "";
+            return { ...exp, toursInCat, cover };
+          })
+          .filter(exp => exp.toursInCat.length > 0);
 
-        // Si ningún tour publicado tiene partner_id, no hay nada que mostrar
-        // en formato "por aliado" — mantenemos el CTA "Ver todos los tours".
         if (cards.length === 0) {
           return (
             <section className="svc">
@@ -2678,8 +2680,8 @@ function HomePage() {
                   <div className="tag">{t("ourToursTag")}</div>
                   <h2>{t("curatedExp")}</h2>
                   <p>{lang === "es"
-                    ? "Estamos asociando los tours con sus aliados. Mientras tanto, podés ver el catálogo completo."
-                    : "We're linking tours to their partners. In the meantime, browse the full catalog."}</p>
+                    ? "Estamos clasificando los tours por experiencia. Mientras tanto, podés ver el catálogo completo."
+                    : "We're sorting the tours by experience. In the meantime, browse the full catalog."}</p>
                 </div>
                 <div style={{ textAlign: "center", marginTop: 32 }}>
                   <NavLink to="/tours" className="cta-sec" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px" }}>
@@ -2692,18 +2694,6 @@ function HomePage() {
           );
         }
 
-        const partnerDesc = (p, lang) => {
-          // Tomamos el primer texto disponible (notes_*), trunc para que entre
-          // en la card. Sin texto → label genérico bilingüe.
-          const raw = lang === "es"
-            ? (p.notes_es || p.notes_en || "")
-            : (p.notes_en || p.notes_es || "");
-          if (raw) return raw.length > 180 ? raw.slice(0, 177) + "…" : raw;
-          return lang === "es"
-            ? "Tours operados por este aliado de confianza."
-            : "Tours operated by this trusted partner.";
-        };
-
         return (
       <section className="svc">
         <div className="container">
@@ -2711,24 +2701,24 @@ function HomePage() {
             <div className="tag">{t("ourToursTag")}</div>
             <h2>{t("curatedExp")}</h2>
             <p>{lang === "es"
-              ? "Explorá los tours organizados por nuestros aliados de confianza."
-              : "Browse tours organized by our trusted partners."}</p>
+              ? "Tres maneras de vivir Puerto Rico. Elegí tu experiencia y descubrí los tours de cada aliado."
+              : "Three ways to experience Puerto Rico. Pick your category and discover each partner's tours."}</p>
           </div>
           <>
           <div className="svc-grid">
-            {cards.map(({ partner, count, cover, color }) => (
-              <NavLink to={`/tours?partnerId=${partner.id}`} key={partner.id} className="svc-card">
+            {cards.map((exp) => (
+              <NavLink to={`/tours?category=${exp.key}`} key={exp.key} className="svc-card">
                 <div className="svc-pic">
-                  <MediaImg src={cover} alt={partner.name} label={partner.name} />
-                  <div className="svc-badge" style={{ background: COLORS[color] }}>
-                    {count} {count === 1 ? "tour" : "tours"}
+                  <MediaImg src={exp.cover} alt={lang === "es" ? exp.titleES : exp.titleEN} label={lang === "es" ? exp.titleES : exp.titleEN} />
+                  <div className="svc-badge" style={{ background: COLORS[exp.color] }}>
+                    {exp.toursInCat.length} {exp.toursInCat.length === 1 ? "tour" : "tours"}
                   </div>
                 </div>
                 <div className="svc-info">
-                  <h3>{(partner.name || "").toUpperCase()}</h3>
-                  <p>{partnerDesc(partner, lang)}</p>
-                  <span className="svc-link" style={{ color: COLORS[color] }}>
-                    {lang === "es" ? "Ver tours" : "View tours"} <ArrowRight />
+                  <h3>{(lang === "es" ? exp.titleES : exp.titleEN).toUpperCase()}</h3>
+                  <p>{lang === "es" ? exp.descES : exp.descEN}</p>
+                  <span className="svc-link" style={{ color: COLORS[exp.color] }}>
+                    {lang === "es" ? "Explorar" : "Explore"} <ArrowRight />
                   </span>
                 </div>
               </NavLink>
@@ -2983,21 +2973,43 @@ function ToursList({ params }) {
   const { t, lang } = useLang();
   const L = (en, es) => (lang === "es" && es) ? es : en;
 
-  // PM 2026-06-22 (B): filtrado por aliado. El Home manda /tours?partnerId=X.
-  // Se preserva ?category=X como fallback no usado en el flujo actual por si
-  // queremos volver a categorías de experiencia más adelante.
-  const partnerIdFilter = params?.get?.("partnerId") || "";
+  // PM 2026-06-23 (D): filtrado primario por EXPERIENCIA (?category=). El
+  // Home manda /tours?category=beach_escape|river_mountain|utv_west_coast.
+  // ?partnerId=X se mantiene como filtro secundario opcional (links viejos
+  // o el caso de querer ver SOLO un aliado).
   const categoryFilter = params?.get?.("category") || "";
+  const partnerIdFilter = params?.get?.("partnerId") || "";
   const partnerObj = partnerIdFilter ? PARTNERS.find((p) => p.id === partnerIdFilter) : null;
 
-  const pageTitle = partnerObj
-    ? (partnerObj.name || t("availTours"))
-    : t("availTours");
-  const pageSubtitle = partnerObj
-    ? (lang === "es"
-        ? (partnerObj.notes_es || partnerObj.notes_en || "")
-        : (partnerObj.notes_en || partnerObj.notes_es || ""))
-    : "";
+  const EXPERIENCE_META = {
+    beach_escape: {
+      titleES: "Beach Escape", titleEN: "Beach Escape",
+      subES: "Playas, snorkel, jet ski, banana boat y experiencias costeras.",
+      subEN: "Beaches, snorkeling, jet ski, banana boat and coastal experiences.",
+    },
+    river_mountain: {
+      titleES: "River & Mountain Adventure", titleEN: "River & Mountain Adventure",
+      subES: "Ríos cristalinos, charcos naturales, cascadas y montañas.",
+      subEN: "Crystal-clear rivers, natural pools, waterfalls and mountains.",
+    },
+    utv_west_coast: {
+      titleES: "UTV Tours in West Coast", titleEN: "UTV Tours in West Coast",
+      subES: "Conducí o viajá como pasajero por la costa oeste en UTV.",
+      subEN: "Drive your own UTV or ride along the west coast.",
+    },
+  };
+  const catMeta = EXPERIENCE_META[categoryFilter];
+
+  const pageTitle = catMeta
+    ? (lang === "es" ? catMeta.titleES : catMeta.titleEN)
+    : partnerObj
+      ? (partnerObj.name || t("availTours"))
+      : t("availTours");
+  const pageSubtitle = catMeta
+    ? (lang === "es" ? catMeta.subES : catMeta.subEN)
+    : partnerObj
+      ? (lang === "es" ? (partnerObj.notes_es || partnerObj.notes_en || "") : (partnerObj.notes_en || partnerObj.notes_es || ""))
+      : "";
 
   const renderTourCard = (tr) => (
     <div key={tr.id} className="listing-card">
@@ -3048,72 +3060,51 @@ function ToursList({ params }) {
         <div className="inner-wrap">
           <BilingualNotice style={{ marginBottom: 22 }} />
 
-          {/* PM 2026-06-23: filtro por aliado con pills.
-              - 1 sola línea con scroll horizontal (overflow-x:auto en .pill-strip).
-              - Hover sutil en pills inactivas (definido en .pill-strip CSS).
-              - El admin puede ocultar todo el bloque con
-                site_settings.tours_filter_show_pills (default true). */}
+          {/* PM 2026-06-23 (D): pills de filtro por EXPERIENCIA (3 categorías
+              + Todos). Reemplaza el filtro por aliado — el agrupamiento
+              por aliado ahora vive DENTRO de cada categoría (debajo). */}
           {(() => {
             const showPills = String(getSetting("tours_filter_show_pills") || "true") !== "false";
             if (!showPills) return null;
             const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
-            const partnerIds = new Set(visibleTours.map(tr => tr.partnerId).filter(Boolean));
-            const partnerOpts = PARTNERS
-              .filter(p => p && p.active !== false && !p.deleted_at && partnerIds.has(p.id))
-              .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-            if (partnerOpts.length === 0) return null;
+            const catOpts = [
+              { key: "beach_escape", label: "Beach Escape" },
+              { key: "river_mountain", label: "River & Mountain" },
+              { key: "utv_west_coast", label: "UTV Tours" },
+            ];
             const pillBase = {
-              padding: "8px 16px",
-              borderRadius: 99,
-              fontSize: 12.5,
-              fontWeight: 700,
-              letterSpacing: ".02em",
-              cursor: "pointer",
-              transition: "all .18s ease",
-              border: "1px solid rgba(255,255,255,.15)",
-              background: "rgba(255,255,255,.04)",
-              color: "rgba(255,255,255,.75)",
-              whiteSpace: "nowrap",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
+              padding: "8px 16px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
+              letterSpacing: ".02em", cursor: "pointer", transition: "all .18s ease",
+              border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.04)",
+              color: "rgba(255,255,255,.75)", whiteSpace: "nowrap",
+              display: "inline-flex", alignItems: "center", gap: 6,
             };
             const pillActive = {
               ...pillBase,
               background: "linear-gradient(135deg,var(--gold),var(--orange))",
-              color: "#0c1318",
-              border: "1px solid transparent",
+              color: "#0c1318", border: "1px solid transparent",
               boxShadow: "0 4px 14px rgba(245,166,35,.3)",
             };
             const goAll = () => { window.location.hash = "#/tours"; };
-            const goPartner = (pid) => { window.location.hash = `#/tours?partnerId=${pid}`; };
+            const goCat = (k) => { window.location.hash = `#/tours?category=${k}`; };
+            const isAll = !categoryFilter && !partnerIdFilter;
             return (
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.45)", marginBottom: 10 }}>
-                  {lang === "es" ? "Filtrar por aliado" : "Filter by partner"}
+                  {lang === "es" ? "Filtrar por experiencia" : "Filter by experience"}
                 </div>
                 <div className="pill-strip">
-                  <button
-                    type="button"
-                    data-active={!partnerIdFilter ? "true" : "false"}
-                    onClick={goAll}
-                    style={!partnerIdFilter ? pillActive : pillBase}
-                  >
+                  <button type="button" data-active={isAll ? "true" : "false"} onClick={goAll} style={isAll ? pillActive : pillBase}>
                     {lang === "es" ? "Todos" : "All"}
                     <span style={{ fontSize: 10, opacity: 0.7 }}>({visibleTours.length})</span>
                   </button>
-                  {partnerOpts.map(p => {
-                    const count = visibleTours.filter(tr => tr.partnerId === p.id).length;
-                    const isActive = partnerIdFilter === p.id;
+                  {catOpts.map(c => {
+                    const count = visibleTours.filter(tr => tr.experienceCategory === c.key).length;
+                    if (count === 0) return null;
+                    const active = categoryFilter === c.key;
                     return (
-                      <button
-                        type="button"
-                        key={p.id}
-                        data-active={isActive ? "true" : "false"}
-                        onClick={() => goPartner(p.id)}
-                        style={isActive ? pillActive : pillBase}
-                      >
-                        {p.name}
+                      <button type="button" key={c.key} data-active={active ? "true" : "false"} onClick={() => goCat(c.key)} style={active ? pillActive : pillBase}>
+                        {c.label}
                         <span style={{ fontSize: 10, opacity: 0.7 }}>({count})</span>
                       </button>
                     );
@@ -3150,7 +3141,61 @@ function ToursList({ params }) {
               );
             }
 
-            return <div className="card-grid">{filtered.map(renderTourCard)}</div>;
+            // PM 2026-06-23 (D): cuando hay filtro de categoría O cuando no
+            // hay filtro pero el catálogo tiene tours clasificados, agrupar
+            // visualmente por aliado. Featured (partner.featured_on_home)
+            // arriba; el resto debajo en orden alfabético.
+            // Si el usuario filtró por un partner específico, modo simple
+            // (grid plano) — ya está mirando un único aliado.
+            if (partnerIdFilter) {
+              return <div className="card-grid">{filtered.map(renderTourCard)}</div>;
+            }
+
+            const groups = {};
+            for (const tr of filtered) {
+              const pid = tr.partnerId || "_other";
+              if (!groups[pid]) groups[pid] = [];
+              groups[pid].push(tr);
+            }
+            const partnerInfo = (pid) => {
+              if (pid === "_other") return { name: lang === "es" ? "Otros" : "Other", featured: false };
+              const p = PARTNERS.find(x => x.id === pid);
+              return p ? { name: p.name || "—", featured: !!p.featured_on_home, notesEs: p.notes_es, notesEn: p.notes_en } : { name: "—", featured: false };
+            };
+            const groupKeys = Object.keys(groups).sort((a, b) => {
+              const A = partnerInfo(a), B = partnerInfo(b);
+              if (A.featured && !B.featured) return -1;
+              if (!A.featured && B.featured) return 1;
+              return (A.name || "").localeCompare(B.name || "");
+            });
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+                {groupKeys.map(pid => {
+                  const info = partnerInfo(pid);
+                  const note = lang === "es" ? (info.notesEs || info.notesEn) : (info.notesEn || info.notesEs);
+                  return (
+                    <section key={pid}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                        {info.featured && (
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#0c1318" }}>★</span>
+                        )}
+                        <h2 style={{ fontFamily: "Bebas Neue", fontSize: 26, letterSpacing: ".04em", margin: 0, color: "#fff" }}>{info.name}</h2>
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>· {groups[pid].length} {groups[pid].length === 1 ? "tour" : "tours"}</span>
+                      </div>
+                      {note && (
+                        <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.55)", marginBottom: 16, fontStyle: "italic", maxWidth: 720, lineHeight: 1.5 }}>
+                          {note}
+                        </p>
+                      )}
+                      <div className="card-grid">
+                        {groups[pid].map(renderTourCard)}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            );
           })()}
         </div>
       </div>
@@ -11299,15 +11344,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           : "Active (appears in partner selectors when creating / editing services)"}
                       </label>
                     </div>
-                    {/* PM 2026-06-23: toggle nuevo — el admin elige qué aliados
-                        aparecen en las 3 cards del Home. Si ninguno está
-                        marcado, fallback automático a los 3 con más tours. */}
+                    {/* PM 2026-06-23 (D): el toggle se reusa — antes elegía
+                        qué partners aparecían en las 3 cards del Home; ahora
+                        las cards son por experiencia (Beach Escape / River /
+                        UTV) y este flag destaca al partner en su categoría
+                        (aparece arriba del grupo en /tours?category=X). */}
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,.85)" }}>
                         <input type="checkbox" checked={!!editingPartner.featured_on_home} onChange={() => setEditingPartner({ ...editingPartner, featured_on_home: !editingPartner.featured_on_home })} style={{ accentColor: "#F5A623", width: 16, height: 16 }} />
                         {lang==="es"
-                          ? "Mostrar en el Home (entra en las 3 cards principales — máximo 3)"
-                          : "Show on Home (appears in the 3 main cards — max 3)"}
+                          ? "Destacar en su categoría (aparece primero al filtrar por experiencia en /tours)"
+                          : "Highlight in its category (appears first when filtering by experience on /tours)"}
                       </label>
                     </div>
                   </div>
