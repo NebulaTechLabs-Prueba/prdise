@@ -63,16 +63,23 @@ export default function WelcomeSplash() {
           maxWidth: "90vw",
         }}
       >
+        {/* PM 2026-06-23: tamaño paritario con .logo-img-lg del home (166px
+            desktop / 138px mobile). Antes 80px no acompañaba el escalado
+            del logo principal y se veía chico en relación al resto del UI. */}
         <img
           src={LOGO_SRC}
           alt="Living in PRDISE"
+          className="splash-logo"
           style={{
             width: "auto",
-            height: 80,
-            maxWidth: 320,
+            height: 166,
+            maxWidth: 640,
             animation: "prdiseSplashLogoIn .8s ease",
           }}
         />
+        <style>{`
+          @media(max-width:640px){.splash-logo{height:138px !important;max-width:490px !important}}
+        `}</style>
         <div
           style={{
             width: 280,
