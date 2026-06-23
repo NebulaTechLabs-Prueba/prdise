@@ -1846,6 +1846,11 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .f-in.err{border-color:#f87171}
 textarea.f-in{resize:none;min-height:100px}
 select.f-in{appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+/* PM 2026-06-23: forzar tema oscuro al dropdown nativo de TODO select.
+   Sin esto Chromium renderea el menú expandido en blanco/light, choca
+   visualmente con el tema dark del sitio. */
+select{color-scheme:dark}
+select option{background:#1A2634;color:#fff}
 select.f-in option{background:var(--ink);color:#fff}
 .f-submit{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:15px;border-radius:99px;background:linear-gradient(135deg,var(--gold),var(--orange));color:#fff;font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin-top:16px;transition:all .3s}
 .f-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 28px rgba(239,108,43,.4);color:#fff}
@@ -3789,6 +3794,9 @@ function TransferSearchPage() {
   // PM 2026-06-11: un servicio de traslado puede incluir varios recorridos
   // (round-trip, día completo con paradas, etc.). El cliente añade tantos
   // como necesite; el equipo PRDISE recibe el desglose completo por WhatsApp.
+  // PM 2026-06-23 (C): el toggle "vehículo distinto por recorrido" vive en
+  // /transfer-results (donde se eligen vehículos). Acá sólo mostramos un
+  // hint cuando hay >1 trip para que el usuario sepa que esa opción existe.
   const [extraTrips, setExtraTrips] = useState([]);
   const [user, setUser] = useState(null);
   const [errors, setErrors] = useState({});
@@ -3855,31 +3863,6 @@ function TransferSearchPage() {
       <PageHero tag={t("transfers")} title={t("transferHeroTitle")} titleEm={t("transferHeroBold")} subtitle={t("transferHeroSub")} />
       <div className="inner-page">
         <div className="inner-wrap">
-
-          {/* PM 2026-06-23: stats arriba del form para que el visitante vea
-              alcance antes de pedir cotización. Las cifras se calculan en
-              vivo desde el catálogo cargado. */}
-          {(() => {
-            const activeRoutes = (Array.isArray(ROUTES) ? ROUTES : []).filter(r => r.active !== false);
-            const activeVehicles = (Array.isArray(VEHICLES) ? VEHICLES : []).filter(v => v.active !== false);
-            const activeLocs = (Array.isArray(TRANSFER_LOCATIONS) ? TRANSFER_LOCATIONS : []).filter(l => l.active !== false);
-            const STATS = [
-              { label: lang === "es" ? "Rutas activas" : "Active routes",  value: activeRoutes.length,  c: "var(--sky)" },
-              { label: lang === "es" ? "Vehículos"      : "Vehicles",      value: activeVehicles.length, c: "var(--green)" },
-              { label: lang === "es" ? "Destinos"       : "Destinations",  value: activeLocs.length,     c: "var(--gold)" },
-              { label: lang === "es" ? "Multi-tramo"    : "Multi-leg",     value: "✓",                   c: "var(--orange)" },
-            ];
-            return (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 22 }}>
-                {STATS.map((s) => (
-                  <div key={s.label} style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 6 }}>{s.label}</div>
-                    <div style={{ fontFamily: "Bebas Neue", fontSize: 28, color: s.c }}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
 
           <div className="search-form">
             {/* PM 2026-06-15: copy contextual en preguntas — labels puntuales
@@ -3977,6 +3960,19 @@ function TransferSearchPage() {
                 cliente agrega tantos como necesite con el mismo set de campos
                 que el principal. La etiqueta evita "leg" — usamos
                 "recorrido" / "trip" que se entiende mejor en contexto. */}
+            {/* PM 2026-06-23 (C): hint para que el visitante sepa que en la
+                siguiente pantalla va a poder usar un vehículo distinto por
+                recorrido si lo necesita. */}
+            {extraTrips.length > 0 && (
+              <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.25)", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <Info style={{ width: 15, height: 15, color: "#29ABE2", flexShrink: 0, marginTop: 1 }} />
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.75)", margin: 0, lineHeight: 1.5 }}>
+                  {lang === "es"
+                    ? "Si necesitás un vehículo distinto por cada recorrido, en la pantalla siguiente vas a poder activar esa opción al elegir el vehículo."
+                    : "If you need a different vehicle per trip, you'll be able to enable that option on the next screen when picking the vehicle."}
+                </p>
+              </div>
+            )}
             {extraTrips.map((tp, idx) => {
               const otherFrom = tp.from === "Otro" || tp.from === "Other";
               const otherTo = tp.to === "Otro" || tp.to === "Other";
@@ -4224,17 +4220,30 @@ function TransferResultsPage() {
   const allLegsHaveVehicle = allLegs.every((l) => perLegVehicle[l.idx]);
 
   // Texto del WhatsApp / SMS — siempre incluye el desglose por leg.
+  // PM 2026-06-23 (C): formato lista (no párrafo). WhatsApp respeta saltos
+  // de línea y *bold*. Cliente pidió esta forma porque el párrafo seguido
+  // era ilegible al recibirlo. Cada leg = su propio bloque con bullets.
   const buildDetails = (vehicleResolver) => {
-    const tag = (i) => `${lang === "es" ? "R" : "T"}${i + 1}`;
-    const lines = allLegs.map((l) => {
+    const isEs = lang === "es";
+    const tag = (i) => `${isEs ? "Recorrido" : "Trip"} ${i + 1}`;
+    const blocks = allLegs.map((l) => {
       const v = vehicleResolver(l);
       const price = v ? computeLegPrice({ route: l.route, vehicle: v, km: l.km }) : 0;
       const dateLine = l.idx === 0
         ? `${search.date}${search.time ? ` ${search.time}` : ""}`
         : `${trips[l.idx - 1]?.date || ""}${trips[l.idx - 1]?.time ? ` ${trips[l.idx - 1].time}` : ""}`;
-      return `${tag(l.idx)}: ${l.from} → ${l.to} · ${dateLine} · ${l.pax} pax · ${l.bags} bags${v ? ` · ${v.name} · $${price.toFixed(0)}` : ""}`;
+      const rows = [
+        `*${tag(l.idx)}: ${l.from} → ${l.to}*`,
+        `• ${isEs ? "Fecha" : "Date"}: ${dateLine}`,
+        `• ${isEs ? "Pasajeros" : "Passengers"}: ${l.pax} · ${isEs ? "Maletas" : "Bags"}: ${l.bags}`,
+      ];
+      if (v) {
+        rows.push(`• ${isEs ? "Vehículo" : "Vehicle"}: ${v.name}`);
+        rows.push(`• ${isEs ? "Precio" : "Price"}: $${price.toFixed(0)}`);
+      }
+      return rows.join("\n");
     });
-    return lines.join("\n");
+    return blocks.join("\n\n");
   };
 
   return (
@@ -4323,18 +4332,22 @@ function TransferResultsPage() {
                       <strong style={{ color: "#fff" }}>{l.from} → {l.to}</strong> · {l.pax} pax · {l.bags} {lang === "es" ? "maletas" : "bags"} · ~{l.km}km
                     </div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      {/* PM 2026-06-23: colorScheme:dark fuerza el dropdown
+                          nativo a respetar el tema oscuro (sin esto se
+                          renderea blanco en Chromium). Las options inline
+                          también con bg oscuro por si el browser ignora. */}
                       <select
                         value={selectedId}
                         onChange={(e) => setPerLegVehicle((m) => ({ ...m, [l.idx]: e.target.value }))}
-                        style={{ flex: 1, minWidth: 240, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.15)", color: "#fff", padding: "10px 12px", borderRadius: 9, fontSize: 13 }}
+                        style={{ flex: 1, minWidth: 240, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.15)", color: "#fff", padding: "10px 12px", borderRadius: 9, fontSize: 13, colorScheme: "dark" }}
                       >
-                        <option value="">{lang === "es" ? "— Elegir vehículo —" : "— Choose vehicle —"}</option>
+                        <option value="" style={{ background: "#1A2634", color: "#fff" }}>{lang === "es" ? "— Elegir vehículo —" : "— Choose vehicle —"}</option>
                         {legEligible.map((v) => {
                           const p = computeLegPrice({ route: l.route, vehicle: v, km: l.km });
                           const isRouteVeh = l.route?.vehicleId === v.id;
                           return (
-                            <option key={v.id} value={v.id}>
-                              {isRouteVeh ? "★ " : ""}{v.name} · ${p.toFixed(0)}
+                            <option key={v.id} value={v.id} style={{ background: "#1A2634", color: "#fff" }}>
+                              {isRouteVeh ? "★ " : ""}{v.type || v.name} · ${p.toFixed(0)}
                             </option>
                           );
                         })}
@@ -6975,6 +6988,11 @@ function AdminPanel({ onClose }) {
   const [companySettings, setCompanySettings] = useState(initCompanySettings);
   const [companySettingsSaving, setCompanySettingsSaving] = useState(false);
   const [companySettingsSaved, setCompanySettingsSaved] = useState(false);
+  // PM 2026-06-23: modal de confirmación al activar mantenimiento — la URL
+  // de re-acceso debe quedarle clara al admin antes de que pueda quedar
+  // bloqueado del sitio público.
+  const [maintenanceConfirmOpen, setMaintenanceConfirmOpen] = useState(false);
+  const [maintenanceUrlCopied, setMaintenanceUrlCopied] = useState(false);
   const updCompanySetting = (k, v) => { setCompanySettings((s) => ({ ...s, [k]: v })); setCompanySettingsSaved(false); };
   const saveCompanySettings = async () => {
     setCompanySettingsSaving(true);
@@ -12114,7 +12132,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <input
                     type="checkbox"
                     checked={String(companySettings.site_maintenance_mode || "false") === "true"}
-                    onChange={(e) => updCompanySetting("site_maintenance_mode", e.target.checked ? "true" : "false")}
+                    onChange={(e) => {
+                      // PM 2026-06-23: si está activando (false→true), abrimos
+                      // el modal de confirmación con la URL de re-acceso.
+                      // Si está desactivando, aplicamos directo (no hay riesgo).
+                      if (e.target.checked) {
+                        setMaintenanceUrlCopied(false);
+                        setMaintenanceConfirmOpen(true);
+                      } else {
+                        updCompanySetting("site_maintenance_mode", "false");
+                      }
+                    }}
                     style={{ accentColor: "#EF6C2B", width: 16, height: 16 }}
                   />
                   <strong>
@@ -12135,6 +12163,97 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <label className="adm-fl">{lang==="es"?"Tiempo estimado (opcional)":"Estimated time (optional)"}</label>
                   <input className="adm-fi" value={companySettings.site_maintenance_eta} onChange={(e) => updCompanySetting("site_maintenance_eta", e.target.value)} placeholder={lang==="es"?"Ej. 15 minutos · esta noche · hasta mañana 8am":"E.g. 15 minutes · tonight · until tomorrow 8am"} />
                 </div>
+
+                {/* PM 2026-06-23: modal de confirmación al ACTIVAR el modo.
+                    Razón: si el admin lo activa y cierra sesión, la pantalla
+                    de mantenimiento oculta el navbar (donde está el botón
+                    ADMIN) — quedaría sin manera obvia de volver a entrar.
+                    El modal le muestra la URL exacta y le da copy al
+                    clipboard antes de activar. */}
+                {maintenanceConfirmOpen && (() => {
+                  const loginUrl = (typeof window !== "undefined" ? window.location.origin : "https://livinginprdise.com") + "/#/login";
+                  const copyUrl = async () => {
+                    try {
+                      await navigator.clipboard.writeText(loginUrl);
+                      setMaintenanceUrlCopied(true);
+                      setTimeout(() => setMaintenanceUrlCopied(false), 2500);
+                    } catch {
+                      // Fallback: seleccionar el texto si clipboard API falla.
+                      alert(loginUrl);
+                    }
+                  };
+                  return (
+                    <div
+                      onClick={() => setMaintenanceConfirmOpen(false)}
+                      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+                    >
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: 520, width: "100%", background: "linear-gradient(135deg,#0a1628,#0e1a2e)", border: "1px solid rgba(239,108,43,.4)", borderRadius: 16, padding: "26px 24px", color: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,.5)" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                          <AlertTriangle style={{ width: 22, height: 22, color: "#EF6C2B" }} />
+                          <h3 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".04em", margin: 0 }}>
+                            {lang === "es" ? "¿ACTIVAR MODO MANTENIMIENTO?" : "ACTIVATE MAINTENANCE MODE?"}
+                          </h3>
+                        </div>
+                        <p style={{ fontSize: 13, color: "rgba(255,255,255,.75)", lineHeight: 1.6, marginBottom: 14 }}>
+                          {lang === "es"
+                            ? "Una vez activado, los visitantes verán la pantalla de mantenimiento. Vos seguís entrando con normalidad MIENTRAS tu sesión esté activa. Si cerrás sesión, el navbar también se oculta y vas a tener que entrar por la URL directa del login."
+                            : "Once active, visitors see the maintenance screen. You keep navigating normally WHILE your session is active. If you log out, the navbar is also hidden — you'll need to come back via the direct login URL."}
+                        </p>
+                        <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.3)", marginBottom: 18 }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 6 }}>
+                            {lang === "es" ? "Anotá esta URL — la vas a necesitar:" : "Save this URL — you'll need it:"}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <code style={{ flex: 1, padding: "8px 10px", borderRadius: 6, background: "rgba(0,0,0,.4)", color: "#fff", fontSize: 12.5, fontFamily: "'SF Mono', monospace", wordBreak: "break-all", border: "1px solid rgba(255,255,255,.08)" }}>
+                              {loginUrl}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={copyUrl}
+                              style={{
+                                padding: "8px 14px", borderRadius: 8,
+                                background: maintenanceUrlCopied ? "rgba(141,198,63,.2)" : "rgba(245,166,35,.15)",
+                                border: `1px solid ${maintenanceUrlCopied ? "rgba(141,198,63,.5)" : "rgba(245,166,35,.4)"}`,
+                                color: maintenanceUrlCopied ? "#8DC63F" : "var(--gold)",
+                                fontSize: 11.5, fontWeight: 800, letterSpacing: ".08em",
+                                textTransform: "uppercase", cursor: "pointer", flexShrink: 0,
+                                display: "inline-flex", alignItems: "center", gap: 6,
+                              }}
+                            >
+                              {maintenanceUrlCopied
+                                ? <><Check style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiada" : "Copied"}</>
+                                : <><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar" : "Copy"}</>}
+                            </button>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)", lineHeight: 1.5, marginBottom: 20 }}>
+                          {lang === "es"
+                            ? "Recordá guardar después con el botón principal de Settings para que el cambio quede persistido en la base de datos."
+                            : "Remember to save with the main Settings button after closing this dialog so the change is persisted to the database."}
+                        </p>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() => setMaintenanceConfirmOpen(false)}
+                            style={{ padding: "10px 18px", borderRadius: 9, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.8)", fontSize: 12, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer" }}
+                          >
+                            {lang === "es" ? "Cancelar" : "Cancel"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { updCompanySetting("site_maintenance_mode", "true"); setMaintenanceConfirmOpen(false); }}
+                            style={{ padding: "10px 18px", borderRadius: 9, background: "linear-gradient(135deg,#EF6C2B,#C62828)", border: "1px solid transparent", color: "#fff", fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", cursor: "pointer", boxShadow: "0 6px 18px rgba(239,108,43,.4)" }}
+                          >
+                            {lang === "es" ? "Activar" : "Activate"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </Collapsible>
 
               <Collapsible title={lang==="es"?"Página About — Sección Nuestra Historia":"About page — Our Story section"} icon={Edit}>
