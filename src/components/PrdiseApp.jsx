@@ -199,6 +199,16 @@ const IMG_BY_SLUG = {
   "sedan": IMG_PALM,
   "suv": IMG_VAN_ROAD,
   "van": IMG_VAN_ROAD,
+  // PM 2026-06-23 (D): identifiers legacy del editor de posts del admin
+  // (guardaba "IMG_MANGROVES" etc en posts.image). Mapeados al mismo
+  // asset que la versión kebab-case para back-compat sin migración.
+  "IMG_AERIAL_BAY": IMG_AERIAL_BAY,
+  "IMG_PALM": IMG_PALM,
+  "IMG_SUNSET_JETSKI": IMG_SUNSET_JETSKI,
+  "IMG_LIGHTHOUSE": IMG_LIGHTHOUSE,
+  "IMG_ZIPLINE": IMG_ZIPLINE,
+  "IMG_MANGROVES": IMG_MANGROVES,
+  "IMG_VAN_ROAD": IMG_VAN_ROAD,
 };
 // PM 2026-06-15: si el valor guardado en DB es una URL (http(s):// o ruta
 // absoluta /…) o un data: URI, lo devolvemos tal cual sin tocar — antes el
@@ -460,7 +470,13 @@ function mapPostToAdminPost(p) {
     date: (p.published_at || p.created_at || "").slice(0, 10),
     status: p.status,
     featured: !!p.featured,
-    img: p.image || "IMG_PALM",
+    // PM 2026-06-23 (D): el campo `image` puede contener una URL real
+    // (Supabase Storage, http(s), data: URI) o un IDENTIFICADOR legacy
+    // tipo "IMG_MANGROVES" (assets inline definidos arriba en el módulo).
+    // Antes pasábamos el string crudo a MediaImg y los identificadores
+    // se intentaban cargar como URL → 404 → placeholder. Ahora resolvemos
+    // identificadores al asset real.
+    img: resolveImg(p.image || "IMG_PALM"),
     views: p.views || 0,
     // EN como base, ES separado — el modal los inicializa así.
     excerpt: p.excerpt_en || "",
@@ -1467,10 +1483,19 @@ body.has-magic-banner .hero-body{padding-top:calc(170px + var(--magic-banner-h,4
    Tamaños finales:
    - desktop nav: 104px (era 90, +15%)  ·  hero: 166px (era 144, +15%)
    - mobile nav: 85px (era 74, +15%)    ·  hero: 138px (era 120, +15%) */
-.logo-img{display:block;height:104px;width:auto;max-width:470px}
+.logo-img{display:block;height:104px;width:auto;max-width:470px;transition:height .25s ease,max-width .25s ease}
 .logo-img-sm{height:85px}
 .logo-img-lg{height:166px;max-width:640px}
 @media(max-width:640px){.logo-img{height:85px;max-width:360px}.logo-img-lg{height:138px;max-width:490px}}
+/* PM 2026-06-23 (D): shrink on scroll. Cuando el navbar entra en .stuck
+   (scrollY > 60), el logo se reduce al ~58% con una transición sutil.
+   El nav-inner también baja su min-height para no quedar con un hueco
+   gigante encima del logo achicado. Al volver al tope, ambas vuelven. */
+.nav.stuck .logo-img{height:62px;max-width:280px}
+@media(max-width:640px){.nav.stuck .logo-img{height:52px;max-width:220px}}
+.nav-inner{transition:min-height .25s ease}
+.nav.stuck .nav-inner{min-height:80px}
+@media(max-width:640px){.nav.stuck .nav-inner{min-height:72px}}
 .logo-shapes{display:flex;gap:3px;height:34px}
 .logo-shapes i{display:block;width:12px;border-radius:3px;transform:perspective(200px) rotateY(-6deg)}
 .logo-shapes i:nth-child(1){background:var(--gold)}.logo-shapes i:nth-child(2){background:var(--orange)}
@@ -2236,7 +2261,37 @@ function WhatsAppChat() {
 // puede leer SITE_SETTINGS directo (poblado por loadInitialData) o usar
 // el default. Si nada está cargado todavía, el splash original sigue
 // hasta que dataReady llegue.
-function MaintenanceScreen({ lang }) {
+// PM 2026-06-23 (D): catálogo de opciones de ETA del modo mantenimiento.
+// Cliente pidió dropdown (no texto libre) para evitar (a) que el texto
+// quede atrapado en un idioma y (b) errores tipográficos. El value que
+// se persiste es el `code`; el label se resuelve bilingüe en runtime.
+const MAINTENANCE_ETA_OPTIONS = [
+  { code: "5min",  es: "5 minutos",   en: "5 minutes" },
+  { code: "10min", es: "10 minutos",  en: "10 minutes" },
+  { code: "15min", es: "15 minutos",  en: "15 minutes" },
+  { code: "30min", es: "30 minutos",  en: "30 minutes" },
+  { code: "1h",    es: "1 hora",      en: "1 hour" },
+  { code: "2h",    es: "2 horas",     en: "2 hours" },
+  { code: "4h",    es: "4 horas",     en: "4 hours" },
+  { code: "8h",    es: "8 horas",     en: "8 hours" },
+  { code: "1d",    es: "1 día",       en: "1 day" },
+  { code: "2d",    es: "2 días",      en: "2 days" },
+  { code: "1w",    es: "1 semana",    en: "1 week" },
+];
+function resolveMaintenanceEta(code, lang) {
+  if (!code) return "";
+  const opt = MAINTENANCE_ETA_OPTIONS.find((o) => o.code === code);
+  if (opt) return lang === "es" ? opt.es : opt.en;
+  // Fallback para values legacy / texto libre antiguo — se muestra tal cual.
+  return code;
+}
+
+function MaintenanceScreen() {
+  // PM 2026-06-23 (D): el lang viene del hook (no del prop) para poder
+  // exponer el toggle ES/EN dentro de esta pantalla. Cliente: "agrega el
+  // botón para cambiar el idioma — no debe ser protagonista, pero hay
+  // que dar la opción de visualizar en español".
+  const { lang, setLang } = useLang();
   const message = getSetting(lang === "es" ? "site_maintenance_message_es" : "site_maintenance_message_en");
   const eta = getSetting("site_maintenance_eta");
   const waPhone = getSetting("whatsapp_phone");
@@ -2257,6 +2312,23 @@ function MaintenanceScreen({ lang }) {
         padding: 24,
       }}
     >
+      {/* PM 2026-06-23 (D): toggle ES/EN sutil arriba a la derecha. */}
+      <button
+        type="button"
+        onClick={() => setLang(lang === "en" ? "es" : "en")}
+        title={lang === "en" ? "Cambiar a Español" : "Switch to English"}
+        style={{
+          position: "absolute", top: 18, right: 22,
+          padding: "6px 12px", borderRadius: 99,
+          background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)",
+          color: "rgba(255,255,255,.7)", cursor: "pointer",
+          fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase",
+          display: "inline-flex", alignItems: "center", gap: 6,
+        }}
+      >
+        <Globe style={{ width: 12, height: 12 }} />
+        {lang === "en" ? "ES" : "EN"}
+      </button>
       <div style={{ maxWidth: 540, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
         <img src={LOGO_SRC} alt="Living in PRDISE" style={{ width: "auto", height: 140, maxWidth: 520 }} />
         <div style={{ height: 4, width: 120, background: "linear-gradient(90deg,#F5A623,#EF6C2B,#8DC63F,#29ABE2)", borderRadius: 99 }} />
@@ -2268,7 +2340,7 @@ function MaintenanceScreen({ lang }) {
         </p>
         {eta && (
           <div style={{ padding: "10px 18px", borderRadius: 99, background: "rgba(245,166,35,.12)", border: "1px solid rgba(245,166,35,.35)", fontSize: 12.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--gold)", textTransform: "uppercase" }}>
-            {lang === "es" ? "Estimado:" : "ETA:"} {eta}
+            {lang === "es" ? "Estimado:" : "ETA:"} {resolveMaintenanceEta(eta, lang)}
           </div>
         )}
         {waHref && (
@@ -2302,7 +2374,6 @@ function MaintenanceScreen({ lang }) {
 // pasa). Reactivo a cambios de SITE_SETTINGS (se vuelve a evaluar cada vez
 // que cambia el hash, lo que es suficiente para nuestra UX).
 function MaintenanceGate({ children }) {
-  const { lang } = useLang();
   const { path } = useHashRoute();
   // Recalculamos en cada render por seguridad (es cheap — solo lecturas).
   const maintenance = String(getSetting("site_maintenance_mode") || "false").toLowerCase() === "true";
@@ -2321,7 +2392,7 @@ function MaintenanceGate({ children }) {
   if (isAdmin) return children;
   // El admin no logueado pero que quiere entrar necesita /login accesible.
   if (path === "/login" || path === "/admin" || path.startsWith("/auth")) return children;
-  return <MaintenanceScreen lang={lang} />;
+  return <MaintenanceScreen />;
 }
 
 // PM 2026-06-23: Collapsible = accordion reutilizable para las secciones
@@ -7589,15 +7660,17 @@ function AdminPanel({ onClose }) {
     ]},
     { group: t("adm_operations"), items: [
       { id: "invoices", label: t("adm_invoices"), Icon: Briefcase, permModule: "invoices" },
-      // PM 2026-06-23: nuevo inbox para los mensajes del formulario de
-      // contacto público. Antes se guardaban en contact_messages pero no
-      // había UI ni notificación; ahora viven acá + un trigger DB notifica
-      // a todos los admins al insertar.
-      { id: "contact-inbox", label: lang === "es" ? "Buzón" : "Inbox", Icon: Mail, permModule: "contacts" },
+      // PM 2026-06-23 (D): Buzón con permiso GRANULAR propio ("inbox") en
+      // vez de heredar el de "contacts" (lista de Clientes). Cliente: "ver
+      // el buzón debe ser un permiso, no único del admin".
+      { id: "contact-inbox", label: lang === "es" ? "Buzón" : "Inbox", Icon: Mail, permModule: "inbox" },
       { id: "contacts", label: t("adm_contacts"), Icon: Users, permModule: "contacts" },
     ]},
     { group: t("adm_system"), items: [
-      { id: "settings", label: t("adm_settings"), Icon: Settings },
+      // PM 2026-06-23 (D): Settings pasa a adminOnly. Cliente: "el
+      // mantenimiento debe ser único del admin" — y Settings contiene
+      // mantenimiento + redes + roles + email contacto, todo crítico.
+      { id: "settings", label: t("adm_settings"), Icon: Settings, adminOnly: true },
     ]},
   ];
 
@@ -7863,7 +7936,8 @@ function AdminPanel({ onClose }) {
 .adm-sidebar,.adm-main,.adm-tbl-wrap,.adm-modal{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)}
 html{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)}
 .adm-brand{padding:0 20px 20px;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:14px}
-.adm-brand img{height:38px;width:auto}
+/* PM 2026-06-23 (D): +25% sobre 38px (era chico vs el logo del sitio público). */
+.adm-brand img{height:58px;width:auto;max-width:100%}
 .adm-nav{flex:1;padding:6px 12px;overflow-y:auto}
 .adm-nav-group{margin-bottom:18px}
 .adm-nav-group-lab{padding:8px 14px;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.32)}
@@ -8210,16 +8284,48 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 notifs.map((n) => {
                   const title = lang === "es" ? n.title_es : n.title_en;
                   const body = lang === "es" ? n.body_es : n.body_en;
+                  // PM 2026-06-23 (D): click sobre el cuerpo de la
+                  // notification navega a su `link` y la marca como leída
+                  // (best-effort). Los botones de acción siguen funcionando
+                  // independiente.
+                  const openLink = async () => {
+                    if (!n.read_at) {
+                      try {
+                        const fd = new FormData();
+                        fd.append("id", n.id);
+                        const res = await sbMarkNotificationRead(fd);
+                        if (res?.ok) reloadNotifs();
+                      } catch { /* best-effort */ }
+                    }
+                    setNotifsOpen(false);
+                    if (n.link) {
+                      // n.link viene como "/admin?section=contact-inbox" o "/X".
+                      // Para que el router por hash lo entienda, prefijamos "#".
+                      const target = n.link.startsWith("#") ? n.link : "#" + n.link;
+                      window.location.hash = target;
+                      // Si la sección destino es del admin, además seteamos
+                      // el section state via querystring leído por el panel.
+                      const m = n.link.match(/section=([\w-]+)/);
+                      if (m) {
+                        try { sessionStorage.setItem("prdise_admin_section", m[1]); } catch {}
+                      }
+                    }
+                  };
                   return (
                     <div key={n.id} style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,.05)", background: n.read_at ? "transparent" : "rgba(245,166,35,.06)", display: "flex", gap: 10, alignItems: "flex-start" }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 6, background: n.read_at ? "rgba(255,255,255,.15)" : "#EF6C2B" }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={openLink}
+                        style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", textAlign: "left", cursor: n.link ? "pointer" : "default", padding: 0, color: "inherit", fontFamily: "inherit" }}
+                        title={n.link ? (lang === "es" ? "Abrir" : "Open") : ""}
+                      >
                         <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>{title}</div>
                         {body && <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", lineHeight: 1.45, marginBottom: 4 }}>{body}</div>}
                         <div style={{ fontSize: 10, color: "rgba(255,255,255,.35)" }}>
                           {new Date(n.created_at).toLocaleString(lang === "es" ? "es-PR" : "en-US", { dateStyle: "short", timeStyle: "short" })}
                         </div>
-                      </div>
+                      </button>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {!n.read_at && (
                           <button onClick={async () => { const fd = new FormData(); fd.append("id", n.id); const res = await sbMarkNotificationRead(fd); if (res?.ok) reloadNotifs(); }} title={lang === "es" ? "Marcar como leída" : "Mark as read"} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 2 }}>
@@ -8253,7 +8359,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 >
                   <s.Icon />
                   <span>{s.label}</span>
-                  {s.id === "contacts" && <span className="badge">{contacts.filter(c => c.status === "new").length}</span>}
+                  {/* PM 2026-06-23 (D): badges arreglados.
+                      - contacts (sección Clientes) → cuenta CUSTOMERS, no
+                        mensajes. listCustomers ya filtra role='user' del
+                        lado server, así que admins/empleados quedan fuera.
+                      - contact-inbox (Buzón) → cuenta contact_messages con
+                        status="new" (lo que antes estaba mal asignado a
+                        "contacts"). */}
+                  {s.id === "contacts" && <span className="badge">{customers.length}</span>}
+                  {s.id === "contact-inbox" && contacts.filter(c => c.status === "new").length > 0 && (
+                    <span className="badge">{contacts.filter(c => c.status === "new").length}</span>
+                  )}
                   {s.id === "invoices" && <span className="badge">{invoices.filter(i => i.status === "overdue").length}</span>}
                 </button>
               ))}
@@ -11943,7 +12059,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 { key: "posts", label: lang === "es" ? "Publicaciones" : "Posts" },
                 { key: "invoices", label: lang === "es" ? "Facturas" : "Invoices" },
                 { key: "users", label: lang === "es" ? "Usuarios" : "Users" },
-                { key: "contacts", label: lang === "es" ? "Contactos" : "Contacts" },
+                { key: "contacts", label: lang === "es" ? "Contactos (clientes)" : "Contacts (customers)" },
+                // PM 2026-06-23 (D): granularidad separada para el Buzón de
+                // mensajes del formulario público. Cliente: "ver el buzón
+                // debe ser un permiso, no único del admin".
+                { key: "inbox", label: lang === "es" ? "Buzón de mensajes" : "Messages inbox" },
                 { key: "settings", label: lang === "es" ? "Configuración" : "Settings" },
               ];
               const levels = [
@@ -12208,7 +12328,25 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
                 <div className="adm-fg">
                   <label className="adm-fl">{lang==="es"?"Tiempo estimado (opcional)":"Estimated time (optional)"}</label>
-                  <input className="adm-fi" value={companySettings.site_maintenance_eta} onChange={(e) => updCompanySetting("site_maintenance_eta", e.target.value)} placeholder={lang==="es"?"Ej. 15 minutos · esta noche · hasta mañana 8am":"E.g. 15 minutes · tonight · until tomorrow 8am"} />
+                  {/* PM 2026-06-23 (D): dropdown estandarizado — el value
+                      persistido es un código (5min, 1h, 1d…) y la pantalla
+                      pública lo renderea bilingüe. Evita textos atrapados
+                      en un solo idioma + errores tipográficos. */}
+                  <select
+                    className="adm-fi"
+                    value={companySettings.site_maintenance_eta || ""}
+                    onChange={(e) => updCompanySetting("site_maintenance_eta", e.target.value)}
+                  >
+                    <option value="">{lang==="es"?"— Sin especificar —":"— Not specified —"}</option>
+                    {MAINTENANCE_ETA_OPTIONS.map((o) => (
+                      <option key={o.code} value={o.code}>{lang==="es"?o.es:o.en}</option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginTop: 4, lineHeight: 1.45 }}>
+                    {lang==="es"
+                      ? "Se muestra al visitante en el idioma activo del sitio. Si no querés mostrar tiempo estimado, elegí \"Sin especificar\"."
+                      : "Shown to the visitor in the site's active language. If you don't want to show a time, pick \"Not specified\"."}
+                  </p>
                 </div>
 
                 {/* PM 2026-06-23: modal de confirmación al ACTIVAR el modo.
@@ -16431,6 +16569,19 @@ function PostDetail({ params }) {
                   alert(lang === "es" ? "No se pudo copiar" : "Could not copy");
                 }
               };
+              // PM 2026-06-23 (D): Instagram no soporta share-URL como
+              // Facebook/Twitter. La práctica estándar es copiar el link
+              // al clipboard + sugerir pegarlo en una Story o DM. Si el
+              // visitante está en mobile, intentamos abrir la app con el
+              // deeplink instagram:// y el clipboard listo igual.
+              const shareInstagram = async () => {
+                try { await navigator.clipboard.writeText(shareUrl); } catch {}
+                alert(lang === "es"
+                  ? "Enlace copiado al portapapeles. Abrí Instagram y pegalo en tu Story o en un DM para compartirlo."
+                  : "Link copied to clipboard. Open Instagram and paste it into your Story or a DM to share.");
+                // Best-effort: intentar abrir la app/web de Instagram.
+                window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+              };
               return (
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 700, lineHeight: "32px" }}>
@@ -16444,6 +16595,12 @@ function PostDetail({ params }) {
                       <Icon style={{ width: 14, height: 14 }} />
                     </a>
                   ))}
+                  <button onClick={shareInstagram} aria-label="Instagram"
+                    title="Instagram"
+                    style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "#E1306C", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Instagram style={{ width: 14, height: 14 }} />
+                  </button>
                   <button onClick={copyLink} aria-label={lang === "es" ? "Copiar enlace" : "Copy link"}
                     title={lang === "es" ? "Copiar enlace" : "Copy link"}
                     style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
