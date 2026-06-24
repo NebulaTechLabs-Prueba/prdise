@@ -86,3 +86,9 @@ desktop.ini
 # vacía via .gitkeep para que exista en clones limpios.
 /assets/service-images/*
 !/assets/service-images/.gitkeep
+
+# Scripts locales de diagnóstico / reset de usuarios de prueba.
+# Uso del dev para depurar auth y resetear cuentas; no van a prod.
+/scripts/auth-logs.mjs
+/scripts/diagnose-signup.mjs
+/scripts/reset-test-users.mjs

@@ -3362,7 +3362,15 @@ function HotelDetail({ params }) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <h1 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2rem,5vw,3rem)", letterSpacing: ".02em", marginBottom: 0 }}>{L(hotel.name, hotel.nameES)}</h1>
                 {PRDISE.load("session", null)?.role === "admin" && (
-                  <button onClick={() => nav("/admin")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.3)", color: "var(--gold)", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", transition: "all .2s", flexShrink: 0 }}>
+                  <button onClick={() => {
+                    // PM 2026-06-24: deep-link al editor del item en el panel
+                    // admin. Patrón sessionStorage (mismo que notificaciones).
+                    try {
+                      sessionStorage.setItem("prdise_admin_section", "hotels");
+                      sessionStorage.setItem("prdise_admin_edit", JSON.stringify({ type: "hotel", id: hotel.dbId }));
+                    } catch {}
+                    nav("/admin");
+                  }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.3)", color: "var(--gold)", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", transition: "all .2s", flexShrink: 0 }}>
                     <Pencil style={{ width: 12, height: 12 }} />Edit in Admin
                   </button>
                 )}
@@ -3647,7 +3655,14 @@ function TourDetail({ params }) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <h1 style={{ fontFamily: "Bebas Neue", fontSize: "clamp(2rem,5vw,3rem)", letterSpacing: ".02em", marginBottom: 0 }}>{L(tour.name, tour.nameES)}</h1>
                 {PRDISE.load("session", null)?.role === "admin" && (
-                  <button onClick={() => nav("/admin")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.3)", color: "var(--gold)", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", transition: "all .2s", flexShrink: 0 }}>
+                  <button onClick={() => {
+                    // PM 2026-06-24: deep-link al editor del tour específico.
+                    try {
+                      sessionStorage.setItem("prdise_admin_section", "tours");
+                      sessionStorage.setItem("prdise_admin_edit", JSON.stringify({ type: "tour", id: tour.dbId }));
+                    } catch {}
+                    nav("/admin");
+                  }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, background: "rgba(245,166,35,.1)", border: "1px solid rgba(245,166,35,.3)", color: "var(--gold)", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", cursor: "pointer", transition: "all .2s", flexShrink: 0 }}>
                     <Pencil style={{ width: 12, height: 12 }} />Edit in Admin
                   </button>
                 )}
@@ -7128,6 +7143,30 @@ function AdminPanel({ onClose }) {
   const [editing, setEditing] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("general");
+
+  // PM 2026-06-24: deep-link desde "Edit in Admin" del público. Si hay un
+  // hint en sessionStorage, esperamos a que hotels/tours estén poblados,
+  // encontramos el item por dbId y abrimos el modal de edit. Consumimos
+  // el hint inmediatamente para que un refresh no reabra el modal.
+  useEffect(() => {
+    let hint;
+    try {
+      const raw = sessionStorage.getItem("prdise_admin_edit");
+      if (!raw) return;
+      hint = JSON.parse(raw);
+    } catch { return; }
+    if (!hint || !hint.type || !hint.id) {
+      sessionStorage.removeItem("prdise_admin_edit");
+      return;
+    }
+    const list = hint.type === "hotel" ? hotels : hint.type === "tour" ? tours : null;
+    if (!list || !list.length) return; // esperar a que cargue
+    const item = list.find((x) => x.dbId === hint.id);
+    if (item) {
+      setEditing({ type: hint.type, item });
+    }
+    sessionStorage.removeItem("prdise_admin_edit");
+  }, [hotels, tours]);
   // Settings de empresa (KV en site_settings). Pre-cargados desde
   // SITE_SETTINGS (poblado por loadInitialData). El admin edita y guarda
   // bulk; el resto del sitio los lee via getSetting().
@@ -16124,6 +16163,9 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: "" }]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // PM 2026-06-24: vista previa antes de persistir. Nada se escribe en DB
+  // ni se genera link de Stripe hasta que el admin confirma desde el preview.
+  const [showPreview, setShowPreview] = useState(false);
 
   // ── Dedupe state ─────────────────────────────────────────────────────────
   const [duplicateMatches, setDuplicateMatches] = useState([]);
@@ -16196,9 +16238,28 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   const catalogOptions = useMemo(() => {
     const tours = (TOURS || []).filter(t => !t.status || t.status === "published").map(t => ({
       kind: "tour", id: t.dbId, label: `Tour · ${t.name}`, price: t.price, desc: t.desc,
+      // PM 2026-06-24: metadata para calculadora de línea (per_person × pax,
+      // per_hour × min). Tours no tienen vehículo ni km.
+      pricingUnit: t.pricingUnit || "per_person",
+      durationMinutes: (() => {
+        // tours.duration_minutes vino desde DB pero el mapper lo convierte a
+        // "6 hours" string. Reconstruimos minutos parseando.
+        const m = String(t.duration || "").match(/(\d+)\s*hour/);
+        if (m) return parseInt(m[1], 10) * 60;
+        const min = String(t.duration || "").match(/(\d+)\s*min/);
+        return min ? parseInt(min[1], 10) : 60;
+      })(),
+      maxPax: t.capacity || null,
+      titleClean: t.name,
     }));
     const stays = (HOTELS || []).filter(h => !h.status || h.status === "published").map(h => ({
       kind: "stay", id: h.dbId, label: `Stay · ${h.name}`, price: h.price, desc: h.desc,
+      // PM 2026-06-24: per_night se modela como per_unit en la calc (la noche
+      // entra como "quantity"). per_person aplica si se cobra por persona.
+      pricingUnit: h.pricingUnit === "per_night" ? "per_unit" : (h.pricingUnit || "per_unit"),
+      durationMinutes: 60,
+      maxPax: h.sleeps || null,
+      titleClean: h.name,
     }));
     const routes = (ROUTES || []).filter(r => r.active !== false).map(r => ({
       kind: "transfer", id: r.id, label: `Transfer · ${r.from} → ${r.to}`,
@@ -16233,20 +16294,25 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     const [kind, id] = optKey.split(":");
     const opt = catalogOptions.find(o => o.kind === kind && o.id === id);
     if (!opt) return;
-    // PM 2026-06-24: si es transfer, popular __calc con defaults derivados
-    // de la ruta (pricing_unit/mode + duration + km + vehicle). El admin
-    // puede expandir el panel "Calculadora" y ajustar antes de aplicar.
-    const calc = kind === "transfer" ? {
+    // PM 2026-06-24: __calc para los 3 tipos. La calculadora aparece siempre
+    // que se importa del catálogo y permite ajustar unidad (per_unit/per_person/
+    // per_hour). Para transfer adicionalmente: pricing_mode + vehículo + km.
+    // Para tour/stay solo aplican pax y minutos (sin vehículo).
+    const calc = {
       open: false,
+      kind, // "transfer" | "tour" | "stay"
       pricingUnit: opt.pricingUnit || "per_unit",
-      pricingMode: opt.pricingMode || "route_price",
+      pricingMode: opt.pricingMode || "route_price", // solo relevante para transfer
       pax: 1,
       minutes: opt.durationMinutes || 60,
       km: opt.distanceKm || 0,
       vehicleId: opt.vehicleId || null,
       basePrice: Number(opt.price) || 0,
-      labelFromTo: opt.from && opt.to ? `${opt.from} → ${opt.to}` : "",
-    } : null;
+      maxPax: opt.maxPax || null,
+      labelFromTo: opt.from && opt.to
+        ? `${opt.from} → ${opt.to}`
+        : (opt.titleClean || ""),
+    };
     updateItem(idx, {
       description: opt.label.replace(/^(Tour|Stay|Transfer) · /, "") + (opt.desc ? ` — ${opt.desc.slice(0, 80)}` : ""),
       unitPrice: opt.price ? String(opt.price) : "",
@@ -16263,40 +16329,38 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     return s + q * u;
   }, 0);
 
-  // PM 2026-06-24: helper de la calculadora de transfer. Resuelve el precio
-  // unitario respetando pricing_unit (per_person × pax, per_hour × hrs) y
-  // pricing_mode (route_only / route_plus_vehicle / vehicle_only). Devuelve
-  // { unit, total, descSuffix, explain } — el admin puede revisar el
+  // PM 2026-06-24: helper unificado de la calculadora. Resuelve el precio
+  // unitario respetando pricing_unit (per_person × pax, per_hour × hrs).
+  // Para kind="transfer" también considera pricing_mode + vehículo. Para
+  // kind="tour"/"stay" el modo de precio se ignora (siempre precio base).
+  // Devuelve { unit, descSuffix, explain } para que el admin vea el
   // breakdown antes de aplicar.
   const computeTransferLineCalc = (calc) => {
     if (!calc) return { unit: 0, descSuffix: "", explain: "" };
-    const veh = VEHICLES.find(v => v.id === calc.vehicleId) || null;
+    const isTransfer = (calc.kind || "transfer") === "transfer";
+    const veh = isTransfer ? (VEHICLES.find(v => v.id === calc.vehicleId) || null) : null;
     const km = Number(calc.km) || 0;
     const minutes = Number(calc.minutes) || 0;
     const pax = Math.max(1, Number(calc.pax) || 1);
     const base = Number(calc.basePrice) || 0;
     const vehFormula = veh ? ((veh.base || 0) + (veh.perKm || 0) * km) : 0;
 
-    // Precio "de la ruta" según pricing_mode
-    let routePrice = 0;
-    let modeExplain = "";
-    const mode = calc.pricingMode || "route_price";
-    if (mode === "route_price") {
-      routePrice = base;
-      modeExplain = `$${base}`;
-    } else if (mode === "route_plus_vehicle") {
-      routePrice = base + vehFormula;
-      modeExplain = veh
-        ? `$${base} + (${veh.base || 0} + ${veh.perKm || 0}×${km}km) = $${routePrice.toFixed(2)}`
-        : `$${base} (sin vehículo)`;
-    } else if (mode === "vehicle_formula") {
-      routePrice = vehFormula;
-      modeExplain = veh
-        ? `${veh.base || 0} + ${veh.perKm || 0}×${km}km = $${routePrice.toFixed(2)}`
-        : "Sin vehículo seleccionado";
-    } else {
-      routePrice = base;
-      modeExplain = `$${base}`;
+    // Precio base según pricing_mode (solo aplica para transfer)
+    let routePrice = base;
+    let modeExplain = `$${base}`;
+    if (isTransfer) {
+      const mode = calc.pricingMode || "route_price";
+      if (mode === "route_plus_vehicle") {
+        routePrice = base + vehFormula;
+        modeExplain = veh
+          ? `$${base} + (${veh.base || 0} + ${veh.perKm || 0}×${km}km) = $${routePrice.toFixed(2)}`
+          : `$${base} (sin vehículo)`;
+      } else if (mode === "vehicle_formula") {
+        routePrice = vehFormula;
+        modeExplain = veh
+          ? `${veh.base || 0} + ${veh.perKm || 0}×${km}km = $${routePrice.toFixed(2)}`
+          : "Sin vehículo seleccionado";
+      }
     }
 
     // Multiplicador por unidad
@@ -16315,13 +16379,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       descSuffix = ` × ${minutes} min`;
     }
 
-    if (veh && mode !== "vehicle_formula" && mode !== "route_plus_vehicle") {
-      // Vehicle informativo (route_price ignora vehículo en cálculo, pero el
-      // admin puede querer reflejarlo en el desc para el cliente).
-      descSuffix += ` · ${veh.name || veh.id}`;
-    } else if (veh) {
-      descSuffix += ` · ${veh.name || veh.id}`;
-    }
+    if (veh) descSuffix += ` · ${veh.name || veh.id}`;
 
     return {
       unit: Number(unitPrice.toFixed(2)),
@@ -16374,27 +16432,40 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     return () => clearTimeout(id);
   }, [selectedUserId, items]);
 
-  const handleSubmit = async () => {
+  // PM 2026-06-24: validación pura — no persiste nada. Devuelve true/false
+  // y deja el error en estado. Compartida entre "Vista previa" y "Crear".
+  const validateInvoice = () => {
     setError("");
-    // Cliente obligatorio: forzamos seleccionar uno existente o crear uno
-    // nuevo. Antes el modal dejaba crear la factura sin user_id y la dejaba
-    // huérfana (PM 2026-06-10: sin cliente y servicio no hay factura).
     if (!selectedUserId || mode !== "locked") {
       setError(T("Buscá un cliente existente o creá uno nuevo antes de continuar.", "Search an existing customer or create a new one before continuing."));
-      return;
+      return false;
     }
-    if (!customerName.trim()) { setError(T("Nombre del cliente requerido", "Customer name required")); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) { setError(T("Email del cliente inválido", "Invalid customer email")); return; }
-    if (items.length === 0) { setError(T("Agregá al menos un ítem", "Add at least one item")); return; }
+    if (!customerName.trim()) { setError(T("Nombre del cliente requerido", "Customer name required")); return false; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) { setError(T("Email del cliente inválido", "Invalid customer email")); return false; }
+    if (items.length === 0) { setError(T("Agregá al menos un ítem", "Add at least one item")); return false; }
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      if (!it.description.trim()) { setError(T(`Descripción requerida en línea ${i + 1}`, `Description required on line ${i + 1}`)); return; }
+      if (!it.description.trim()) { setError(T(`Descripción requerida en línea ${i + 1}`, `Description required on line ${i + 1}`)); return false; }
       const q = Number(it.quantity);
-      if (!Number.isInteger(q) || q < 1) { setError(T(`Cantidad inválida en línea ${i + 1}`, `Invalid quantity on line ${i + 1}`)); return; }
+      if (!Number.isInteger(q) || q < 1) { setError(T(`Cantidad inválida en línea ${i + 1}`, `Invalid quantity on line ${i + 1}`)); return false; }
       const u = Number(it.unitPrice);
-      if (!Number.isFinite(u) || u < 0) { setError(T(`Precio inválido en línea ${i + 1}`, `Invalid price on line ${i + 1}`)); return; }
+      if (!Number.isFinite(u) || u < 0) { setError(T(`Precio inválido en línea ${i + 1}`, `Invalid price on line ${i + 1}`)); return false; }
     }
+    return true;
+  };
 
+  // Abrir vista previa: solo valida + scrollea hacia arriba para mostrar
+  // el overlay. No toca DB ni Stripe.
+  const handleOpenPreview = () => {
+    if (!validateInvoice()) return;
+    setShowPreview(true);
+  };
+
+  // Confirmar desde el preview: AHORA sí persiste. La invoice nace en
+  // 'draft' y pasa a 'pending' en el server action; el link de Stripe
+  // se genera después manualmente desde la lista de facturas.
+  const handleConfirmCreate = async () => {
+    setError("");
     const itemsPayload = items.map((it) => ({
       description: it.description.trim(),
       quantity: Number(it.quantity),
@@ -16421,12 +16492,14 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       if (!res?.ok) {
         setError(res?.error || T("Error desconocido", "Unknown error"));
         setSubmitting(false);
+        setShowPreview(false); // mostrar el form con el error
         return;
       }
       onCreated(res.data);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
+      setShowPreview(false);
     }
   };
 
@@ -16435,7 +16508,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
         <button className="adm-modal-close" onClick={onClose}><X /></button>
         <h3>{T("NUEVA FACTURA", "NEW INVOICE")}</h3>
-        <p className="adm-modal-sub">{T("Generamos el link de pago Stripe automáticamente y luego podés enviarlo por WhatsApp.", "We generate the Stripe payment link automatically; then you can send it via WhatsApp.")}</p>
+        <p className="adm-modal-sub">{T("Armá la factura y revisá la vista previa antes de crearla. El link de pago se genera después manualmente.", "Build the invoice and review the preview before creating it. The payment link is generated manually afterwards.")}</p>
 
         <div className="adm-modal-section">
           <div className="adm-modal-section-h">
@@ -16635,20 +16708,19 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                 ><Trash2 /></button>
               </div>
 
-              {/* PM 2026-06-24: Calculadora de transfer. Solo aparece si la
-                  línea está vinculada a una ruta del catálogo. Resuelve
-                  per_person × pax y per_hour × min, y permite vincular un
-                  vehículo respetando pricing_mode. NO modifica el shape
-                  de invoice_items — materializa todo en description +
-                  unitPrice al aplicar. */}
-              {it.transferRouteId && it.__calc && (() => {
+              {/* PM 2026-06-24: Calculadora unificada (transfer/tour/stay).
+                  Aparece SIEMPRE que la línea está vinculada al catálogo.
+                  Override de unidad por línea. Para transfer adicionalmente:
+                  modo de precio + vehículo + km. NO toca el shape de
+                  invoice_items — materializa todo en description +
+                  unit_cents al pulsar "Aplicar al precio". */}
+              {(it.transferRouteId || it.tourId || it.stayId) && it.__calc && (() => {
                 const calc = it.__calc;
+                const isTransfer = (calc.kind || "transfer") === "transfer";
                 const calcResult = computeTransferLineCalc(calc);
                 const needsPax = calc.pricingUnit === "per_person";
                 const needsMinutes = calc.pricingUnit === "per_hour";
-                const needsVehicle = calc.pricingMode === "route_plus_vehicle" || calc.pricingMode === "vehicle_formula";
-                const showCalc = needsPax || needsMinutes || needsVehicle;
-                if (!showCalc) return null;
+                const needsVehicle = isTransfer && (calc.pricingMode === "route_plus_vehicle" || calc.pricingMode === "vehicle_formula");
                 return (
                   <div style={{ marginTop: 8, borderRadius: 9, background: "rgba(245,166,35,.05)", border: "1px solid rgba(245,166,35,.18)", overflow: "hidden" }}>
                     <button
@@ -16662,15 +16734,48 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                       }}
                     >
                       <span style={{ display: "inline-block", transform: calc.open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▸</span>
-                      {T("Calculadora de transfer", "Transfer calculator")}
+                      {isTransfer
+                        ? T("Calculadora de transfer", "Transfer calculator")
+                        : calc.kind === "tour"
+                          ? T("Calculadora de tour", "Tour calculator")
+                          : T("Calculadora de estadía", "Stay calculator")}
                       <span style={{ marginLeft: "auto", color: "rgba(255,255,255,.55)", fontWeight: 600, letterSpacing: 0, textTransform: "none", fontSize: 11 }}>
                         {calc.pricingUnit === "per_person" ? T("por persona", "per person")
                           : calc.pricingUnit === "per_hour" ? T("por hora", "per hour")
-                          : T("fijo por viaje", "flat per trip")}
+                          : T("precio fijo", "flat price")}
                       </span>
                     </button>
                     {calc.open && (
                       <div style={{ padding: "4px 11px 11px 11px", display: "flex", flexDirection: "column", gap: 10 }}>
+                        {/* Override de unidad. El admin puede cambiar la
+                            forma de cobro por línea sin tocar el catálogo.
+                            "Modo de precio" + selector de vehículo solo
+                            aplican a transfers. */}
+                        <div style={{ display: "grid", gridTemplateColumns: isTransfer ? "1fr 1fr" : "1fr", gap: 8 }}>
+                          <div className="adm-fg" style={{ marginBottom: 0 }}>
+                            <label className="adm-fl">{T("Unidad de cobro", "Pricing unit")}</label>
+                            <select className="adm-fi"
+                              value={calc.pricingUnit}
+                              onChange={(e) => updateCalc(i, { pricingUnit: e.target.value })}>
+                              <option value="per_unit">{T("Precio fijo", "Flat price")}</option>
+                              <option value="per_person">{T("Por persona", "Per person")}</option>
+                              <option value="per_hour">{T("Por tiempo (minutos)", "By time (minutes)")}</option>
+                            </select>
+                          </div>
+                          {isTransfer && (
+                            <div className="adm-fg" style={{ marginBottom: 0 }}>
+                              <label className="adm-fl">{T("Modo de precio", "Pricing mode")}</label>
+                              <select className="adm-fi"
+                                value={calc.pricingMode}
+                                onChange={(e) => updateCalc(i, { pricingMode: e.target.value })}>
+                                <option value="route_price">{T("Precio fijo de ruta", "Route fixed price")}</option>
+                                <option value="route_plus_vehicle">{T("Ruta + vehículo", "Route + vehicle")}</option>
+                                <option value="vehicle_formula">{T("Solo fórmula de vehículo", "Vehicle formula only")}</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                        {(needsPax || needsMinutes || needsVehicle) && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
                           {needsPax && (
                             <div className="adm-fg" style={{ marginBottom: 0 }}>
@@ -16712,6 +16817,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                             </>
                           )}
                         </div>
+                        )}
                         <div style={{ padding: "8px 10px", borderRadius: 7, background: "rgba(0,0,0,.18)", border: "1px solid rgba(255,255,255,.06)" }}>
                           <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 3 }}>
                             {T("Cálculo", "Calculation")}
@@ -16849,15 +16955,132 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
           <button className="adm-btn adm-btn-ghost" onClick={onClose} disabled={submitting}>{T("Cancelar", "Cancel")}</button>
           <button
             className="adm-btn adm-btn-primary"
-            onClick={handleSubmit}
+            onClick={handleOpenPreview}
             disabled={submitting || mode !== "locked"}
             title={mode !== "locked" ? T("Confirmá un cliente primero", "Confirm a customer first") : undefined}
             style={{ opacity: (submitting || mode !== "locked") ? 0.55 : 1, cursor: (submitting || mode !== "locked") ? "not-allowed" : "pointer" }}
           >
-            {submitting ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
-            {submitting ? T("Creando...", "Creating...") : T("Crear factura", "Create invoice")}
+            <Eye style={{ width: 14, height: 14 }} />
+            {T("Vista previa y crear", "Preview and create")}
           </button>
         </div>
+
+        {/* PM 2026-06-24: Vista previa antes de persistir. Overlay sobre el
+            modal. Renderiza el invoice como lo vería el cliente (sin número
+            real, sin link de pago — esos se generan al confirmar). El admin
+            puede "Volver a editar" o "Confirmar y crear". Hasta aquí NADA
+            se escribió en DB ni se llamó a Stripe. */}
+        {showPreview && (
+          <div className="adm-modal-bg" onClick={() => !submitting && setShowPreview(false)} style={{ zIndex: 60 }}>
+            <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680 }}>
+              <button className="adm-modal-close" onClick={() => !submitting && setShowPreview(false)} disabled={submitting}><X /></button>
+              <h3>{T("VISTA PREVIA DE LA FACTURA", "INVOICE PREVIEW")}</h3>
+              <p className="adm-modal-sub">
+                {T(
+                  "Esto es como verá el cliente la factura. Aún no se ha creado nada — el link de pago tampoco. Al confirmar se persiste y queda pendiente; el link de Stripe se genera después manualmente.",
+                  "This is how the customer will see the invoice. Nothing has been created yet — no payment link either. On confirm it is persisted and marked pending; the Stripe link is generated manually afterwards."
+                )}
+              </p>
+
+              <div style={{
+                padding: 18, borderRadius: 10,
+                background: "rgba(255,255,255,.03)",
+                border: "1px solid rgba(255,255,255,.08)",
+                fontSize: 13, color: "rgba(255,255,255,.85)",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", color: "rgba(255,255,255,.45)", textTransform: "uppercase" }}>
+                      {T("Factura (borrador)", "Invoice (draft)")}
+                    </div>
+                    <div style={{ fontFamily: "Bebas Neue", fontSize: 22, color: "#F5A623", letterSpacing: ".04em", marginTop: 2 }}>
+                      INV-{new Date().getFullYear()}-•••
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", fontSize: 11.5, color: "rgba(255,255,255,.55)" }}>
+                    {dueAt && <div>{T("Vence", "Due")}: {dueAt}</div>}
+                    <div style={{ marginTop: 4, fontWeight: 700, color: "#F5A623", textTransform: "uppercase", letterSpacing: ".1em", fontSize: 10.5 }}>
+                      {paymentMethod === "stripe" ? "Stripe" : paymentMethod === "paypal" ? "PayPal" : T("Fuera del sistema", "Off-system")}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".12em", color: "rgba(255,255,255,.45)", textTransform: "uppercase", marginBottom: 4 }}>
+                    {T("Cliente", "Customer")}
+                  </div>
+                  <div style={{ fontWeight: 700 }}>{customerName}</div>
+                  <div style={{ color: "rgba(255,255,255,.6)", fontSize: 12 }}>{customerEmail}</div>
+                  {customerPhone && <div style={{ color: "rgba(255,255,255,.6)", fontSize: 12 }}>{customerPhone}</div>}
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".12em", color: "rgba(255,255,255,.45)", textTransform: "uppercase", marginBottom: 6 }}>
+                    {T("Detalle", "Details")}
+                  </div>
+                  {items.map((it, i) => {
+                    const q = Number(it.quantity) || 0;
+                    const u = Number(it.unitPrice) || 0;
+                    const total = q * u;
+                    return (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "6px 0", borderBottom: i < items.length - 1 ? "1px dotted rgba(255,255,255,.08)" : "none" }}>
+                        <div style={{ flex: 1, marginRight: 12 }}>
+                          <div>{it.description}</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>
+                            {q} × ${u.toFixed(2)}
+                          </div>
+                        </div>
+                        <div style={{ fontFamily: "Bebas Neue", fontSize: 16, color: "#fff", letterSpacing: ".02em" }}>
+                          ${total.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".14em", color: "rgba(255,255,255,.5)", textTransform: "uppercase" }}>
+                    {T("Total a cobrar", "Amount due")}
+                  </span>
+                  <span style={{ fontSize: 28, fontFamily: "Bebas Neue", color: "#F5A623", letterSpacing: ".02em" }}>
+                    ${subtotal.toFixed(2)}
+                  </span>
+                </div>
+
+                {notes && (
+                  <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 7, background: "rgba(0,0,0,.18)", fontSize: 12, color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "rgba(255,255,255,.45)", textTransform: "uppercase", marginBottom: 3 }}>
+                      {T("Notas", "Notes")}
+                    </div>
+                    {notes}
+                  </div>
+                )}
+              </div>
+
+              {error && (
+                <div style={{ padding: 11, borderRadius: 9, background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "#f87171", fontSize: 12.5, marginTop: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                  <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0 }} />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <div className="adm-modal-actions">
+                <button className="adm-btn adm-btn-ghost" onClick={() => setShowPreview(false)} disabled={submitting}>
+                  {T("Volver a editar", "Back to edit")}
+                </button>
+                <button
+                  className="adm-btn adm-btn-primary"
+                  onClick={handleConfirmCreate}
+                  disabled={submitting}
+                  style={{ opacity: submitting ? 0.55 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+                >
+                  {submitting ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
+                  {submitting ? T("Creando...", "Creating...") : T("Confirmar y crear factura", "Confirm and create invoice")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
