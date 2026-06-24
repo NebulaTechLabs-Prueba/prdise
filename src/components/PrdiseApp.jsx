@@ -16204,6 +16204,16 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       kind: "transfer", id: r.id, label: `Transfer · ${r.from} → ${r.to}`,
       price: Number(r.price) || 0,
       desc: "",
+      // PM 2026-06-24 (calc invoice): metadata necesaria para la calculadora
+      // de transfer en cada línea (per_person × pax, per_hour × min, vehicle).
+      pricingUnit: r.pricingUnit || "per_unit",
+      pricingMode: r.pricingMode || "route_price",
+      durationMinutes: r.durationMinutes ?? null,
+      distanceKm: r.distanceKm ?? null,
+      vehicleId: r.vehicleId || null,
+      maxPax: r.maxPax || null,
+      from: r.from,
+      to: r.to,
     }));
     return [...tours, ...stays, ...routes];
   }, []);
@@ -16217,18 +16227,33 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   const importFromCatalog = (idx, optKey) => {
     if (!optKey) {
       // Resetear FK pero conservar texto manual.
-      updateItem(idx, { tourId: null, stayId: null, transferRouteId: null });
+      updateItem(idx, { tourId: null, stayId: null, transferRouteId: null, __calc: null });
       return;
     }
     const [kind, id] = optKey.split(":");
     const opt = catalogOptions.find(o => o.kind === kind && o.id === id);
     if (!opt) return;
+    // PM 2026-06-24: si es transfer, popular __calc con defaults derivados
+    // de la ruta (pricing_unit/mode + duration + km + vehicle). El admin
+    // puede expandir el panel "Calculadora" y ajustar antes de aplicar.
+    const calc = kind === "transfer" ? {
+      open: false,
+      pricingUnit: opt.pricingUnit || "per_unit",
+      pricingMode: opt.pricingMode || "route_price",
+      pax: 1,
+      minutes: opt.durationMinutes || 60,
+      km: opt.distanceKm || 0,
+      vehicleId: opt.vehicleId || null,
+      basePrice: Number(opt.price) || 0,
+      labelFromTo: opt.from && opt.to ? `${opt.from} → ${opt.to}` : "",
+    } : null;
     updateItem(idx, {
       description: opt.label.replace(/^(Tour|Stay|Transfer) · /, "") + (opt.desc ? ` — ${opt.desc.slice(0, 80)}` : ""),
       unitPrice: opt.price ? String(opt.price) : "",
       tourId: kind === "tour" ? id : null,
       stayId: kind === "stay" ? id : null,
       transferRouteId: kind === "transfer" ? id : null,
+      __calc: calc,
     });
   };
 
@@ -16237,6 +16262,95 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     const u = Number(it.unitPrice) || 0;
     return s + q * u;
   }, 0);
+
+  // PM 2026-06-24: helper de la calculadora de transfer. Resuelve el precio
+  // unitario respetando pricing_unit (per_person × pax, per_hour × hrs) y
+  // pricing_mode (route_only / route_plus_vehicle / vehicle_only). Devuelve
+  // { unit, total, descSuffix, explain } — el admin puede revisar el
+  // breakdown antes de aplicar.
+  const computeTransferLineCalc = (calc) => {
+    if (!calc) return { unit: 0, descSuffix: "", explain: "" };
+    const veh = VEHICLES.find(v => v.id === calc.vehicleId) || null;
+    const km = Number(calc.km) || 0;
+    const minutes = Number(calc.minutes) || 0;
+    const pax = Math.max(1, Number(calc.pax) || 1);
+    const base = Number(calc.basePrice) || 0;
+    const vehFormula = veh ? ((veh.base || 0) + (veh.perKm || 0) * km) : 0;
+
+    // Precio "de la ruta" según pricing_mode
+    let routePrice = 0;
+    let modeExplain = "";
+    const mode = calc.pricingMode || "route_price";
+    if (mode === "route_price") {
+      routePrice = base;
+      modeExplain = `$${base}`;
+    } else if (mode === "route_plus_vehicle") {
+      routePrice = base + vehFormula;
+      modeExplain = veh
+        ? `$${base} + (${veh.base || 0} + ${veh.perKm || 0}×${km}km) = $${routePrice.toFixed(2)}`
+        : `$${base} (sin vehículo)`;
+    } else if (mode === "vehicle_formula") {
+      routePrice = vehFormula;
+      modeExplain = veh
+        ? `${veh.base || 0} + ${veh.perKm || 0}×${km}km = $${routePrice.toFixed(2)}`
+        : "Sin vehículo seleccionado";
+    } else {
+      routePrice = base;
+      modeExplain = `$${base}`;
+    }
+
+    // Multiplicador por unidad
+    const unit = calc.pricingUnit || "per_unit";
+    let unitPrice = routePrice;
+    let unitExplain = "";
+    let descSuffix = "";
+    if (unit === "per_person") {
+      unitPrice = routePrice * pax;
+      unitExplain = `× ${pax} pax`;
+      descSuffix = ` × ${pax} pax`;
+    } else if (unit === "per_hour") {
+      const hours = minutes / 60;
+      unitPrice = routePrice * hours;
+      unitExplain = `× ${hours.toFixed(2)}h (${minutes} min)`;
+      descSuffix = ` × ${minutes} min`;
+    }
+
+    if (veh && mode !== "vehicle_formula" && mode !== "route_plus_vehicle") {
+      // Vehicle informativo (route_price ignora vehículo en cálculo, pero el
+      // admin puede querer reflejarlo en el desc para el cliente).
+      descSuffix += ` · ${veh.name || veh.id}`;
+    } else if (veh) {
+      descSuffix += ` · ${veh.name || veh.id}`;
+    }
+
+    return {
+      unit: Number(unitPrice.toFixed(2)),
+      descSuffix,
+      explain: unitExplain ? `${modeExplain} ${unitExplain}` : modeExplain,
+    };
+  };
+
+  const applyCalcToLine = (idx) => {
+    const it = items[idx];
+    if (!it?.__calc) return;
+    const { unit, descSuffix } = computeTransferLineCalc(it.__calc);
+    // Sobrescribimos description con el formato base (origen → destino) + suffix
+    // computado. Si el admin ya había editado el texto manualmente, se respeta
+    // como prefijo cuando no contiene un "×" previo.
+    const baseLabel = it.__calc.labelFromTo || (it.description || "").split(" — ")[0] || it.description;
+    const newDesc = `${baseLabel}${descSuffix}`;
+    updateItem(idx, {
+      description: newDesc,
+      unitPrice: String(unit),
+      __calc: { ...it.__calc, open: false },
+    });
+  };
+
+  const updateCalc = (idx, patch) => {
+    const it = items[idx];
+    if (!it?.__calc) return;
+    updateItem(idx, { __calc: { ...it.__calc, ...patch } });
+  };
 
   // ── Dedupe check: corre cuando hay user seleccionado + items con FK ──────
   useEffect(() => {
@@ -16520,6 +16634,118 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                   style={{ opacity: items.length <= 1 ? 0.3 : 1, marginBottom: 4 }}
                 ><Trash2 /></button>
               </div>
+
+              {/* PM 2026-06-24: Calculadora de transfer. Solo aparece si la
+                  línea está vinculada a una ruta del catálogo. Resuelve
+                  per_person × pax y per_hour × min, y permite vincular un
+                  vehículo respetando pricing_mode. NO modifica el shape
+                  de invoice_items — materializa todo en description +
+                  unitPrice al aplicar. */}
+              {it.transferRouteId && it.__calc && (() => {
+                const calc = it.__calc;
+                const calcResult = computeTransferLineCalc(calc);
+                const needsPax = calc.pricingUnit === "per_person";
+                const needsMinutes = calc.pricingUnit === "per_hour";
+                const needsVehicle = calc.pricingMode === "route_plus_vehicle" || calc.pricingMode === "vehicle_formula";
+                const showCalc = needsPax || needsMinutes || needsVehicle;
+                if (!showCalc) return null;
+                return (
+                  <div style={{ marginTop: 8, borderRadius: 9, background: "rgba(245,166,35,.05)", border: "1px solid rgba(245,166,35,.18)", overflow: "hidden" }}>
+                    <button
+                      type="button"
+                      onClick={() => updateCalc(i, { open: !calc.open })}
+                      style={{
+                        width: "100%", textAlign: "left", padding: "8px 11px",
+                        background: "transparent", border: "none", cursor: "pointer",
+                        color: "#F5A623", fontSize: 11, fontWeight: 700, letterSpacing: ".06em",
+                        textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6,
+                      }}
+                    >
+                      <span style={{ display: "inline-block", transform: calc.open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▸</span>
+                      {T("Calculadora de transfer", "Transfer calculator")}
+                      <span style={{ marginLeft: "auto", color: "rgba(255,255,255,.55)", fontWeight: 600, letterSpacing: 0, textTransform: "none", fontSize: 11 }}>
+                        {calc.pricingUnit === "per_person" ? T("por persona", "per person")
+                          : calc.pricingUnit === "per_hour" ? T("por hora", "per hour")
+                          : T("fijo por viaje", "flat per trip")}
+                      </span>
+                    </button>
+                    {calc.open && (
+                      <div style={{ padding: "4px 11px 11px 11px", display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                          {needsPax && (
+                            <div className="adm-fg" style={{ marginBottom: 0 }}>
+                              <label className="adm-fl">{T("Pax", "Pax")}{calc.maxPax ? ` (máx ${calc.maxPax})` : ""}</label>
+                              <input type="number" min="1" step="1" className="adm-fi"
+                                value={calc.pax}
+                                onChange={(e) => updateCalc(i, { pax: e.target.value })} />
+                            </div>
+                          )}
+                          {needsMinutes && (
+                            <div className="adm-fg" style={{ marginBottom: 0 }}>
+                              <label className="adm-fl">{T("Duración (min)", "Duration (min)")}</label>
+                              <input type="number" min="0" step="1" className="adm-fi"
+                                value={calc.minutes}
+                                onChange={(e) => updateCalc(i, { minutes: e.target.value })} />
+                            </div>
+                          )}
+                          {needsVehicle && (
+                            <>
+                              <div className="adm-fg" style={{ marginBottom: 0 }}>
+                                <label className="adm-fl">{T("Vehículo", "Vehicle")}</label>
+                                <select className="adm-fi"
+                                  value={calc.vehicleId || ""}
+                                  onChange={(e) => updateCalc(i, { vehicleId: e.target.value || null })}>
+                                  <option value="">— {T("Ninguno", "None")} —</option>
+                                  {VEHICLES.map(v => (
+                                    <option key={v.id} value={v.id}>
+                                      {v.name || v.id}{v.base != null ? ` · base $${v.base}` : ""}{v.perKm != null ? ` · $${v.perKm}/km` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="adm-fg" style={{ marginBottom: 0 }}>
+                                <label className="adm-fl">{T("Km", "Km")}</label>
+                                <input type="number" min="0" step="0.1" className="adm-fi"
+                                  value={calc.km}
+                                  onChange={(e) => updateCalc(i, { km: e.target.value })} />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <div style={{ padding: "8px 10px", borderRadius: 7, background: "rgba(0,0,0,.18)", border: "1px solid rgba(255,255,255,.06)" }}>
+                          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 3 }}>
+                            {T("Cálculo", "Calculation")}
+                          </div>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,.78)", fontFamily: "monospace", marginBottom: 5 }}>
+                            {calcResult.explain}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                            <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.5)", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>
+                              {T("Precio unitario", "Unit price")}
+                            </span>
+                            <span style={{ fontSize: 17, fontFamily: "Bebas Neue", color: "#F5A623" }}>
+                              ${calcResult.unit.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn-primary"
+                            onClick={() => applyCalcToLine(i)}
+                            style={{ padding: "6px 12px", fontSize: 11.5 }}
+                          >
+                            {T("Aplicar al precio", "Apply to price")}
+                          </button>
+                          <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)", lineHeight: 1.4 }}>
+                            {T("Sobrescribe precio unitario y descripción. Editable después.", "Overwrites unit price and description. Editable after.")}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             );
           })}
