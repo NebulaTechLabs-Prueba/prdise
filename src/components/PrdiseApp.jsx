@@ -4608,12 +4608,20 @@ function MyInvoicesPanel() {
   const { lang } = useLang();
   const [invs, setInvs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [rating, setRating] = useState(null); // { invoice, score, comment, saving }
   const reload = async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const list = await sbListMyInvoices();
       setInvs(Array.isArray(list) ? list : []);
+    } catch (e) {
+      // PM 2026-06-23 (D): antes solo había finally — si la API caía el
+      // panel mostraba lista vacía sin contexto. Ahora exponemos el error.
+      console.warn("[MyInvoicesPanel] reload error:", e);
+      setLoadError(String(e?.message || e));
+      setInvs([]);
     } finally { setLoading(false); }
   };
   useEffect(() => { reload(); }, []);
@@ -4637,6 +4645,23 @@ function MyInvoicesPanel() {
       {loading ? (
         <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,.4)" }}>
           <Loader2 style={{ width: 24, height: 24, animation: "spin 1s linear infinite" }} />
+        </div>
+      ) : loadError ? (
+        // PM 2026-06-23 (D): error UI distinto del empty state — antes
+        // un fallo de red mostraba "Aún no hay facturas" y confundía.
+        <div style={{ padding: "32px 24px", textAlign: "center", border: "1px solid rgba(239,108,43,.3)", borderRadius: 14, background: "rgba(239,108,43,.06)" }}>
+          <AlertTriangle style={{ width: 30, height: 30, color: "#EF6C2B", marginBottom: 10 }} />
+          <h4 style={{ fontFamily: "Bebas Neue", fontSize: 18, letterSpacing: ".06em", color: "#fff", marginBottom: 6 }}>
+            {lang === "es" ? "No se pudieron cargar tus facturas" : "Couldn't load your invoices"}
+          </h4>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", maxWidth: 460, margin: "0 auto 14px", lineHeight: 1.5 }}>
+            {lang === "es"
+              ? "Puede ser un problema temporal de conexión. Intentá de nuevo."
+              : "It may be a temporary connection issue. Please try again."}
+          </p>
+          <button onClick={reload} style={{ padding: "8px 18px", borderRadius: 9, background: "rgba(245,166,35,.15)", border: "1px solid rgba(245,166,35,.4)", color: "var(--gold)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+            {lang === "es" ? "Reintentar" : "Retry"}
+          </button>
         </div>
       ) : invs.length === 0 ? (
         <div style={{ padding: "48px 24px", textAlign: "center", border: "1px dashed rgba(255,255,255,.12)", borderRadius: 14, background: "rgba(255,255,255,.02)" }}>
@@ -4691,7 +4716,10 @@ function MyInvoicesPanel() {
                     )}
                   </div>
                 </div>
-                {inv.items.length > 0 && (
+                {/* PM 2026-06-23 (D): defensive — la API podría devolver
+                    invoice sin items (DB null, mapper roto). El acceso
+                    crudo a .length crasheaba el panel entero. */}
+                {Array.isArray(inv.items) && inv.items.length > 0 && (
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.05)", fontSize: 11.5, color: "rgba(255,255,255,.55)" }}>
                     {inv.items.map((it, i) => (
                       <div key={i}>• {it.description} · ×{it.quantity}</div>
@@ -4997,10 +5025,10 @@ function AccountPage() {
           <div className="acc-avatar">{(user.firstName || "U").charAt(0).toUpperCase()}</div>
           <div className="acc-name">
             <h1>{lang === "es" ? "MI " : "MY "}<em>{lang === "es" ? "CUENTA" : "ACCOUNT"}</em></h1>
-            <p>{lang === "es" ? `¡Bienvenida de vuelta, ${user.firstName || "viajero"}!` : `Welcome back, ${user.firstName || "traveler"}!`}</p>
+            <p>{lang === "es" ? `¡Hola de nuevo, ${user.firstName || "viajero/a"}!` : `Welcome back, ${user.firstName || "traveler"}!`}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={logout} className="acc-logout"><LogOut />Log out</button>
+            <button onClick={logout} className="acc-logout"><LogOut />{lang === "es" ? "Cerrar sesión" : "Log out"}</button>
           </div>
         </div>
 
@@ -5066,12 +5094,35 @@ function AccountPage() {
                 const { data: { user: authUser } } = await sb.auth.getUser();
                 if (authUser) {
                   const langCode = user.language === "English" ? "en" : "es";
+                  // PM 2026-06-23 (D): validar birth_date como ISO YYYY-MM-DD
+                  // antes de enviar. El <input type="date"> debería enforce
+                  // esto pero algunos browsers permiten input free-text.
+                  const bdRaw = (user.birthDate || "").trim();
+                  let bdValid = null;
+                  if (bdRaw) {
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(bdRaw)) {
+                      alert(lang === "es"
+                        ? "Fecha de nacimiento inválida. Usá el formato AAAA-MM-DD."
+                        : "Invalid birth date. Use the format YYYY-MM-DD.");
+                      return;
+                    }
+                    const d = new Date(bdRaw + "T00:00:00Z");
+                    if (Number.isNaN(d.getTime())) {
+                      alert(lang === "es" ? "Fecha de nacimiento inválida." : "Invalid birth date.");
+                      return;
+                    }
+                    if (d > new Date()) {
+                      alert(lang === "es" ? "La fecha de nacimiento no puede ser futura." : "Birth date cannot be in the future.");
+                      return;
+                    }
+                    bdValid = bdRaw;
+                  }
                   const patch = {
                     first_name: (user.firstName || "").trim() || null,
                     last_name: (user.lastName || "").trim() || null,
                     phone: (user.phone || "").trim() || null,
                     country: (user.country || "").trim() || null,
-                    birth_date: (user.birthDate || "").trim() || null,
+                    birth_date: bdValid,
                     lang_pref: langCode,
                   };
                   const { error } = await sb.from("profiles").update(patch).eq("id", authUser.id);
@@ -5133,7 +5184,13 @@ function AccountPage() {
                   ? "Tus datos se conservan. No podrás iniciar sesión hasta que contactes a atención al cliente para reactivar tu cuenta."
                   : "Your data is kept. You won't be able to sign in until you contact customer support to reactivate your account."}
               </p>
-              <button onClick={() => {
+              {/* PM 2026-06-23 (D): antes la "desactivación" solo escribía
+                  un flag en localStorage — el usuario podía reentrar
+                  inmediatamente desde otro browser. Ahora llamamos a la
+                  server action softDeleteAccount que persiste en DB
+                  (profiles.status='inactive' + deleted_at) y cierra todas
+                  las sesiones globalmente. */}
+              <button onClick={async () => {
                 const session = PRDISE.load("session", null);
                 const userData = PRDISE.load("user", null);
                 const userEmail = (session?.email || userData?.email || "").toLowerCase();
@@ -5144,17 +5201,26 @@ function AccountPage() {
                 if (!window.confirm(lang === "es"
                   ? "¿Desactivar tu cuenta? No podrás iniciar sesión hasta que contactes atención al cliente para reactivarla. Tus datos se conservan."
                   : "Disable your account? You won't be able to sign in until you contact customer support to reactivate. Your data is preserved.")) return;
-                const disabled = PRDISE.load("disabledAccounts", []);
-                if (!disabled.includes(userEmail)) {
-                  disabled.push(userEmail);
-                  PRDISE.save("disabledAccounts", disabled);
+                try {
+                  const fd = new FormData();
+                  fd.append("confirmation", "DELETE");
+                  await sbSoftDeleteAccount(fd);
+                } catch (e) {
+                  // softDeleteAccount hace redirect("/") al final — la promesa
+                  // rechaza con un NEXT_REDIRECT sintético. Ignorar ese caso
+                  // específico; otros errores sí los reportamos.
+                  const msg = String(e?.message || e);
+                  if (!/NEXT_REDIRECT/.test(msg)) {
+                    alert((lang === "es" ? "No se pudo desactivar: " : "Could not deactivate: ") + msg);
+                    return;
+                  }
                 }
-                PRDISE.del("user");
-                PRDISE.del("session");
-                PRDISE.del("adminSession");
+                // Limpiar local + redirigir (el server también lo hace, pero
+                // por seguridad lo replicamos client-side).
+                try { PRDISE.del("user"); PRDISE.del("session"); PRDISE.del("adminSession"); } catch {}
                 alert(lang === "es"
-                  ? "Cuenta desactivada. Para reactivarla, comunícate con atención al cliente: hello@prdise.com"
-                  : "Account disabled. To reactivate, contact customer support: hello@prdise.com");
+                  ? "Cuenta desactivada. Para reactivarla, comunícate con atención al cliente."
+                  : "Account disabled. To reactivate, contact customer support.");
                 window.location.hash = "#/";
                 window.location.reload();
               }} style={{ padding: "10px 18px", borderRadius: 10, background: "rgba(239,108,43,.15)", border: "1px solid rgba(239,108,43,.3)", color: "#EF6C2B", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
@@ -5277,7 +5343,7 @@ function ServicesPage() {
                 {publishedTours.slice(0, 6).map((tr) => (
                   <NavLink key={tr.id} to={`/tour?id=${tr.id}`} style={{ borderRadius: 14, overflow: "hidden", textDecoration: "none", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", display: "flex", flexDirection: "column" }}>
                     <div style={{ height: 160, overflow: "hidden", position: "relative" }}>
-                      <img src={tr.img} alt={tr.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <MediaImg src={tr.img} alt={tr.name} label={L(tr.name, tr.nameES)} />
                       {tr.day && <span style={{ position: "absolute", top: 10, right: 10, padding: "4px 10px", borderRadius: 99, background: "rgba(141,198,63,.95)", color: "#0c1318", fontSize: 10, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>{tr.day}</span>}
                     </div>
                     <div style={{ padding: "14px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
@@ -8841,7 +8907,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 return (
                 <div key={h.id} className="adm-pcard">
                   <div className="adm-pcard-img">
-                    <img src={h.img} alt={h.name} />
+                    {/* PM 2026-06-23 (D): MediaImg para evitar el alt text
+                        feo cuando el stay no tiene imagen cargada. */}
+                    <MediaImg src={h.img} alt={h.name} label={h.name} />
                     <span className={`adm-pill ${h.status}`} style={{ position: "absolute", top: 12, right: 12 }}>{h.status}</span>
                     {svcPerm === "view" && (
                       <span style={{ position: "absolute", top: 12, left: 12, padding: "3px 8px", borderRadius: 99, background: "rgba(41,171,226,.85)", color: "#fff", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>
@@ -14688,6 +14756,66 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               </div>
             </div>
 
+            {/* PM 2026-06-23 (D): preview en vivo del precio final que verá
+                el cliente público, según el pricing_mode + vehículo + km
+                actuales del form. Resuelve la duda "¿cuánto va a salirle al
+                cliente?" sin tener que guardar y abrir el sitio público. */}
+            {(() => {
+              const veh = (Array.isArray(VEHICLES) ? VEHICLES : []).find(v => v.id === routeVehicleId);
+              const km = parseFloat(routeDistance) || 0;
+              const basePrice = parseFloat(routePrice) || 0;
+              const previewRoute = { price: basePrice, pricingMode: routePricingMode };
+              const total = computeLegPrice({ route: previewRoute, vehicle: veh, km });
+              const canCompute = veh && (routePricingMode === "route_price" ? basePrice > 0 : (routePricingMode === "vehicle_formula" ? km > 0 : (basePrice > 0 && km > 0)));
+              return (
+                <div style={{ marginTop: 10, padding: "12px 14px", borderRadius: 10, background: "linear-gradient(135deg, rgba(245,166,35,.08), rgba(239,108,43,.05))", border: "1px solid rgba(245,166,35,.25)" }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 6 }}>
+                    {lang === "es" ? "Previsualización del precio" : "Price preview"}
+                  </div>
+                  {!veh ? (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)" }}>
+                      {lang === "es" ? "Asigná un vehículo arriba para ver el cálculo." : "Assign a vehicle above to see the calculation."}
+                    </div>
+                  ) : !canCompute ? (
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.55)" }}>
+                      {routePricingMode === "route_price"
+                        ? (lang === "es" ? "Ingresá un precio base mayor a cero." : "Enter a base price greater than zero.")
+                        : routePricingMode === "vehicle_formula"
+                          ? (lang === "es" ? "Ingresá la distancia (km) de la ruta." : "Enter the route distance (km).")
+                          : (lang === "es" ? "Necesitás precio base + distancia (km)." : "You need a base price + distance (km).")}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", marginBottom: 8, fontFamily: "'SF Mono', monospace" }}>
+                        {routePricingMode === "route_price" && (
+                          <span>{lang === "es" ? "Precio fijo de la ruta" : "Route fixed price"}: ${basePrice.toFixed(2)}</span>
+                        )}
+                        {routePricingMode === "vehicle_formula" && (
+                          <span>{veh.base.toFixed(2)} + ({veh.perKm.toFixed(2)} × {km}km) = ${(veh.base + veh.perKm * km).toFixed(2)}</span>
+                        )}
+                        {routePricingMode === "route_plus_vehicle" && (
+                          <span>{basePrice.toFixed(2)} + ({veh.base.toFixed(2)} + {veh.perKm.toFixed(2)} × {km}km) = ${(basePrice + veh.base + veh.perKm * km).toFixed(2)}</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>
+                          {lang === "es" ? "El cliente ve:" : "Customer sees:"}
+                        </span>
+                        <span style={{ fontFamily: "Bebas Neue", fontSize: 26, color: "var(--gold)", letterSpacing: ".02em" }}>
+                          ${total.toFixed(2)}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginTop: 6 }}>
+                        {lang === "es"
+                          ? `Vehículo: ${veh.type || veh.name} · Base $${veh.base.toFixed(2)} · $${veh.perKm.toFixed(2)}/km`
+                          : `Vehicle: ${veh.type || veh.name} · Base $${veh.base.toFixed(2)} · $${veh.perKm.toFixed(2)}/km`}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
             <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", cursor: "pointer", marginTop: 10 }}>
               <input type="checkbox" checked={routeFeatured} onChange={(e) => setRouteFeatured(e.target.checked)} style={{ accentColor: "var(--gold)", width: 16, height: 16 }} />
               <div style={{ flex: 1 }}>
@@ -15187,10 +15315,11 @@ function NotifMatrixCard({ prefs, onChange, onSave, saving, savedFlag, onTest })
   // new_contact_message (mensajes del formulario público; trigger DB
   // dispara). Los otros 6 tienen triggers/callers reales después de la
   // tanda actual de fixes.
+  // PM 2026-06-23 (D): "cancellation" removida del UI — solo aplicaba a
+  // bookings y no hay flujo transaccional del lado público todavía.
   const events = [
     { id: "new_contact_message", label: lang==="es"?"Nuevo mensaje de contacto":"New contact message" },
     { id: "new_booking", label: lang==="es"?"Nueva reserva":"New booking" },
-    { id: "cancellation", label: lang==="es"?"Cancelación":"Cancellation" },
     { id: "successful_payment", label: lang==="es"?"Pago exitoso":"Successful payment" },
     { id: "failed_payment", label: lang==="es"?"Pago fallido":"Failed payment" },
     { id: "new_review", label: lang==="es"?"Nueva reseña":"New review" },

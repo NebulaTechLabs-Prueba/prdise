@@ -294,13 +294,24 @@ export async function deleteStay(formData: FormData): Promise<ActionResult> {
   const actorId = guard.current.user.id;
   const { id } = parsed.data;
 
-  // Soft delete: solo apagar `active`.
+  // PM 2026-06-23 (D): HARD delete. Antes era soft (active:false) pero
+  // como el admin carga incluyendo inactivos, el registro "eliminado"
+  // seguía apareciendo y confundía. Para ocultar sin borrar el admin
+  // usa el toggle "Oculto" (status hidden). DELETE es definitivo.
+  // Si hay FKs (invoice_items con stay_id), Postgres devuelve 23503;
+  // lo mapeamos a un mensaje claro que recomienda ocultar en lugar.
   const { error } = await supabase
     .from("stays")
-    .update({ active: false })
+    .delete()
     .eq("id", id);
 
   if (error) {
+    if (error.code === "23503") {
+      return {
+        ok: false,
+        error: "No se puede eliminar: este alojamiento tiene facturas o reservas asociadas. Ocultalo desde el toggle de estado.",
+      };
+    }
     return { ok: false, error: `No se pudo eliminar el alojamiento: ${error.message}` };
   }
 
@@ -506,12 +517,21 @@ export async function deleteTour(formData: FormData): Promise<ActionResult> {
   const actorId = guard.current.user.id;
   const { id } = parsed.data;
 
+  // PM 2026-06-23 (D): HARD delete (ver comentario en deleteStay). El
+  // soft-delete previo (active:false) seguía visible en el dashboard
+  // del admin que carga inactivos también.
   const { error } = await supabase
     .from("tours")
-    .update({ active: false })
+    .delete()
     .eq("id", id);
 
   if (error) {
+    if (error.code === "23503") {
+      return {
+        ok: false,
+        error: "No se puede eliminar: este tour tiene facturas o reservas asociadas. Ocultalo desde el toggle de estado.",
+      };
+    }
     return { ok: false, error: `No se pudo eliminar el tour: ${error.message}` };
   }
 

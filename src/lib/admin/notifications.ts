@@ -18,11 +18,13 @@ import type { Tables } from "@/lib/supabase/database.types";
 
 export type NotificationRow = Tables<"notifications">;
 
-// PM 2026-06-23: cliente confirmó que NO se usarán daily_report ni
-// overbooking. Removidos del enum y del UI de Settings → Notificaciones.
+// PM 2026-06-23: removidos daily_report + overbooking (cliente).
+// PM 2026-06-23 (D): "cancellation" removida también — solo se podía
+// disparar para bookings y en este modelo de referral los bookings
+// nunca se crean desde el público. Cuando exista flujo transaccional
+// real se rehabilita el evento.
 const KINDS = [
   "new_booking",
-  "cancellation",
   "successful_payment",
   "failed_payment",
   "new_review",
