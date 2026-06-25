@@ -29,6 +29,7 @@ export type ExperienceRow = {
   sort_order: number;
   active: boolean;
   cover_image: string | null;
+  featured_on_home: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -59,6 +60,8 @@ const baseSchema = z.object({
   sort_order: z.number().int().min(0).max(9999).optional().default(100),
   active: z.boolean().optional().default(true),
   cover_image: z.string().max(500).optional().default(""),
+  // PM 2026-06-25: si true aparece en la grilla del Home (cap visual 3).
+  featured_on_home: z.boolean().optional().default(false),
 });
 
 function asBool(fd: FormData, field: string): boolean {
@@ -82,6 +85,7 @@ export async function createExperience(formData: FormData): Promise<ActionResult
     sort_order: Number(formData.get("sort_order") ?? 100),
     active: asBool(formData, "active"),
     cover_image: formData.get("cover_image") ?? "",
+    featured_on_home: asBool(formData, "featured_on_home"),
   });
   if (!parsed.success) return { ok: false, error: firstZodError(parsed.error) };
 
@@ -116,6 +120,7 @@ export async function updateExperience(formData: FormData): Promise<ActionResult
     sort_order: Number(formData.get("sort_order") ?? 100),
     active: asBool(formData, "active"),
     cover_image: formData.get("cover_image") ?? "",
+    featured_on_home: asBool(formData, "featured_on_home"),
   });
   if (!parsed.success) return { ok: false, error: firstZodError(parsed.error) };
 

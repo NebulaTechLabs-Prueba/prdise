@@ -266,6 +266,16 @@ const stayBaseSchema = z.object({
   check_out_time: optionalText(40, "Hora de salida"),
   cancellation_policy: optionalText(2000, "Política de cancelación"),
   house_rules: optionalText(2000, "Normas de la casa"),
+  // PM 2026-06-25: experiencia dinámica (FK a public.experiences). Mismo
+  // patrón que en tours.
+  experience_id: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .nullable()
+    .or(z.literal(""))
+    .transform((v) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : null)),
   // PM 2026-06-15: ver markupShape. La validación cruzada type↔value se aplica
   // a nivel create/update schemas con superRefine — mantener stayBaseSchema
   // como ZodObject permite seguir usándolo con .extend() en updateStaySchema.

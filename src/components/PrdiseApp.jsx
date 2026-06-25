@@ -303,6 +303,8 @@ function mapStayToHotel(s) {
     checkOut: "11:00",
     partnerId: s.partner_id || null,
     partnerUrl: s.partner_url || "",
+    // PM 2026-06-25: experiencia dinámica (FK).
+    experienceId: s.experience_id || null,
     // Pricing mixto + categoría (PM 2026-06-10).
     pricingUnit: s.pricing_unit || "per_night",
     pricingExtras: Array.isArray(s.pricing_extras) ? s.pricing_extras : [],
@@ -2735,8 +2737,16 @@ function HomePage() {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
         if (published.length === 0) return null;
 
-        // EXPERIENCES dinámico desde DB. Si vacío, fallback hardcoded.
-        const dynamicExps = (EXPERIENCES || []).filter(e => e.active !== false).map(e => ({
+        // PM 2026-06-25: EXPERIENCES dinámico desde DB. Solo muestra las
+        // active=true Y featured_on_home=true (admin decide). Cap 3 por
+        // sort_order. Si no hay ninguna featured, fallback a TODAS las
+        // active (compat con instalaciones que aún no usaron el toggle).
+        const allActive = (EXPERIENCES || []).filter(e => e.active !== false);
+        const featuredOnly = allActive
+          .filter(e => e.featured_on_home === true)
+          .sort((a, b) => (a.sort_order ?? 100) - (b.sort_order ?? 100))
+          .slice(0, 3);
+        const dynamicExps = (featuredOnly.length > 0 ? featuredOnly : allActive.slice(0, 3)).map(e => ({
           key: e.id,
           slug: e.slug,
           color: e.color || "gold",
@@ -11848,7 +11858,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   ? "Las experiencias agrupan los tours en el Home y la página /tours. Crealas, editalas o desactivalas — luego desde el form de cada tour podés asignarle una."
                   : "Experiences group tours on the Home and /tours page. Create, edit or deactivate them — then from each tour form you can assign one."}</p>
               </div>
-              <button className="adm-btn adm-btn-primary" onClick={() => setEditingExperience({ id: "new", slug: "", name_es: "", name_en: "", description_es: "", description_en: "", color: "gold", sort_order: 100, active: true, cover_image: "" })}>
+              <button className="adm-btn adm-btn-primary" onClick={() => setEditingExperience({ id: "new", slug: "", name_es: "", name_en: "", description_es: "", description_en: "", color: "gold", sort_order: 100, active: true, cover_image: "", featured_on_home: false })}>
                 <Plus />{lang==="es"?"Nueva experiencia":"New experience"}
               </button>
             </div>
@@ -11863,12 +11873,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <th>Slug</th>
                     <th>{lang==="es"?"Tours":"Tours"}</th>
                     <th>{lang==="es"?"Orden":"Order"}</th>
+                    <th>{lang==="es"?"Home":"Home"}</th>
                     <th>Status</th>
                     <th style={{ textAlign: "right" }}>Actions</th>
                   </tr></thead>
                   <tbody>
                     {experiencesList.length === 0 ? (
-                      <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.5)" }}>
+                      <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.5)" }}>
                         {lang==="es"
                           ? "Aún no hay experiencias. Si recién aplicaste la migración, aparecerán las 3 iniciales (Beach Escape, River & Mountain, UTV Tours)."
                           : "No experiences yet. If you just applied the migration, the 3 initial ones will appear (Beach Escape, River & Mountain, UTV Tours)."}
@@ -11889,6 +11900,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)", fontFamily: "monospace" }}>{e.slug}</td>
                         <td style={{ fontWeight: 700, color: "#F5A623" }}>{toursCount}</td>
                         <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{e.sort_order ?? 100}</td>
+                        <td>{e.featured_on_home ? <span className="adm-pill" style={{ background: "rgba(245,166,35,.18)", color: "#F5A623", borderColor: "rgba(245,166,35,.4)" }}>★ Home</span> : <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>}</td>
                         <td><span className={`adm-pill ${e.active ? "published" : "hidden"}`}>{e.active ? "active" : "inactive"}</span></td>
                         <td>
                           <div className="adm-row-actions">
@@ -11951,6 +11963,28 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <input type="checkbox" id="exp-active" checked={!!editingExperience.active} onChange={(e) => setEditingExperience({ ...editingExperience, active: e.target.checked })} />
                     <label htmlFor="exp-active" style={{ fontSize: 12.5, color: "rgba(255,255,255,.8)" }}>{lang==="es"?"Activa (visible en el sitio)":"Active (visible on site)"}</label>
                   </div>
+                  {/* PM 2026-06-25: featured_on_home. El cliente pidió "máx 3"
+                      — no es restricción dura: el Home renderiza las primeras
+                      3 por sort_order. Si marcás 4+, aviso visual. */}
+                  <div className="adm-fg" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" id="exp-featured" checked={!!editingExperience.featured_on_home} onChange={(e) => setEditingExperience({ ...editingExperience, featured_on_home: e.target.checked })} />
+                    <label htmlFor="exp-featured" style={{ fontSize: 12.5, color: "rgba(255,255,255,.8)" }}>
+                      {lang==="es"?"★ Mostrar en el Home (máx 3)":"★ Show on Home (max 3)"}
+                    </label>
+                  </div>
+                  {(() => {
+                    const featuredCount = experiencesList.filter(x => x.featured_on_home && x.id !== editingExperience.id).length + (editingExperience.featured_on_home ? 1 : 0);
+                    if (editingExperience.featured_on_home && featuredCount > 3) {
+                      return (
+                        <p style={{ fontSize: 11.5, color: "rgba(245,166,35,.85)", marginTop: -4, paddingLeft: 22 }}>
+                          {lang==="es"
+                            ? `Hay ${featuredCount} experiencias marcadas para Home. El Home solo muestra las 3 con menor "Orden".`
+                            : `${featuredCount} experiences marked for Home. The Home only shows the 3 with lowest "Order".`}
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="adm-modal-actions">
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingExperience(null)}>{lang==="es"?"Cancelar":"Cancel"}</button>
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
@@ -11970,6 +12004,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       fd.append("sort_order", String(editingExperience.sort_order ?? 100));
                       fd.append("active", editingExperience.active ? "true" : "false");
                       fd.append("cover_image", editingExperience.cover_image || "");
+                      fd.append("featured_on_home", editingExperience.featured_on_home ? "true" : "false");
                       try {
                         const res = isNew ? await sbCreateExperience(fd) : await sbUpdateExperience(fd);
                         if (!res?.ok) { alert((lang==="es"?"No se pudo guardar: ":"Could not save: ") + (res?.error || "error")); return; }
@@ -13718,6 +13753,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("check_out_time", ownedUpdate.checkOutTime || "");
               fd.append("cancellation_policy", ownedUpdate.cancellationPolicy || "");
               fd.append("house_rules", ownedUpdate.houseRules || "");
+              // PM 2026-06-25: experiencia dinámica.
+              fd.append("experience_id", ownedUpdate.experienceId || "");
               // Amenities + galería: el Server Action readListField acepta
               // JSON string, CSV, o múltiples entries. Usamos JSON por
               // simplicidad y para preservar espacios/comas en valores.
@@ -14711,6 +14748,36 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               </div>
               {chipRow(services, setServices)}
             </div>
+            {/* PM 2026-06-25: dropdown de experiencia (mismo patrón que tour). */}
+            <div className="adm-fg-row">
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Experiencia" : "Experience"}
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                    ({lang === "es" ? "agrupa el stay en el Home" : "groups the stay on the Home"})
+                  </span>
+                </label>
+                <select
+                  className="adm-fi"
+                  defaultValue={it.experienceId || ""}
+                  onChange={(e) => (it.experienceId = e.target.value || null)}
+                  disabled={!EXPERIENCES || EXPERIENCES.length === 0}
+                >
+                  <option value="">— {lang === "es" ? "Sin asignar" : "Unassigned"} —</option>
+                  {(EXPERIENCES || []).filter(e => e.active !== false).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {lang === "es" ? e.name_es : e.name_en}
+                    </option>
+                  ))}
+                </select>
+                {(!EXPERIENCES || EXPERIENCES.length === 0) && (
+                  <p style={{ fontSize: 11, color: "rgba(245,166,35,.7)", marginTop: 4 }}>
+                    {lang === "es"
+                      ? "No hay experiencias todavía. Andá a sidebar → Experiencias para crear la primera."
+                      : "No experiences yet. Go to sidebar → Experiences to create the first one."}
+                  </p>
+                )}
+              </div>
+            </div>
             {imageSection}
             {statusBtns}
           </>
@@ -14782,31 +14849,37 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             {/* PM 2026-06-25: la clasificación del Home pasa a EXPERIENCIAS
                 dinámicas (admin las crea/edita en su propia sección). El
                 dropdown lee de EXPERIENCES (poblado por loadInitialData).
-                Si la migración aún no está aplicada y EXPERIENCES viene
-                vacío, el campo se oculta — no rompe el form. */}
-            {EXPERIENCES && EXPERIENCES.length > 0 && (
-              <div className="adm-fg-row">
-                <div className="adm-fg" style={{ flex: 1 }}>
-                  <label className="adm-fl">{lang === "es" ? "Experiencia" : "Experience"}
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-                      ({lang === "es" ? "agrupa el tour en el Home" : "groups the tour on the Home"})
-                    </span>
-                  </label>
-                  <select
-                    className="adm-fi"
-                    defaultValue={it.experienceId || ""}
-                    onChange={(e) => (it.experienceId = e.target.value || null)}
-                  >
-                    <option value="">— {lang === "es" ? "Sin asignar" : "Unassigned"} —</option>
-                    {EXPERIENCES.filter(e => e.active !== false).map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {lang === "es" ? e.name_es : e.name_en}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                Se muestra SIEMPRE; si EXPERIENCES está vacío avisa al
+                admin cómo crear una. */}
+            <div className="adm-fg-row">
+              <div className="adm-fg" style={{ flex: 1 }}>
+                <label className="adm-fl">{lang === "es" ? "Experiencia" : "Experience"}
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                    ({lang === "es" ? "agrupa el tour en el Home" : "groups the tour on the Home"})
+                  </span>
+                </label>
+                <select
+                  className="adm-fi"
+                  defaultValue={it.experienceId || ""}
+                  onChange={(e) => (it.experienceId = e.target.value || null)}
+                  disabled={!EXPERIENCES || EXPERIENCES.length === 0}
+                >
+                  <option value="">— {lang === "es" ? "Sin asignar" : "Unassigned"} —</option>
+                  {(EXPERIENCES || []).filter(e => e.active !== false).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {lang === "es" ? e.name_es : e.name_en}
+                    </option>
+                  ))}
+                </select>
+                {(!EXPERIENCES || EXPERIENCES.length === 0) && (
+                  <p style={{ fontSize: 11, color: "rgba(245,166,35,.7)", marginTop: 4 }}>
+                    {lang === "es"
+                      ? "No hay experiencias todavía. Andá a sidebar → Experiencias para crear la primera."
+                      : "No experiences yet. Go to sidebar → Experiences to create the first one."}
+                  </p>
+                )}
               </div>
-            )}
+            </div>
             <div className="adm-fg-row">
               <div className="adm-fg" style={{ flex: 1, maxWidth: 200 }}>
                 <label className="adm-fl">{lang === "es" ? "Markup %" : "Markup %"}

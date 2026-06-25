@@ -128,6 +128,7 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     check_out_time: formData.get("check_out_time") ?? "",
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
+    experience_id: formData.get("experience_id") ?? "",
     ...readMarkup(formData),
   });
   if (!parsed.success) {
@@ -164,6 +165,10 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      // PM 2026-06-25: FK a experiences. Cast as never porque los types
+      // generados aún no incluyen experience_id en stays. Si la columna
+      // no existe en DB, Postgres devuelve 42703 y el caller reporta.
+      experience_id: (d.experience_id ?? null) as never,
       markup_type: d.markup_type ?? null,
       markup_value: d.markup_value ?? null,
       ...(("check_in_time" in d) ? {
@@ -223,6 +228,7 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     check_out_time: formData.get("check_out_time") ?? "",
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
+    experience_id: formData.get("experience_id") ?? "",
     ...readMarkup(formData),
   });
   if (!parsed.success) {
@@ -259,6 +265,10 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
       pricing_unit: d.pricing_unit,
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
+      // PM 2026-06-25: FK a experiences. Cast as never porque los types
+      // generados aún no incluyen experience_id en stays. Si la columna
+      // no existe en DB, Postgres devuelve 42703 y el caller reporta.
+      experience_id: (d.experience_id ?? null) as never,
       markup_type: d.markup_type ?? null,
       markup_value: d.markup_value ?? null,
       ...(("check_in_time" in d) ? {
