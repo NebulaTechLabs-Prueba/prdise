@@ -785,7 +785,7 @@ const TX = {
     eventPlan: "Event Planning", eventPlanD: "Weddings, birthdays, corporate retreats in paradise.",
     conciergeSvc: "Concierge", conciergeSvcD: "Restaurant reservations, bookings, anything.",
     // Homepage sections
-    ourToursTag: "Our Tours", curatedExp: "CURATED EXPERIENCES", curatedExpSub: "Three signature day trips designed for small groups.",
+    ourToursTag: "Our Tours", curatedExp: "EXPERIENCES", curatedExpSub: "Signature day trips designed for small groups.",
     destTag: "Destinations", exploreWest: "EXPLORE WEST PR",
     aboutUsTag: "About Us", weAre: "WE ARE", houseOfTours: "House of Tours — Cabo Rojo",
     aboutUsP1: "We're a team of", aboutUsP1b: "passionate boricuas", aboutUsP1c: " sharing the wonders of West Puerto Rico.",
@@ -889,7 +889,7 @@ const TX = {
     customPkg: "Paquetes Personalizados", customPkgD: "Cuéntanos tu viaje soñado y diseñamos el itinerario.",
     eventPlan: "Planificación de Eventos", eventPlanD: "Bodas, cumpleaños, retiros corporativos en el paraíso.",
     conciergeSvc: "Concierge", conciergeSvcD: "Reservas de restaurantes, reservaciones, lo que necesites.",
-    ourToursTag: "Nuestros Tours", curatedExp: "EXPERIENCIAS CURADAS", curatedExpSub: "Tres tours de día diseñados para grupos pequeños.",
+    ourToursTag: "Nuestros Tours", curatedExp: "EXPERIENCIAS", curatedExpSub: "Tours de día diseñados para grupos pequeños.",
     destTag: "Destinos", exploreWest: "EXPLORA EL OESTE DE PR",
     aboutUsTag: "Sobre Nosotros", weAre: "SOMOS", houseOfTours: "House of Tours — Cabo Rojo",
     aboutUsP1: "Somos un equipo de", aboutUsP1b: "boricuas apasionados", aboutUsP1c: " compartiendo las maravillas del oeste de Puerto Rico.",
@@ -2779,8 +2779,8 @@ function HomePage() {
             <div className="tag">{t("ourToursTag")}</div>
             <h2>{t("curatedExp")}</h2>
             <p>{lang === "es"
-              ? "Tres maneras de vivir Puerto Rico. Elegí tu experiencia y descubrí los tours de cada aliado."
-              : "Three ways to experience Puerto Rico. Pick your category and discover each partner's tours."}</p>
+              ? "Elegí tu experiencia y descubrí los tours disponibles."
+              : "Pick your experience and discover the available tours."}</p>
           </div>
           <>
           <div className="svc-grid">

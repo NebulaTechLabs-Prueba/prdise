@@ -92,3 +92,6 @@ desktop.ini
 /scripts/auth-logs.mjs
 /scripts/diagnose-signup.mjs
 /scripts/reset-test-users.mjs
+/scripts/audit-tours-partner-data.mjs
+/scripts/sanitize-tours-partner-data.mjs
+/scripts/sanitize-partners-table.mjs
