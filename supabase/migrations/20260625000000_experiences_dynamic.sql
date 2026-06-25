@@ -57,11 +57,13 @@ drop policy if exists exp_select_public on public.experiences;
 create policy exp_select_public on public.experiences
   for select using (active = true);
 
+-- PM 2026-06-25: enum user_role solo tiene 'admin' y 'user' tras la
+-- consolidación (migración 20260609180000). NO existe 'employee'.
 drop policy if exists exp_select_staff on public.experiences;
 create policy exp_select_staff on public.experiences
   for select to authenticated using (
     exists (select 1 from public.profiles p
-            where p.id = auth.uid() and p.role in ('admin','employee'))
+            where p.id = auth.uid() and p.role = 'admin')
   );
 
 drop policy if exists exp_modify_admin on public.experiences;
