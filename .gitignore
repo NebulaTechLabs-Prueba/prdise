@@ -95,3 +95,4 @@ desktop.ini
 /scripts/audit-tours-partner-data.mjs
 /scripts/sanitize-tours-partner-data.mjs
 /scripts/sanitize-partners-table.mjs
+/scripts/apply-experiences-migration.mjs

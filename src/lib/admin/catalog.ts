@@ -353,6 +353,7 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
     experience_category: formData.get("experience_category") ?? "",
+    experience_id: formData.get("experience_id") ?? "",
     partner_name: formData.get("partner_name") ?? "",
     markup_pct: formData.get("markup_pct") ?? 10,
     ...readMarkup(formData),
@@ -393,6 +394,11 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
       experience_category: d.experience_category ?? null,
+      // PM 2026-06-25: FK a tabla `experiences`. Casteado as never porque
+      // los types generados aún no incluyen experience_id (regenerar con
+      // supabase gen types tras aplicar migración). Si la columna no
+      // existe en DB, Postgres devuelve 42703 y el caller reporta.
+      experience_id: (d.experience_id ?? null) as never,
       partner_name: d.partner_name || null,
       markup_pct: d.markup_pct,
       markup_type: d.markup_type ?? null,
@@ -446,6 +452,7 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     pricing_extras: readPricingExtras(formData),
     category: formData.get("category") ?? "",
     experience_category: formData.get("experience_category") ?? "",
+    experience_id: formData.get("experience_id") ?? "",
     partner_name: formData.get("partner_name") ?? "",
     markup_pct: formData.get("markup_pct") ?? 10,
     ...readMarkup(formData),
@@ -486,6 +493,11 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
       pricing_extras: d.pricing_extras as never,
       category: d.category || null,
       experience_category: d.experience_category ?? null,
+      // PM 2026-06-25: FK a tabla `experiences`. Casteado as never porque
+      // los types generados aún no incluyen experience_id (regenerar con
+      // supabase gen types tras aplicar migración). Si la columna no
+      // existe en DB, Postgres devuelve 42703 y el caller reporta.
+      experience_id: (d.experience_id ?? null) as never,
       partner_name: d.partner_name || null,
       markup_pct: d.markup_pct,
       markup_type: d.markup_type ?? null,

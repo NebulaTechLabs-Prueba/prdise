@@ -322,6 +322,16 @@ const tourBaseSchema = z.object({
       const allowed = ["beach_escape", "river_mountain", "utv_west_coast"];
       return allowed.includes(v) ? v : null;
     }),
+  // PM 2026-06-25: experiencia dinámica (FK a public.experiences).
+  // Reemplaza progresivamente a experience_category. "" o ausente → null.
+  experience_id: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .nullable()
+    .or(z.literal(""))
+    .transform((v) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : null)),
   partner_name: optionalText(120, "Colaborador"),
   markup_pct: z.coerce
     .number()

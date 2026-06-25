@@ -63,6 +63,12 @@ import {
   deletePartner as sbDeletePartner,
   listPartnerReferralCounts as sbListPartnerReferralCounts,
 } from "@/lib/admin/partners";
+import {
+  listExperiences as sbListExperiences,
+  createExperience as sbCreateExperience,
+  updateExperience as sbUpdateExperience,
+  deleteExperience as sbDeleteExperience,
+} from "@/lib/admin/experiences";
 // PM 2026-06-10: cero fuga. logReferral ya no se usa desde el cliente
 // porque eliminamos los botones que redirigían a aliados externos. El
 // Server Action sigue existiendo en src/lib/referrals/actions.ts por si
@@ -154,6 +160,10 @@ const HOTELS = [];
 
 const TOURS = [];
 const VEHICLES = [];
+// PM 2026-06-25: experiencias dinámicas (admin CRUD). Cada tour tiene
+// experience_id que apunta acá. Si la migración no fue aplicada todavía,
+// queda vacío y la UI cae a fallback hardcoded para no romper.
+const EXPERIENCES = [];
 const ROUTES = [];
 const PARTNERS = [];
 // Lista de países usada en /register y /account → Mi info. Texto en inglés
@@ -364,6 +374,10 @@ function mapTourToTour(t) {
     // tours del Home en 3 grandes experiencias (Beach Escape, River & Mountain,
     // UTV Tours in West Coast). Editable desde el admin.
     experienceCategory: t.experience_category || "",
+    // PM 2026-06-25: experiences dinámicas. experience_id apunta a la
+    // tabla `experiences`. Si la migración no fue aplicada todavía el
+    // campo viene undefined y se ignora.
+    experienceId: t.experience_id || null,
     partnerName: t.partner_name || "",
     markupPct: t.markup_pct == null ? 10 : Number(t.markup_pct),
   };
@@ -576,7 +590,7 @@ async function loadInitialData() {
     // para gestionarlos; las páginas públicas ya filtran por status del lado
     // del cliente (HomePage, /tours, /stays). Antes el conteo desplegaba 32
     // en vez de los 33 reales del DB porque uno estaba con active=false.
-    const [stays, tours, routes, locations, vehicles, posts, partners, settings] = await Promise.all([
+    const [stays, tours, routes, locations, vehicles, posts, partners, settings, experiences] = await Promise.all([
       getStays(sb, { activeOnly: false }),
       getTours(sb, { activeOnly: false }),
       // PM 2026-06-12: rutas inactivas también se cargan para que el admin
@@ -588,6 +602,9 @@ async function loadInitialData() {
       getPublishedPosts(sb, {}),
       getPartners(sb, { activeOnly: false }),
       getSiteSettings(sb),
+      // PM 2026-06-25: experiencias dinámicas. server action es tolerante:
+      // si la tabla no existe (migración pendiente), devuelve [].
+      sbListExperiences().catch(() => []),
     ]);
     void sb; // Drivers se cargan en AdminPanel via Server Action listDrivers
              // (requiere staff auth) — no se pre-carga en loadInitialData
@@ -613,6 +630,9 @@ async function loadInitialData() {
 
     PARTNERS.length = 0;
     (partners || []).forEach((p) => PARTNERS.push(p));
+
+    EXPERIENCES.length = 0;
+    (experiences || []).forEach((e) => EXPERIENCES.push(e));
 
     // Mergear settings de DB sobre defaults — keys no presentes mantienen
     // el default. Cualquier value vacío también cae al default vía getSetting.
@@ -2705,47 +2725,52 @@ function HomePage() {
       {/* Floating Transfer Quick Search */}
       <TransferQuickSearch />
 
-      {/* PM 2026-06-23 (D): las 3 cards principales son CATEGORÍAS DE
-          EXPERIENCIA (Beach Escape / River & Mountain / UTV West Coast)
-          según el review original del cliente. Al hacer click se navega a
-          /tours?category=X donde los tours se muestran agrupados por
-          aliado. Si una experiencia no tiene tours clasificados (campo
-          tours.experience_category NULL), esa card se oculta. Si NINGUNA
-          tiene tours, fallback al CTA "Ver todos los tours". */}
+      {/* PM 2026-06-25: experiencias DINÁMICAS desde tabla `experiences`
+          (admin CRUD). Cada tour se asocia a una via experience_id. Si
+          la tabla está vacía (migración pendiente o el admin las borró
+          todas), fallback al esquema legacy de 3 categorías hardcoded
+          via experience_category. Si NINGUNA tiene tours, CTA "Ver
+          todos los tours". */}
       {(() => {
         const published = TOURS.filter(tr => !tr.status || tr.status === "published");
         if (published.length === 0) return null;
-        const EXPERIENCES = [
-          {
-            key: "beach_escape",
-            color: "sky",
-            titleES: "Beach Escape",
-            titleEN: "Beach Escape",
+
+        // EXPERIENCES dinámico desde DB. Si vacío, fallback hardcoded.
+        const dynamicExps = (EXPERIENCES || []).filter(e => e.active !== false).map(e => ({
+          key: e.id,
+          slug: e.slug,
+          color: e.color || "gold",
+          titleES: e.name_es,
+          titleEN: e.name_en,
+          descES: e.description_es || "",
+          descEN: e.description_en || "",
+          cover: e.cover_image || "",
+          isDynamic: true,
+        }));
+        const fallbackExps = [
+          { key: "beach_escape", slug: "beach_escape", color: "sky",    titleES: "Beach Escape", titleEN: "Beach Escape",
             descES: "Playas espectaculares de aguas cristalinas: snorkel, jet ski, banana boat, relajación y paisajes costeros inolvidables.",
             descEN: "Discover spectacular beaches with crystal-clear waters, snorkeling, jet ski, banana boat, relaxation and unforgettable coastal scenery.",
-          },
-          {
-            key: "river_mountain",
-            color: "green",
-            titleES: "River & Mountain Adventure",
-            titleEN: "River & Mountain Adventure",
+            cover: "", isDynamic: false },
+          { key: "river_mountain", slug: "river_mountain", color: "green", titleES: "River & Mountain Adventure", titleEN: "River & Mountain Adventure",
             descES: "Ríos cristalinos, charcos naturales, cascadas y paisajes de montaña que dejan sin aliento.",
             descEN: "Explore crystal-clear rivers, natural pools, waterfalls, and breathtaking mountain scenery.",
-          },
-          {
-            key: "utv_west_coast",
-            color: "orange",
-            titleES: "UTV Tours in West Coast",
-            titleEN: "UTV Tours in West Coast",
+            cover: "", isDynamic: false },
+          { key: "utv_west_coast", slug: "utv_west_coast", color: "orange", titleES: "UTV Tours in West Coast", titleEN: "UTV Tours in West Coast",
             descES: "Elegí cómo vivirlo: conducí tu propio UTV en convoy con guía, o viajá como pasajero mientras recorrés rutas costeras.",
             descEN: "Choose how you want to experience it – drive your own UTV in a guide convoy or ride along with a guide while exploring scenic coastal routes.",
-          },
+            cover: "", isDynamic: false },
         ];
+        const EXPERIENCES_LIST = dynamicExps.length > 0 ? dynamicExps : fallbackExps;
 
-        const cards = EXPERIENCES
+        const cards = EXPERIENCES_LIST
           .map(exp => {
-            const toursInCat = published.filter(tr => tr.experienceCategory === exp.key);
-            const cover = toursInCat.find(tr => tr.img)?.img || "";
+            const toursInCat = published.filter(tr =>
+              exp.isDynamic
+                ? tr.experienceId === exp.key
+                : tr.experienceCategory === exp.key
+            );
+            const cover = exp.cover || toursInCat.find(tr => tr.img)?.img || "";
             return { ...exp, toursInCat, cover };
           })
           .filter(exp => exp.toursInCat.length > 0);
@@ -2785,7 +2810,7 @@ function HomePage() {
           <>
           <div className="svc-grid">
             {cards.map((exp) => (
-              <NavLink to={`/tours?category=${exp.key}`} key={exp.key} className="svc-card">
+              <NavLink to={exp.isDynamic ? `/tours?experience=${exp.key}` : `/tours?category=${exp.key}`} key={exp.key} className="svc-card">
                 <div className="svc-pic">
                   <MediaImg src={exp.cover} alt={lang === "es" ? exp.titleES : exp.titleEN} label={lang === "es" ? exp.titleES : exp.titleEN} />
                   <div className="svc-badge" style={{ background: COLORS[exp.color] }}>
@@ -3044,14 +3069,15 @@ function ToursList({ params }) {
   const { t, lang } = useLang();
   const L = (en, es) => (lang === "es" && es) ? es : en;
 
-  // PM 2026-06-23 (D): filtrado primario por EXPERIENCIA (?category=). El
-  // Home manda /tours?category=beach_escape|river_mountain|utv_west_coast.
-  // ?partnerId=X se mantiene como filtro secundario opcional (links viejos
-  // o el caso de querer ver SOLO un aliado).
+  // PM 2026-06-25: filtrado primario por EXPERIENCIA (dinámica via
+  // ?experience=<id> o legacy ?category=<key>). partnerId queda como
+  // filtro secundario.
   const categoryFilter = params?.get?.("category") || "";
+  const experienceIdFilter = params?.get?.("experience") || "";
   const partnerIdFilter = params?.get?.("partnerId") || "";
   const partnerObj = partnerIdFilter ? PARTNERS.find((p) => p.id === partnerIdFilter) : null;
 
+  const expRow = experienceIdFilter ? (EXPERIENCES || []).find(e => e.id === experienceIdFilter) : null;
   const EXPERIENCE_META = {
     beach_escape: {
       titleES: "Beach Escape", titleEN: "Beach Escape",
@@ -3071,16 +3097,20 @@ function ToursList({ params }) {
   };
   const catMeta = EXPERIENCE_META[categoryFilter];
 
-  const pageTitle = catMeta
-    ? (lang === "es" ? catMeta.titleES : catMeta.titleEN)
-    : partnerObj
-      ? (partnerObj.name || t("availTours"))
-      : t("availTours");
-  const pageSubtitle = catMeta
-    ? (lang === "es" ? catMeta.subES : catMeta.subEN)
-    : partnerObj
-      ? (lang === "es" ? (partnerObj.notes_es || partnerObj.notes_en || "") : (partnerObj.notes_en || partnerObj.notes_es || ""))
-      : "";
+  const pageTitle = expRow
+    ? (lang === "es" ? expRow.name_es : expRow.name_en)
+    : catMeta
+      ? (lang === "es" ? catMeta.titleES : catMeta.titleEN)
+      : partnerObj
+        ? (partnerObj.name || t("availTours"))
+        : t("availTours");
+  const pageSubtitle = expRow
+    ? (lang === "es" ? (expRow.description_es || "") : (expRow.description_en || ""))
+    : catMeta
+      ? (lang === "es" ? catMeta.subES : catMeta.subEN)
+      : partnerObj
+        ? (lang === "es" ? (partnerObj.notes_es || partnerObj.notes_en || "") : (partnerObj.notes_en || partnerObj.notes_es || ""))
+        : "";
 
   const renderTourCard = (tr) => (
     <div key={tr.id} className="listing-card">
@@ -3131,18 +3161,23 @@ function ToursList({ params }) {
         <div className="inner-wrap">
           <BilingualNotice style={{ marginBottom: 22 }} />
 
-          {/* PM 2026-06-23 (D): pills de filtro por EXPERIENCIA (3 categorías
-              + Todos). Reemplaza el filtro por aliado — el agrupamiento
-              por aliado ahora vive DENTRO de cada categoría (debajo). */}
+          {/* PM 2026-06-25: pills de filtro por EXPERIENCIA. Si hay
+              experiencias dinámicas, las usa; sino fallback a 3 hardcoded. */}
           {(() => {
             const showPills = String(getSetting("tours_filter_show_pills") || "true") !== "false";
             if (!showPills) return null;
             const visibleTours = TOURS.filter(tr => !tr.status || tr.status === "published");
-            const catOpts = [
-              { key: "beach_escape", label: "Beach Escape" },
-              { key: "river_mountain", label: "River & Mountain" },
-              { key: "utv_west_coast", label: "UTV Tours" },
+            const dynExpOpts = (EXPERIENCES || []).filter(e => e.active !== false).map(e => ({
+              key: e.id,
+              label: lang === "es" ? e.name_es : e.name_en,
+              isDynamic: true,
+            }));
+            const fallbackOpts = [
+              { key: "beach_escape", label: "Beach Escape", isDynamic: false },
+              { key: "river_mountain", label: "River & Mountain", isDynamic: false },
+              { key: "utv_west_coast", label: "UTV Tours", isDynamic: false },
             ];
+            const catOpts = dynExpOpts.length > 0 ? dynExpOpts : fallbackOpts;
             const pillBase = {
               padding: "8px 16px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
               letterSpacing: ".02em", cursor: "pointer", transition: "all .18s ease",
@@ -3157,8 +3192,8 @@ function ToursList({ params }) {
               boxShadow: "0 4px 14px rgba(245,166,35,.3)",
             };
             const goAll = () => { window.location.hash = "#/tours"; };
-            const goCat = (k) => { window.location.hash = `#/tours?category=${k}`; };
-            const isAll = !categoryFilter && !partnerIdFilter;
+            const goCat = (k, isDyn) => { window.location.hash = `#/tours?${isDyn ? "experience" : "category"}=${k}`; };
+            const isAll = !categoryFilter && !experienceIdFilter && !partnerIdFilter;
             return (
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.45)", marginBottom: 10 }}>
@@ -3170,11 +3205,13 @@ function ToursList({ params }) {
                     <span style={{ fontSize: 10, opacity: 0.7 }}>({visibleTours.length})</span>
                   </button>
                   {catOpts.map(c => {
-                    const count = visibleTours.filter(tr => tr.experienceCategory === c.key).length;
+                    const count = c.isDynamic
+                      ? visibleTours.filter(tr => tr.experienceId === c.key).length
+                      : visibleTours.filter(tr => tr.experienceCategory === c.key).length;
                     if (count === 0) return null;
-                    const active = categoryFilter === c.key;
+                    const active = c.isDynamic ? experienceIdFilter === c.key : categoryFilter === c.key;
                     return (
-                      <button type="button" key={c.key} data-active={active ? "true" : "false"} onClick={() => goCat(c.key)} style={active ? pillActive : pillBase}>
+                      <button type="button" key={c.key} data-active={active ? "true" : "false"} onClick={() => goCat(c.key, c.isDynamic)} style={active ? pillActive : pillBase}>
                         {c.label}
                         <span style={{ fontSize: 10, opacity: 0.7 }}>({count})</span>
                       </button>
@@ -3190,6 +3227,8 @@ function ToursList({ params }) {
             let filtered = visibleTours;
             if (partnerIdFilter) {
               filtered = filtered.filter((tr) => tr.partnerId === partnerIdFilter);
+            } else if (experienceIdFilter) {
+              filtered = filtered.filter((tr) => tr.experienceId === experienceIdFilter);
             } else if (categoryFilter) {
               filtered = filtered.filter((tr) => tr.experienceCategory === categoryFilter);
             }
@@ -7072,6 +7111,10 @@ function AdminPanel({ onClose }) {
   const [customerProfileEmail, setCustomerProfileEmail] = useState(null); // email to open profile for
   const [composeEmail, setComposeEmail] = useState(null); // { to, name, subject, body }
   const [partnersList, setPartnersList] = useState(() => Array.isArray(PARTNERS) ? [...PARTNERS] : []);
+  // PM 2026-06-25: experiencias dinámicas (admin CRUD). EXPERIENCES global
+  // se puebla en loadInitialData. Local state permite optimistic updates.
+  const [experiencesList, setExperiencesList] = useState(() => Array.isArray(EXPERIENCES) ? [...EXPERIENCES] : []);
+  const [editingExperience, setEditingExperience] = useState(null);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
   const [partnerReferralCounts, setPartnerReferralCounts] = useState({});
@@ -7778,6 +7821,7 @@ function AdminPanel({ onClose }) {
     { group: t("adm_modules"), items: [
       { id: "hotels", label: t("adm_stays"), Icon: Home, permModule: "hotels" },
       { id: "tours", label: t("adm_tours"), Icon: Compass, permModule: "tours" },
+      { id: "experiences", label: lang === "es" ? "Experiencias" : "Experiences", Icon: Star, adminOnly: true },
       { id: "transfers", label: t("adm_transfers"), Icon: Car, permModule: "transfers" },
       { id: "posts", label: t("adm_posts"), Icon: Edit, permModule: "posts" },
       { id: "partners", label: lang === "es" ? "Alianzas" : "Partners", Icon: ExternalLink, adminOnly: true },
@@ -11791,6 +11835,158 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           </>
         )}
 
+        {/* PM 2026-06-25: gestión de EXPERIENCIAS dinámicas. Reemplaza la
+            categorización fija "Beach Escape / River & Mountain / UTV
+            West Coast". El admin las crea/edita/elimina; cada tour se
+            asocia a una desde su form. */}
+        {section === "experiences" && (
+          <>
+            <div className="adm-ph">
+              <div>
+                <h1>{lang==="es"?"GESTIÓN DE":"EXPERIENCE"} <em>{lang==="es"?"EXPERIENCIAS":"MANAGEMENT"}</em></h1>
+                <p className="sub">{lang==="es"
+                  ? "Las experiencias agrupan los tours en el Home y la página /tours. Crealas, editalas o desactivalas — luego desde el form de cada tour podés asignarle una."
+                  : "Experiences group tours on the Home and /tours page. Create, edit or deactivate them — then from each tour form you can assign one."}</p>
+              </div>
+              <button className="adm-btn adm-btn-primary" onClick={() => setEditingExperience({ id: "new", slug: "", name_es: "", name_en: "", description_es: "", description_en: "", color: "gold", sort_order: 100, active: true, cover_image: "" })}>
+                <Plus />{lang==="es"?"Nueva experiencia":"New experience"}
+              </button>
+            </div>
+            <div className="adm-card">
+              <div className="adm-card-head">
+                <div className="adm-card-title"><Star />{lang==="es"?"Experiencias del catálogo":"Catalog experiences"} <span className="adm-pill">{experiencesList.length}</span></div>
+              </div>
+              <div className="adm-tbl-wrap">
+                <table className="adm-tbl">
+                  <thead><tr>
+                    <th>{lang==="es"?"Nombre":"Name"}</th>
+                    <th>Slug</th>
+                    <th>{lang==="es"?"Tours":"Tours"}</th>
+                    <th>{lang==="es"?"Orden":"Order"}</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: "right" }}>Actions</th>
+                  </tr></thead>
+                  <tbody>
+                    {experiencesList.length === 0 ? (
+                      <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.5)" }}>
+                        {lang==="es"
+                          ? "Aún no hay experiencias. Si recién aplicaste la migración, aparecerán las 3 iniciales (Beach Escape, River & Mountain, UTV Tours)."
+                          : "No experiences yet. If you just applied the migration, the 3 initial ones will appear (Beach Escape, River & Mountain, UTV Tours)."}
+                      </td></tr>
+                    ) : experiencesList.map((e) => {
+                      const toursCount = TOURS.filter(tr => tr.experienceId === e.id).length;
+                      return (
+                      <tr key={e.id}>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: 2, background: e.color === "sky" ? "#29ABE2" : e.color === "green" ? "#8DC63F" : e.color === "orange" ? "#EF6C2B" : "#F5A623" }} />
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{e.name_es}</div>
+                              <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{e.name_en}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)", fontFamily: "monospace" }}>{e.slug}</td>
+                        <td style={{ fontWeight: 700, color: "#F5A623" }}>{toursCount}</td>
+                        <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{e.sort_order ?? 100}</td>
+                        <td><span className={`adm-pill ${e.active ? "published" : "hidden"}`}>{e.active ? "active" : "inactive"}</span></td>
+                        <td>
+                          <div className="adm-row-actions">
+                            <button className="adm-icon-btn" title="Edit" onClick={() => setEditingExperience({ ...e })}><Pencil /></button>
+                            <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                              const msg = toursCount > 0
+                                ? (lang==="es"
+                                  ? `¿Eliminar "${e.name_es}"? Los ${toursCount} tour(s) asociados perderán la asignación (no se borran).`
+                                  : `Delete "${e.name_en}"? The ${toursCount} associated tour(s) will lose the link (not deleted).`)
+                                : (lang==="es"?"¿Eliminar esta experiencia?":"Delete this experience?");
+                              if (!confirm(msg)) return;
+                              const prev = experiencesList;
+                              setExperiencesList(experiencesList.filter(x => x.id !== e.id));
+                              try {
+                                const fd = new FormData(); fd.append("id", e.id);
+                                const res = await sbDeleteExperience(fd);
+                                if (!res?.ok) { setExperiencesList(prev); alert((lang==="es"?"No se pudo eliminar: ":"Could not delete: ") + (res?.error || "error")); return; }
+                                const idx = EXPERIENCES.findIndex(x => x.id === e.id);
+                                if (idx >= 0) EXPERIENCES.splice(idx, 1);
+                              } catch (err) { setExperiencesList(prev); alert("Error: " + err.message); }
+                            }}><Trash2 /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {editingExperience && (
+              <div className="adm-modal-bg" onClick={() => setEditingExperience(null)}>
+                <div className="adm-modal" onClick={(ev) => ev.stopPropagation()} style={{ maxWidth: 640 }}>
+                  <button className="adm-modal-close" onClick={() => setEditingExperience(null)}><X /></button>
+                  <h3>{editingExperience.id === "new" ? (lang==="es"?"NUEVA EXPERIENCIA":"NEW EXPERIENCE") : (lang==="es"?"EDITAR EXPERIENCIA":"EDIT EXPERIENCE")}</h3>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre (ES)":"Name (ES)"} *</label><input className="adm-fi" value={editingExperience.name_es} onChange={(e) => setEditingExperience({ ...editingExperience, name_es: e.target.value })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre (EN)":"Name (EN)"} *</label><input className="adm-fi" value={editingExperience.name_en} onChange={(e) => setEditingExperience({ ...editingExperience, name_en: e.target.value })} /></div>
+                  </div>
+                  <div className="adm-fg">
+                    <label className="adm-fl">Slug *</label>
+                    <input className="adm-fi" value={editingExperience.slug} onChange={(e) => setEditingExperience({ ...editingExperience, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder="beach-escape" />
+                  </div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Descripción (ES)":"Description (ES)"}</label><textarea className="adm-fi" rows={2} value={editingExperience.description_es} onChange={(e) => setEditingExperience({ ...editingExperience, description_es: e.target.value })} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Descripción (EN)":"Description (EN)"}</label><textarea className="adm-fi" rows={2} value={editingExperience.description_en} onChange={(e) => setEditingExperience({ ...editingExperience, description_en: e.target.value })} /></div>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg">
+                      <label className="adm-fl">{lang==="es"?"Color":"Color"}</label>
+                      <select className="adm-fi" value={editingExperience.color} onChange={(e) => setEditingExperience({ ...editingExperience, color: e.target.value })}>
+                        <option value="gold">Gold</option>
+                        <option value="sky">Sky</option>
+                        <option value="green">Green</option>
+                        <option value="orange">Orange</option>
+                      </select>
+                    </div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Orden":"Order"}</label><input type="number" min="0" className="adm-fi" value={editingExperience.sort_order} onChange={(e) => setEditingExperience({ ...editingExperience, sort_order: Number(e.target.value) || 0 })} /></div>
+                  </div>
+                  <div className="adm-fg" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" id="exp-active" checked={!!editingExperience.active} onChange={(e) => setEditingExperience({ ...editingExperience, active: e.target.checked })} />
+                    <label htmlFor="exp-active" style={{ fontSize: 12.5, color: "rgba(255,255,255,.8)" }}>{lang==="es"?"Activa (visible en el sitio)":"Active (visible on site)"}</label>
+                  </div>
+                  <div className="adm-modal-actions">
+                    <button className="adm-btn adm-btn-ghost" onClick={() => setEditingExperience(null)}>{lang==="es"?"Cancelar":"Cancel"}</button>
+                    <button className="adm-btn adm-btn-primary" onClick={async () => {
+                      const isNew = editingExperience.id === "new";
+                      if (!editingExperience.slug || !editingExperience.name_es || !editingExperience.name_en) {
+                        alert(lang==="es"?"Slug, nombre ES y nombre EN son requeridos.":"Slug, name ES and name EN are required.");
+                        return;
+                      }
+                      const fd = new FormData();
+                      if (!isNew) fd.append("id", editingExperience.id);
+                      fd.append("slug", editingExperience.slug);
+                      fd.append("name_es", editingExperience.name_es);
+                      fd.append("name_en", editingExperience.name_en);
+                      fd.append("description_es", editingExperience.description_es || "");
+                      fd.append("description_en", editingExperience.description_en || "");
+                      fd.append("color", editingExperience.color || "gold");
+                      fd.append("sort_order", String(editingExperience.sort_order ?? 100));
+                      fd.append("active", editingExperience.active ? "true" : "false");
+                      fd.append("cover_image", editingExperience.cover_image || "");
+                      try {
+                        const res = isNew ? await sbCreateExperience(fd) : await sbUpdateExperience(fd);
+                        if (!res?.ok) { alert((lang==="es"?"No se pudo guardar: ":"Could not save: ") + (res?.error || "error")); return; }
+                        const fresh = await sbListExperiences();
+                        setExperiencesList(fresh || []);
+                        EXPERIENCES.length = 0;
+                        (fresh || []).forEach(x => EXPERIENCES.push(x));
+                        setEditingExperience(null);
+                      } catch (err) { alert("Error: " + err.message); }
+                    }}><Check />{lang==="es"?"Guardar":"Save"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {section === "settings" && (
           <>
             <div className="adm-ph">
@@ -13574,6 +13770,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               // PM 2026-06-22: clasificación nueva + colaborador + markup pct
               // (review del cliente — agrupa el Home en 3 grandes experiencias).
               fd.append("experience_category", ownedUpdate.experienceCategory || "");
+              fd.append("experience_id", ownedUpdate.experienceId || "");
               fd.append("partner_name", ownedUpdate.partnerName || "");
               fd.append("markup_pct", ownedUpdate.markupPct == null ? "10" : String(ownedUpdate.markupPct));
               // PM 2026-06-15: ver bloque stay — markup en columnas dedicadas.
@@ -14582,13 +14779,34 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 </select>
               </div>
             </div>
-            {/* PM 2026-06-22 (B): el cliente confirmó que la clasificación
-                del Home se hace por ALIADO (partner_id, que ya existe en
-                el form). Quitamos los campos "Experiencia" y "Colaborador
-                texto libre" del UI para evitar duplicación. La columna DB
-                `experience_category` queda sin uso (compat). Solo dejamos
-                Markup % porque permite la excepción por servicio (default
-                10%, Tanamá Full Day Adventure 20%). */}
+            {/* PM 2026-06-25: la clasificación del Home pasa a EXPERIENCIAS
+                dinámicas (admin las crea/edita en su propia sección). El
+                dropdown lee de EXPERIENCES (poblado por loadInitialData).
+                Si la migración aún no está aplicada y EXPERIENCES viene
+                vacío, el campo se oculta — no rompe el form. */}
+            {EXPERIENCES && EXPERIENCES.length > 0 && (
+              <div className="adm-fg-row">
+                <div className="adm-fg" style={{ flex: 1 }}>
+                  <label className="adm-fl">{lang === "es" ? "Experiencia" : "Experience"}
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                      ({lang === "es" ? "agrupa el tour en el Home" : "groups the tour on the Home"})
+                    </span>
+                  </label>
+                  <select
+                    className="adm-fi"
+                    defaultValue={it.experienceId || ""}
+                    onChange={(e) => (it.experienceId = e.target.value || null)}
+                  >
+                    <option value="">— {lang === "es" ? "Sin asignar" : "Unassigned"} —</option>
+                    {EXPERIENCES.filter(e => e.active !== false).map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {lang === "es" ? e.name_es : e.name_en}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="adm-fg-row">
               <div className="adm-fg" style={{ flex: 1, maxWidth: 200 }}>
                 <label className="adm-fl">{lang === "es" ? "Markup %" : "Markup %"}
