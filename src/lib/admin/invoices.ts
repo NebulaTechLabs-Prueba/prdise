@@ -307,18 +307,29 @@ export async function createInvoiceManual(
 
   const supabase = await createClient();
 
-  // Generar número via count del año actual (admin client para no depender de
-  // RLS de SELECT del actor; staff puede leer pero el admin client es más
-  // estable si rotamos permisos).
+  // PM 2026-06-26: generar número via RPC `next_invoice_number()` que usa
+  // una sequence Postgres atómica. Garantiza unicidad bajo creates
+  // concurrentes y deletes. Si la migración no se aplicó (función no
+  // existe), fallback al método viejo basado en count + sufijo aleatorio
+  // para minimizar colisiones.
   const year = new Date().getFullYear();
   const admin = createAdminClient();
-  const { count } = await admin
-    .from("invoices")
-    .select("id", { count: "exact", head: true })
-    .gte("issued_at", `${year}-01-01`)
-    .lte("issued_at", `${year}-12-31`);
-  const nextNum = (count ?? 0) + 1;
-  const number = `INV-${year}-${String(nextNum).padStart(3, "0")}`;
+  let number: string;
+  const { data: rpcData, error: rpcErr } = await admin.rpc(
+    "next_invoice_number" as never
+  );
+  if (!rpcErr && typeof rpcData === "string" && rpcData) {
+    number = rpcData;
+  } else {
+    const { count } = await admin
+      .from("invoices")
+      .select("id", { count: "exact", head: true })
+      .gte("issued_at", `${year}-01-01`)
+      .lte("issued_at", `${year}-12-31`);
+    const nextNum = (count ?? 0) + 1;
+    const suffix = Math.random().toString(36).slice(2, 5).toUpperCase();
+    number = `INV-${year}-${String(nextNum).padStart(3, "0")}-${suffix}`;
+  }
 
   const subtotalCents = d.items.reduce(
     (acc, it) => acc + it.unitCents * it.quantity,
@@ -376,18 +387,18 @@ export async function createInvoiceManual(
     };
   }
 
-  // PM 2026-06-11: NO se genera automáticamente el link de pago al crear la
-  // factura. El admin lo genera explícitamente desde la lista de facturas
-  // (botón "Regenerar link") cuando esté listo. Esto evita crear links
-  // accidentales durante pruebas o cuando el método elegido es off_system.
-  //
-  // Pasamos la invoice a 'pending' directamente para que aparezca en
-  // "Pendientes" del dashboard (no queda como borrador). El total se
-  // contabiliza recién al marcarla como pagada.
-  await supabase
-    .from("invoices")
-    .update({ status: "pending" })
-    .eq("id", invoice.id);
+  // PM 2026-06-26: el admin decide en el modal si esta factura nace como
+  // 'draft' (borrador editable, sin notificar al cliente) o 'pending'
+  // (oficial, lista para cobrar). Antes siempre pasaba a 'pending'.
+  // formData.saveAsDraft = "true" → queda en draft (status inicial del
+  // insert, no se hace update). Cualquier otro valor → pending.
+  const saveAsDraft = String(formData.get("saveAsDraft") ?? "").trim().toLowerCase() === "true";
+  if (!saveAsDraft) {
+    await supabase
+      .from("invoices")
+      .update({ status: "pending" })
+      .eq("id", invoice.id);
+  }
 
   await writeAuditLog(actorId, "invoice.create_manual", "invoice", invoice.id, {
     number,

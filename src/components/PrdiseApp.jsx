@@ -16802,7 +16802,9 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   // lista de facturas cuando el admin esté listo.
   const [paymentMethod, setPaymentMethod] = useState("off_system");
   // Cada item: { description, quantity, unitPrice, tourId?, stayId?, transferRouteId? }
-  const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: "" }]);
+  // PM 2026-06-26: ítem inicial incluye __calc para que la calculadora
+  // aparezca también en líneas custom sin vínculo al catálogo.
+  const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: "", __calc: { open: false, kind: "custom", pricingUnit: "per_unit", pricingMode: "route_price", pax: 1, minutes: 60, km: 0, vehicleId: null, basePrice: 0, maxPax: null, labelFromTo: "" } }]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // PM 2026-06-24: vista previa antes de persistir. Nada se escribe en DB
@@ -16924,7 +16926,24 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   const updateItem = (idx, patch) => {
     setItems((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
-  const addItem = () => setItems((arr) => [...arr, { description: "", quantity: 1, unitPrice: "" }]);
+  // PM 2026-06-26: __calc default para líneas custom (sin vínculo al
+  // catálogo). Permite al admin usar la calculadora en cualquier línea
+  // — útil para cobros tipo "consultoría 2 hrs" o "tour grupo 5 pax"
+  // que no están en el catálogo.
+  const defaultCustomCalc = () => ({
+    open: false,
+    kind: "custom",
+    pricingUnit: "per_unit",
+    pricingMode: "route_price",
+    pax: 1,
+    minutes: 60,
+    km: 0,
+    vehicleId: null,
+    basePrice: 0,
+    maxPax: null,
+    labelFromTo: "",
+  });
+  const addItem = () => setItems((arr) => [...arr, { description: "", quantity: 1, unitPrice: "", __calc: defaultCustomCalc() }]);
   const removeItem = (idx) => setItems((arr) => (arr.length <= 1 ? arr : arr.filter((_, i) => i !== idx)));
 
   const importFromCatalog = (idx, optKey) => {
@@ -17012,8 +17031,8 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     let descSuffix = "";
     if (unit === "per_person") {
       unitPrice = routePrice * pax;
-      unitExplain = `× ${pax} pax`;
-      descSuffix = ` × ${pax} pax`;
+      unitExplain = `× ${pax} ${pax === 1 ? "persona" : "personas"}`;
+      descSuffix = ` × ${pax} ${pax === 1 ? "persona" : "personas"}`;
     } else if (unit === "per_hour") {
       const hours = minutes / 60;
       unitPrice = routePrice * hours;
@@ -17103,10 +17122,11 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
     setShowPreview(true);
   };
 
-  // Confirmar desde el preview: AHORA sí persiste. La invoice nace en
-  // 'draft' y pasa a 'pending' en el server action; el link de Stripe
-  // se genera después manualmente desde la lista de facturas.
-  const handleConfirmCreate = async () => {
+  // PM 2026-06-26: el admin elige al confirmar si quiere persistir como
+  // 'draft' (borrador editable, sin link de cobro) o 'pending' (oficial,
+  // lista para que el cliente pague). saveAsDraft=true → draft, sino
+  // pasa a pending.
+  const handleConfirmCreate = async (saveAsDraft = false) => {
     setError("");
     const itemsPayload = items.map((it) => ({
       description: it.description.trim(),
@@ -17129,6 +17149,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       if (dueAt) fd.append("dueAt", dueAt);
       fd.append("paymentMethod", paymentMethod);
       fd.append("items", JSON.stringify(itemsPayload));
+      if (saveAsDraft) fd.append("saveAsDraft", "true");
 
       const res = await sbCreateInvoiceManual(fd);
       if (!res?.ok) {
@@ -17265,13 +17286,32 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                 </div>
               </div>
               <div className="adm-fg-row">
+                {/* PM 2026-06-26: WhatsApp con un toggle "Usar el mismo
+                    teléfono". Caso común — uno solo basta. Si el cliente
+                    quiere uno distinto, destilda y edita. */}
                 <div className="adm-fg" style={{ flex: 1 }}>
-                  <label className="adm-fl">{T("Teléfono", "Phone")}</label>
-                  <input className="adm-fi" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-                </div>
-                <div className="adm-fg" style={{ flex: 1 }}>
-                  <label className="adm-fl">WhatsApp</label>
-                  <input className="adm-fi" value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} placeholder={customerPhone || "+1 787 555 0100"} />
+                  <label className="adm-fl">{T("Teléfono / WhatsApp", "Phone / WhatsApp")}</label>
+                  <input className="adm-fi" value={customerPhone} onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    // Si WhatsApp estaba sincronizado con teléfono, mantenerlo.
+                    if (!customerWhatsapp || customerWhatsapp === customerPhone) {
+                      setCustomerWhatsapp(e.target.value);
+                    }
+                  }} placeholder="+1 787 555 0100" />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                    <input
+                      type="checkbox"
+                      id="wa-same"
+                      checked={!customerWhatsapp || customerWhatsapp === customerPhone}
+                      onChange={(e) => setCustomerWhatsapp(e.target.checked ? customerPhone : (customerWhatsapp || customerPhone))}
+                    />
+                    <label htmlFor="wa-same" style={{ fontSize: 11, color: "rgba(255,255,255,.6)", cursor: "pointer" }}>
+                      {T("Usar el mismo número para WhatsApp", "Use the same number for WhatsApp")}
+                    </label>
+                  </div>
+                  {customerWhatsapp && customerWhatsapp !== customerPhone && (
+                    <input className="adm-fi" value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} placeholder={T("WhatsApp distinto", "Different WhatsApp")} style={{ marginTop: 6 }} />
+                  )}
                 </div>
                 <div className="adm-fg" style={{ flex: 1 }}>
                   <label className="adm-fl">{T("Vencimiento", "Due date")}</label>
@@ -17338,7 +17378,18 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                 </div>
                 <div className="adm-fg" style={{ flex: 1, marginBottom: 0 }}>
                   <label className="adm-fl">{T("Precio (USD)", "Price (USD)")} *</label>
-                  <input type="number" min="0" step="0.01" className="adm-fi" value={it.unitPrice} onChange={(e) => updateItem(i, { unitPrice: e.target.value })} placeholder="0.00" />
+                  {/* PM 2026-06-26: si la línea es custom (sin vínculo al
+                      catálogo), sincronizar el precio con calc.basePrice
+                      para que la calculadora use ese monto al multiplicar
+                      por personas/horas. */}
+                  <input type="number" min="0" step="0.01" className="adm-fi" value={it.unitPrice} onChange={(e) => {
+                    const v = e.target.value;
+                    const patch = { unitPrice: v };
+                    if (it.__calc && it.__calc.kind === "custom") {
+                      patch.__calc = { ...it.__calc, basePrice: Number(v) || 0 };
+                    }
+                    updateItem(i, patch);
+                  }} placeholder="0.00" />
                 </div>
                 <button
                   type="button"
@@ -17356,9 +17407,14 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                   modo de precio + vehículo + km. NO toca el shape de
                   invoice_items — materializa todo en description +
                   unit_cents al pulsar "Aplicar al precio". */}
-              {(it.transferRouteId || it.tourId || it.stayId) && it.__calc && (() => {
+              {/* PM 2026-06-26: la calculadora ahora aparece SIEMPRE que hay
+                  __calc (incluye líneas custom sin vínculo). El admin puede
+                  cambiar la unidad de cobro y aplicar el cálculo a cualquier
+                  línea, no solo a las importadas del catálogo. */}
+              {it.__calc && (() => {
                 const calc = it.__calc;
-                const isTransfer = (calc.kind || "transfer") === "transfer";
+                const isTransfer = (calc.kind || "custom") === "transfer";
+                const isCustom = (calc.kind || "custom") === "custom";
                 const calcResult = computeTransferLineCalc(calc);
                 const needsPax = calc.pricingUnit === "per_person";
                 const needsMinutes = calc.pricingUnit === "per_hour";
@@ -17380,7 +17436,9 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                         ? T("Calculadora de transfer", "Transfer calculator")
                         : calc.kind === "tour"
                           ? T("Calculadora de tour", "Tour calculator")
-                          : T("Calculadora de estadía", "Stay calculator")}
+                          : calc.kind === "stay"
+                            ? T("Calculadora de estadía", "Stay calculator")
+                            : T("Calculadora de precio", "Price calculator")}
                       <span style={{ marginLeft: "auto", color: "rgba(255,255,255,.55)", fontWeight: 600, letterSpacing: 0, textTransform: "none", fontSize: 11 }}>
                         {calc.pricingUnit === "per_person" ? T("por persona", "per person")
                           : calc.pricingUnit === "per_hour" ? T("por hora", "per hour")
@@ -17421,7 +17479,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
                           {needsPax && (
                             <div className="adm-fg" style={{ marginBottom: 0 }}>
-                              <label className="adm-fl">{T("Pax", "Pax")}{calc.maxPax ? ` (máx ${calc.maxPax})` : ""}</label>
+                              <label className="adm-fl">{T("Personas", "People")}{calc.maxPax ? ` (máx ${calc.maxPax})` : ""}</label>
                               <input type="number" min="1" step="1" className="adm-fi"
                                 value={calc.pax}
                                 onChange={(e) => updateCalc(i, { pax: e.target.value })} />
@@ -17514,6 +17572,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                   quantity: 1,
                   unitPrice: "",
                   tourId: null, stayId: null, transferRouteId: null,
+                  __calc: { ...defaultCustomCalc(), kind: "transfer", labelFromTo: "Transfer · " },
                 }]);
               }}
               style={{ color: "#29ABE2", borderColor: "rgba(41,171,226,.4)" }}
@@ -17706,18 +17765,33 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                 </div>
               )}
 
-              <div className="adm-modal-actions">
+              {/* PM 2026-06-26: 3 botones — Volver / Guardar como borrador
+                  / Crear factura (pendiente). El borrador queda editable
+                  sin notificar al cliente; pendiente es la factura oficial
+                  lista para cobrar. */}
+              <div className="adm-modal-actions" style={{ flexWrap: "wrap", gap: 8 }}>
                 <button className="adm-btn adm-btn-ghost" onClick={() => setShowPreview(false)} disabled={submitting}>
                   {T("Volver a editar", "Back to edit")}
                 </button>
                 <button
-                  className="adm-btn adm-btn-primary"
-                  onClick={handleConfirmCreate}
+                  className="adm-btn adm-btn-ghost"
+                  onClick={() => handleConfirmCreate(true)}
                   disabled={submitting}
+                  title={T("Guarda como borrador editable. NO se genera link de pago ni se notifica al cliente.", "Save as editable draft. NO payment link, no client notification.")}
+                  style={{ opacity: submitting ? 0.55 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+                >
+                  <FileText style={{ width: 14, height: 14 }} />
+                  {T("Guardar como borrador", "Save as draft")}
+                </button>
+                <button
+                  className="adm-btn adm-btn-primary"
+                  onClick={() => handleConfirmCreate(false)}
+                  disabled={submitting}
+                  title={T("Crea la factura en estado Pendiente, lista para generar link de pago.", "Creates the invoice as Pending, ready to generate the payment link.")}
                   style={{ opacity: submitting ? 0.55 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
                 >
                   {submitting ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Check />}
-                  {submitting ? T("Creando...", "Creating...") : T("Confirmar y crear factura", "Confirm and create invoice")}
+                  {submitting ? T("Creando...", "Creating...") : T("Crear factura (Pendiente)", "Create invoice (Pending)")}
                 </button>
               </div>
             </div>
