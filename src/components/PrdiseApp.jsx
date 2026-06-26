@@ -12100,19 +12100,39 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-tab ${settingsTab === "authtools" ? "active" : ""}`} onClick={() => setSettingsTab("authtools")}><Lock />{lang === "es" ? "Auth Tools" : "Auth Tools"}</button>
             </div>
 
-        {settingsTab === "team" && (
+        {settingsTab === "team" && (() => {
+          // PM 2026-06-26: si sbListAllUsers no se cargó aún o falló por
+          // permisos/RLS, el admin actual no aparecía en su propia tabla y
+          // el conteo decía "0 empleados · 0 administradores". Fallback:
+          // siempre inyectar al admin de la sesión si no está en `users`.
+          const sess = typeof window !== "undefined" ? PRDISE.load("session", null) : null;
+          const effectiveUsers = (() => {
+            if (!sess?.id) return users;
+            if (users.some(u => u.id === sess.id)) return users;
+            return [{
+              id: sess.id,
+              email: sess.email || "",
+              name: sess.name || sess.email || "Admin",
+              role: lang === "es" ? "Administrador" : "Administrator",
+              roleRaw: sess.role || "admin",
+              customRoleId: null,
+              status: "active",
+              department: "",
+              position: lang === "es" ? "Administrador" : "Administrator",
+              phone: "",
+              joinedAt: "",
+              joined: "",
+            }, ...users];
+          })();
+          return (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
               <div>
                 <h2 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".06em", margin: 0, marginBottom: 4 }}>
                   {lang==="es"?"EMPLEADOS Y ROLES":"EMPLOYEES & ROLES"}
                 </h2>
-                {/* PM 2026-06-25: empleado = admin o user con custom_role
-                    asignado. Los clientes (role 'user' sin custom_role) viven
-                    en Contactos, no acá. Conteo aclara el modelo: empleados
-                    totales, de los cuales N son administradores. */}
                 {(() => {
-                  const employees = users.filter(u => u.roleRaw === "admin" || u.customRoleId);
+                  const employees = effectiveUsers.filter(u => u.roleRaw === "admin" || u.customRoleId);
                   const admins = employees.filter(u => u.roleRaw === "admin");
                   return (
                     <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", margin: 0 }}>
@@ -12141,7 +12161,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     {/* PM 2026-06-25: solo STAFF en esta tabla — admin y users
                         con custom_role asignado. Los clientes regulares (role
                         'user' sin custom_role) viven en Contactos. */}
-                    {paginate(users.filter(u => (u.roleRaw === "admin" || u.customRoleId) && matchesSearch(u, teamSearch, ["name", "email", "role", "department", "position", "phone"])), usersPage, ROWS_PER_PAGE).map((u) => (
+                    {paginate(effectiveUsers.filter(u => (u.roleRaw === "admin" || u.customRoleId) && matchesSearch(u, teamSearch, ["name", "email", "role", "department", "position", "phone"])), usersPage, ROWS_PER_PAGE).map((u) => (
                       <tr key={u.id}>
                         <td style={{ fontWeight: 600 }}>
                           {u.name}
@@ -12776,7 +12796,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               );
             })()}
           </>
-        )}
+          );
+        })()}
 
 
             {settingsTab === "general" && (
