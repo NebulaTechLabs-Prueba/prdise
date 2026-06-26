@@ -3076,6 +3076,12 @@ function HotelsList() {
                             aliado al cliente — todo se coordina por PRDISE. */}
                         <div className="listing-foot">
                           <div>
+                            {/* PM 2026-06-26: "Desde" — todos los precios públicos
+                                son guía; el monto final lo confirma el admin al
+                                armar la factura. */}
+                            <span className="price-sub" style={{ marginRight: 6, fontSize: 11, color: "rgba(255,255,255,.55)" }}>
+                              {lang === "es" ? "Desde" : "From"}
+                            </span>
                             <span className="price">${h.price}</span>
                             <span className="price-sub">{pricingUnitLabel(h.pricingUnit || "per_night", lang).toUpperCase()}</span>
                           </div>
@@ -3580,6 +3586,11 @@ function HotelDetail({ params }) {
             <aside>
               <div className="booking-box">
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                  {/* PM 2026-06-26: "Desde" — el precio es guía. El admin
+                      confirma el monto final al armar la factura. */}
+                  <span className="price-sub" style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>
+                    {lang === "es" ? "Desde" : "From"}
+                  </span>
                   <span className="booking-price">${hotel.price}</span>
                   <span className="price-sub">{pricingUnitLabel(hotel.pricingUnit || "per_night", lang).toUpperCase()}</span>
                 </div>
