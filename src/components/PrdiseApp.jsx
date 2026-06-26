@@ -607,18 +607,27 @@ async function loadInitialData() {
     // para gestionarlos; las páginas públicas ya filtran por status del lado
     // del cliente (HomePage, /tours, /stays). Antes el conteo desplegaba 32
     // en vez de los 33 reales del DB porque uno estaba con active=false.
+    // PM 2026-06-26: cada query tolerante a fallo. Si UNA rompía (ej.
+    // posts con columna publish_at ausente porque la migración no se
+    // aplicó), antes Promise.all rechazaba completo y el sitio quedaba
+    // en BLANCO. Ahora cada query devuelve [] si falla y el resto del
+    // catálogo sigue funcionando.
+    const safe = (label, p) => p.catch((e) => {
+      console.warn(`[loadInitialData] ${label} fail:`, e?.message || e);
+      return [];
+    });
     const [stays, tours, routes, locations, vehicles, posts, partners, settings, experiences, postCategories] = await Promise.all([
-      getStays(sb, { activeOnly: false }),
-      getTours(sb, { activeOnly: false }),
+      safe("getStays", getStays(sb, { activeOnly: false })),
+      safe("getTours", getTours(sb, { activeOnly: false })),
       // PM 2026-06-12: rutas inactivas también se cargan para que el admin
       // las pueda gestionar (toggle, edición). Las páginas públicas filtran
       // por r.active del lado del cliente.
-      getTransferRoutes(sb, { activeOnly: false }),
-      getTransferLocations(sb),
-      getVehicles(sb),
-      getPublishedPosts(sb, {}),
-      getPartners(sb, { activeOnly: false }),
-      getSiteSettings(sb),
+      safe("getTransferRoutes", getTransferRoutes(sb, { activeOnly: false })),
+      safe("getTransferLocations", getTransferLocations(sb)),
+      safe("getVehicles", getVehicles(sb)),
+      safe("getPublishedPosts", getPublishedPosts(sb, {})),
+      safe("getPartners", getPartners(sb, { activeOnly: false })),
+      getSiteSettings(sb).catch((e) => { console.warn("[loadInitialData] getSiteSettings fail:", e?.message); return {}; }),
       // PM 2026-06-25: experiencias dinámicas. server action es tolerante:
       // si la tabla no existe (migración pendiente), devuelve [].
       sbListExperiences().catch(() => []),

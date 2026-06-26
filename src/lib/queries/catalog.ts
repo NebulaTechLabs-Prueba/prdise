@@ -216,25 +216,31 @@ export async function getPublishedPosts(
   opts: PostListOpts = {}
 ): Promise<Tables<"posts">[]> {
   const { featured, limit } = opts;
-
-  // PM 2026-06-26: filtro híbrido sin cron — un post sale público si:
-  //   * status='published' (publicado a mano), O
-  //   * status='scheduled' AND publish_at <= now() (programado y ya llegó
-  //     la fecha). Aparece automáticamente en la siguiente request que
-  //     toque esta query, sin necesidad de promover el status.
   const nowIso = new Date().toISOString();
+
+  // PM 2026-06-26: filtro híbrido (status=published OR scheduled vencido).
+  // Si la migración posts.publish_at NO se aplicó (42703), fallback al
+  // filtro legacy `status='published'` para que el blog no quede roto.
   let query = client
     .from("posts")
     .select("*")
     .or(`status.eq.published,and(status.eq.scheduled,publish_at.lte.${nowIso})`);
-
   if (typeof featured === "boolean") query = query.eq("featured", featured);
   query = query
     .order("featured", { ascending: false })
     .order("published_at", { ascending: false, nullsFirst: false });
   if (typeof limit === "number" && limit > 0) query = query.limit(limit);
 
-  const { data, error } = await query;
+  let { data, error } = await query;
+  if (error && error.code === "42703") {
+    let fallback = client.from("posts").select("*").eq("status", "published");
+    if (typeof featured === "boolean") fallback = fallback.eq("featured", featured);
+    fallback = fallback
+      .order("featured", { ascending: false })
+      .order("published_at", { ascending: false, nullsFirst: false });
+    if (typeof limit === "number" && limit > 0) fallback = fallback.limit(limit);
+    ({ data, error } = await fallback);
+  }
   if (error) throw error;
   return data ?? [];
 }
@@ -244,17 +250,22 @@ export async function getPostBySlug(
   slug: string
 ): Promise<Tables<"posts"> | null> {
   if (!slug) return null;
-
-  // PM 2026-06-26: mismo filtro híbrido que getPublishedPosts. Si el post
-  // está programado para el futuro, devuelve null (404 público).
   const nowIso = new Date().toISOString();
-  const { data, error } = await client
+  // Mismo fallback que getPublishedPosts.
+  let { data, error } = await client
     .from("posts")
     .select("*")
     .eq("slug", slug)
     .or(`status.eq.published,and(status.eq.scheduled,publish_at.lte.${nowIso})`)
     .maybeSingle();
-
+  if (error && error.code === "42703") {
+    ({ data, error } = await client
+      .from("posts")
+      .select("*")
+      .eq("slug", slug)
+      .eq("status", "published")
+      .maybeSingle());
+  }
   if (error) throw error;
   return data ?? null;
 }
