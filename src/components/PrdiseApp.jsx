@@ -12746,8 +12746,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   </div>
 
-                  {/* SERVICE-LEVEL PERMISSIONS */}
-                  {editingUser.id !== "new" && editingUser.role !== "Admin" && (() => {
+                  {/* SERVICE-LEVEL PERMISSIONS — solo para empleados que NO
+                      son admin. Los admins tienen acceso total por definición
+                      (no necesitan permisos granulares por servicio). Antes
+                      el check era `role !== "Admin"` pero el mapper guarda
+                      el role localizado ("Administrador" en ES), así que el
+                      bloque aparecía para todos los admins. Ahora usa roleRaw
+                      (enum DB) que es estable e independiente del idioma. */}
+                  {editingUser.id !== "new" && editingUser.roleRaw !== "admin" && (() => {
                     const userPerms = userServicePerms[editingUser.id] || { tours: {}, stays: {}, transfers: {}, canCreate: { tours: false, stays: false, transfers: false } };
                     const updatePerms = (next) => setUserServicePerms({ ...userServicePerms, [editingUser.id]: next });
 
