@@ -820,7 +820,7 @@ const TX = {
     popular: "Popular", top: "Top", magic: "Magic", unique: "Unique",
     // Admin
     adm_welcome: "WELCOME BACK,", adm_sub: "Here's what's happening with Living in PRDISE today",
-    adm_totalRevenue: "Total Revenue", adm_totalBookings: "Total Bookings", adm_activeStays: "Active Stays", adm_newUsers: "New Users",
+    adm_totalRevenue: "Total Revenue", adm_totalBookings: "Total Bookings", adm_activeStays: "Active Stays", adm_newUsers: "New Customers",
     adm_dashboard: "Dashboard", adm_analytics: "Analytics", adm_stays: "Stays", adm_tours: "Tours", adm_transfers: "Transfers", adm_posts: "Posts",
     adm_payments: "Payments", adm_invoices: "Invoices", adm_users: "Employees & Roles", adm_contacts: "Contacts", adm_settings: "Settings",
     adm_overview: "Overview", adm_modules: "Modules", adm_operations: "Operations", adm_system: "System",
@@ -922,7 +922,7 @@ const TX = {
     historic: "Histórico", beach: "Playa", bioBay: "Bahía Bio", nature: "Naturaleza",
     popular: "Popular", top: "Top", magic: "Mágico", unique: "Único",
     adm_welcome: "BIENVENIDO/A,", adm_sub: "Esto es lo que está pasando en Living in PRDISE hoy",
-    adm_totalRevenue: "Ingresos Totales", adm_totalBookings: "Reservas Totales", adm_activeStays: "Estadías Activas", adm_newUsers: "Nuevos Usuarios",
+    adm_totalRevenue: "Ingresos Totales", adm_totalBookings: "Reservas Totales", adm_activeStays: "Estadías Activas", adm_newUsers: "Nuevos Clientes",
     adm_dashboard: "Panel", adm_analytics: "Analíticas", adm_stays: "Estadías", adm_tours: "Tours", adm_transfers: "Traslados", adm_posts: "Publicaciones",
     adm_payments: "Pagos", adm_invoices: "Facturas", adm_users: "Empleados y Roles", adm_contacts: "Contactos", adm_settings: "Configuración",
     adm_overview: "General", adm_modules: "Módulos", adm_operations: "Operaciones", adm_system: "Sistema",
@@ -6829,8 +6829,53 @@ function ServiceDropdown({ hotels, tours, routes, onSelect, lang }) {
   );
 }
 
+/**
+ * PM 2026-06-25: empty state reusable para secciones del admin (catálogo,
+ * operaciones, etc.). Soporta 3 estados:
+ *
+ *   - empty:   catálogo realmente vacío → CTA "Crear primero".
+ *   - search:  búsqueda sin resultados → CTA "Limpiar búsqueda".
+ *   - filter:  filtro activo sin resultados → CTA "Limpiar filtros".
+ *
+ * El componente respeta el layout (bloque centrado con borde dashed) para
+ * que el módulo no se vea desestructurado cuando está vacío.
+ */
+function AdminEmptyState({ icon: Icon, mode, titleEs, titleEn, copyEs, copyEn, ctaLabelEs, ctaLabelEn, onCta, ctaDisabled, accent }) {
+  const lang = (typeof window !== "undefined" && window.__prdise_lang) || "es";
+  const accentColor = accent || "var(--gold)";
+  return (
+    <div style={{
+      padding: "70px 24px", textAlign: "center", borderRadius: 16,
+      background: "rgba(255,255,255,.025)",
+      border: "1px dashed rgba(255,255,255,.1)",
+      color: "rgba(255,255,255,.65)",
+    }}>
+      {Icon && <Icon style={{ width: 44, height: 44, opacity: .35, marginBottom: 14, color: accentColor }} />}
+      <h3 style={{ fontFamily: "Bebas Neue", fontSize: 24, letterSpacing: ".04em", marginBottom: 8, color: "#fff" }}>
+        {lang === "es" ? titleEs : titleEn}
+      </h3>
+      <p style={{ fontSize: 13, maxWidth: 460, margin: "0 auto 20px", lineHeight: 1.55 }}>
+        {lang === "es" ? copyEs : copyEn}
+      </p>
+      {onCta && (
+        <button
+          className={`adm-btn ${mode === "empty" ? "adm-btn-primary" : "adm-btn-ghost"}`}
+          onClick={onCta}
+          disabled={!!ctaDisabled}
+          style={{ opacity: ctaDisabled ? 0.4 : 1, cursor: ctaDisabled ? "not-allowed" : "pointer" }}
+        >
+          {lang === "es" ? ctaLabelEs : ctaLabelEn}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AdminPanel({ onClose }) {
   const { lang, setLang, t } = useLang();
+  // Expose lang for AdminEmptyState (defined outside the closure to keep it
+  // simple). Re-render of AdminPanel updates the window flag.
+  if (typeof window !== "undefined") window.__prdise_lang = lang;
   const [section, setSection] = useState(() => {
     // PM 2026-06-23 (D): si una notification dejó un hint en sessionStorage
     // (ej. "contact-inbox" tras click en una notif de mensaje nuevo),
@@ -8991,56 +9036,25 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 .filter(h => hotelsFilter === "all" || h.status === hotelsFilter)
                 .filter(h => matchesSearch(h, staysSearch, ["name", "nameES", "desc", "descES", "zone", "category", "id"]));
 
-              // PM 2026-06-25: empty state para mantener distribución y guiar
-              // la acción cuando la lista está vacía. Distingue "no hay nada"
-              // de "el filtro/búsqueda no devolvió resultados".
               if (filteredStays.length === 0) {
                 const isSearchEmpty = staysSearch.trim().length > 0;
                 const isFilterEmpty = hotelsFilter !== "all";
                 const isTrulyEmpty = !isSearchEmpty && !isFilterEmpty;
-                return (
-                  <div style={{
-                    padding: "70px 24px", textAlign: "center", borderRadius: 16,
-                    background: "rgba(255,255,255,.025)",
-                    border: "1px dashed rgba(255,255,255,.1)",
-                    color: "rgba(255,255,255,.65)",
-                  }}>
-                    <Home style={{ width: 44, height: 44, opacity: .35, marginBottom: 14, color: "var(--gold)" }} />
-                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: 24, letterSpacing: ".04em", marginBottom: 8, color: "#fff" }}>
-                      {isTrulyEmpty
-                        ? (lang==="es" ? "Tu catálogo de estadías está vacío" : "Your stays catalog is empty")
-                        : isSearchEmpty
-                          ? (lang==="es" ? "Sin resultados para tu búsqueda" : "No matches for your search")
-                          : (lang==="es" ? "No hay estadías en este filtro" : "No stays under this filter")}
-                    </h3>
-                    <p style={{ fontSize: 13, maxWidth: 460, margin: "0 auto 20px", lineHeight: 1.55 }}>
-                      {isTrulyEmpty
-                        ? (lang==="es"
-                            ? "Cargá tu primera estadía para que aparezca en el catálogo público y los viajeros la puedan encontrar."
-                            : "Add your first stay so it shows up in the public catalog and travelers can find it.")
-                        : (lang==="es"
-                            ? "Probá con otro filtro o limpiá la búsqueda."
-                            : "Try another filter or clear the search.")}
-                    </p>
-                    {isTrulyEmpty ? (
-                      <button
-                        className="adm-btn adm-btn-primary"
-                        onClick={() => { if (canCreateInModule("stays")) setEditing({ type: "hotel", isNew: true }); }}
-                        disabled={!canCreateInModule("stays")}
-                        style={{ opacity: canCreateInModule("stays") ? 1 : 0.4, cursor: canCreateInModule("stays") ? "pointer" : "not-allowed" }}
-                      >
-                        <Plus />{lang==="es" ? "Crear primera estadía" : "Create first stay"}
-                      </button>
-                    ) : (
-                      <button
-                        className="adm-btn adm-btn-ghost"
-                        onClick={() => { setHotelsFilter("all"); setStaysSearch(""); }}
-                      >
-                        {lang==="es" ? "Limpiar filtros" : "Clear filters"}
-                      </button>
-                    )}
-                  </div>
-                );
+                if (isTrulyEmpty) {
+                  return <AdminEmptyState icon={Home} mode="empty"
+                    titleEs="Tu catálogo de estadías está vacío" titleEn="Your stays catalog is empty"
+                    copyEs="Cargá tu primera estadía para que aparezca en el catálogo público y los viajeros la puedan encontrar."
+                    copyEn="Add your first stay so it shows up in the public catalog and travelers can find it."
+                    ctaLabelEs="+ Crear primera estadía" ctaLabelEn="+ Create first stay"
+                    onCta={() => { if (canCreateInModule("stays")) setEditing({ type: "hotel", isNew: true }); }}
+                    ctaDisabled={!canCreateInModule("stays")} />;
+                }
+                return <AdminEmptyState icon={Home} mode={isSearchEmpty ? "search" : "filter"}
+                  titleEs={isSearchEmpty ? "Sin resultados para tu búsqueda" : "No hay estadías en este filtro"}
+                  titleEn={isSearchEmpty ? "No matches for your search" : "No stays under this filter"}
+                  copyEs="Probá con otro filtro o limpiá la búsqueda." copyEn="Try another filter or clear the search."
+                  ctaLabelEs="Limpiar filtros" ctaLabelEn="Clear filters"
+                  onCta={() => { setHotelsFilter("all"); setStaysSearch(""); }} />;
               }
 
               return (
@@ -9150,14 +9164,32 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-search"><Search /><input value={toursSearch} onChange={(e) => setToursSearch(e.target.value)} placeholder={lang==="es"?"Buscar tours...":"Search tours..."} /></div>
               </div>
             </div>
+            {(() => {
+              const filteredTours = filterServices("tours", tours)
+                .filter(t => toursFilter === "all" || t.status === toursFilter)
+                .filter(t => matchesSearch(t, toursSearch, ["name", "nameES", "desc", "descES", "location", "category", "id"]));
+              if (filteredTours.length === 0) {
+                const isSearchEmpty = toursSearch.trim().length > 0;
+                const isFilterEmpty = toursFilter !== "all";
+                if (!isSearchEmpty && !isFilterEmpty) {
+                  return <AdminEmptyState icon={Compass} mode="empty"
+                    titleEs="Tu catálogo de tours está vacío" titleEn="Your tours catalog is empty"
+                    copyEs="Creá el primer tour para que aparezca en el catálogo público y los viajeros lo puedan reservar por WhatsApp."
+                    copyEn="Create the first tour so it shows up in the public catalog and travelers can request it via WhatsApp."
+                    ctaLabelEs="+ Crear primer tour" ctaLabelEn="+ Create first tour"
+                    onCta={() => { if (canCreateInModule("tours")) setEditing({ type: "tour", isNew: true }); }}
+                    ctaDisabled={!canCreateInModule("tours")} />;
+                }
+                return <AdminEmptyState icon={Compass} mode={isSearchEmpty ? "search" : "filter"}
+                  titleEs={isSearchEmpty ? "Sin resultados para tu búsqueda" : "No hay tours en este filtro"}
+                  titleEn={isSearchEmpty ? "No matches for your search" : "No tours under this filter"}
+                  copyEs="Probá con otro filtro o limpiá la búsqueda." copyEn="Try another filter or clear the search."
+                  ctaLabelEs="Limpiar filtros" ctaLabelEn="Clear filters"
+                  onCta={() => { setToursFilter("all"); setToursSearch(""); }} />;
+              }
+              return (
             <div className="adm-cards-grid">
-              {paginate(
-                filterServices("tours", tours)
-                  .filter(t => toursFilter === "all" || t.status === toursFilter)
-                  .filter(t => matchesSearch(t, toursSearch, ["name", "nameES", "desc", "descES", "location", "category", "id"])),
-                toursPage,
-                toursPerPage
-              ).map((t) => {
+              {paginate(filteredTours, toursPage, toursPerPage).map((t) => {
                 const svcPerm = getServicePerm("tours", t.id);
                 const canEdit = svcPerm === "edit" || svcPerm === "full";
                 const canDelete = svcPerm === "full";
@@ -9226,6 +9258,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 );
               })}
             </div>
+              );
+            })()}
             <PaginationBar current={toursPage} total={Math.ceil(tours.filter(t => toursFilter === "all" || t.status === toursFilter).length / toursPerPage)} onPage={setToursPage} />
             <div className="adm-card">
               <div className="adm-card-head"><div className="adm-card-title"><BarChart3 />Tour Performance Summary</div></div>
@@ -9322,16 +9356,32 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </tr>
                   </thead>
                   <tbody>
-                    {paginate(posts
-                      .filter(p => {
-                        if (postsFilter === "all") return true;
-                        if (postsFilter === "featured") return p.featured;
-                        return p.status === postsFilter;
-                      })
-                      .filter(p => matchesSearch(p, postsSearch, ["title", "excerpt", "category", "author", "slug"])),
-                      postsPage,
-                      postsPerPage
-                    ).map((p) => {
+                    {(() => {
+                      const filteredPosts = posts
+                        .filter(p => {
+                          if (postsFilter === "all") return true;
+                          if (postsFilter === "featured") return p.featured;
+                          return p.status === postsFilter;
+                        })
+                        .filter(p => matchesSearch(p, postsSearch, ["title", "excerpt", "category", "author", "slug"]));
+                      if (filteredPosts.length === 0) {
+                        const isSearchEmpty = postsSearch.trim().length > 0;
+                        const isFilterEmpty = postsFilter !== "all";
+                        const isTrulyEmpty = !isSearchEmpty && !isFilterEmpty;
+                        return (
+                          <tr><td colSpan={8} style={{ padding: 0 }}>
+                            <AdminEmptyState icon={Edit} mode={isTrulyEmpty ? "empty" : (isSearchEmpty ? "search" : "filter")}
+                              titleEs={isTrulyEmpty ? "Aún no hay publicaciones" : (isSearchEmpty ? "Sin resultados para tu búsqueda" : "No hay publicaciones en este filtro")}
+                              titleEn={isTrulyEmpty ? "No posts yet" : (isSearchEmpty ? "No matches for your search" : "No posts under this filter")}
+                              copyEs={isTrulyEmpty ? "Publicá guías, noticias o artículos para que aparezcan en el blog y en la sección de Servicios." : "Probá con otro filtro o limpiá la búsqueda."}
+                              copyEn={isTrulyEmpty ? "Publish guides, news or articles so they show up on the blog and Services section." : "Try another filter or clear the search."}
+                              ctaLabelEs={isTrulyEmpty ? "+ Nueva publicación" : "Limpiar filtros"}
+                              ctaLabelEn={isTrulyEmpty ? "+ New post" : "Clear filters"}
+                              onCta={isTrulyEmpty ? (() => setEditing({ type: "post", isNew: true })) : (() => { setPostsFilter("all"); setPostsSearch(""); })} />
+                          </td></tr>
+                        );
+                      }
+                      return paginate(filteredPosts, postsPage, postsPerPage).map((p) => {
                       const CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
                       const cc = CAT_COLORS[p.category] || "#F5A623";
                       return (
@@ -9397,7 +9447,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           </td>
                         </tr>
                       );
-                    })}
+                    });
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -9509,8 +9560,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </tr></thead>
                     <tbody>
                       {routes.length === 0 && (
-                        <tr><td colSpan={7} style={{ textAlign: "center", padding: 30, color: "rgba(255,255,255,.4)" }}>
-                          {lang === "es" ? "Sin rutas todavía. Crea la primera con \"Nueva ruta\" arriba." : "No routes yet. Click \"New route\" above."}
+                        <tr><td colSpan={7} style={{ padding: 0 }}>
+                          <AdminEmptyState icon={MapPin} mode="empty"
+                            titleEs="Aún no hay rutas configuradas" titleEn="No routes configured yet"
+                            copyEs="Las rutas son los trayectos disponibles para traslados (origen → destino con precio base). Crea la primera con el botón 'Nueva ruta' arriba."
+                            copyEn="Routes are available trips for transfers (origin → destination with base price). Create the first one with the 'New route' button above." />
                         </td></tr>
                       )}
                       {paginate(routes, routesPage, routesPerPage).map((r) => {
@@ -10294,6 +10348,24 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       };
                       const cmp = invSortHelpers[invoicesSort.key] || invSortHelpers.issued;
                       const filtered = visibleInvoices.filter(i => (invoicesFilter === "all" || i.status === invoicesFilter) && matchesSearch(i, invoicesSearch, ["num", "customer", "email", "phone", "status"]) && itemMatchesTrackFilter(i, serviceTrackFilter) && itemBelongsToEmployee(i));
+                      if (filtered.length === 0) {
+                        const isSearchEmpty = invoicesSearch.trim().length > 0;
+                        const isFilterEmpty = invoicesFilter !== "all";
+                        const isTrulyEmpty = !isSearchEmpty && !isFilterEmpty;
+                        return (
+                          <tr><td colSpan={9} style={{ padding: 0 }}>
+                            <AdminEmptyState icon={Briefcase} mode={isTrulyEmpty ? "empty" : (isSearchEmpty ? "search" : "filter")}
+                              titleEs={isTrulyEmpty ? "Aún no hay facturas creadas" : (isSearchEmpty ? "Sin resultados para tu búsqueda" : "No hay facturas en este filtro")}
+                              titleEn={isTrulyEmpty ? "No invoices yet" : (isSearchEmpty ? "No matches for your search" : "No invoices under this filter")}
+                              copyEs={isTrulyEmpty ? "Creá tu primera factura para cobrarle a un cliente. Podés generar el link de Stripe después." : "Probá con otro filtro o limpiá la búsqueda."}
+                              copyEn={isTrulyEmpty ? "Create your first invoice to charge a customer. You can generate the Stripe link afterwards." : "Try another filter or clear the search."}
+                              ctaLabelEs={isTrulyEmpty ? "+ Nueva factura" : "Limpiar filtros"}
+                              ctaLabelEn={isTrulyEmpty ? "+ New invoice" : "Clear filters"}
+                              onCta={isTrulyEmpty ? (() => { if (canEditInvoices()) setInvoiceCreateOpen(true); }) : (() => { setInvoicesFilter("all"); setInvoicesSearch(""); })}
+                              ctaDisabled={isTrulyEmpty && !canEditInvoices()} />
+                          </td></tr>
+                        );
+                      }
                       const sorted = [...filtered].sort((a, b) => invoicesSort.dir === "asc" ? cmp(a, b) : cmp(b, a));
                       return paginate(sorted, invoicesPage, invoicesPerPage).map((inv) => (
                       <tr key={inv.id}>
@@ -11485,15 +11557,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
               </div>
               {contacts.length === 0 ? (
-                <div style={{ padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.5)" }}>
-                  <Mail style={{ width: 36, height: 36, opacity: 0.3, marginBottom: 12 }} />
-                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".05em", marginBottom: 6 }}>
-                    {lang === "es" ? "Aún no hay mensajes" : "No messages yet"}
-                  </h3>
-                  <p style={{ fontSize: 13 }}>
-                    {lang === "es" ? "Cuando alguien complete el formulario en /contact, aparecerá acá." : "When someone submits the form at /contact, it will show up here."}
-                  </p>
-                </div>
+                <AdminEmptyState icon={Mail} mode="empty"
+                  titleEs="Aún no hay mensajes en el buzón" titleEn="Inbox is empty"
+                  copyEs="Los mensajes que envíen desde el formulario de contacto público aparecerán acá. Recibirás una notificación al instante."
+                  copyEn="Messages submitted from the public contact form will show up here. You will get an instant notification." />
               ) : (
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
@@ -11632,15 +11699,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-card-title"><Users />{lang==="es"?"LISTA DE CLIENTES":"CUSTOMER LIST"} <span className="adm-pill">{customers.length}</span></div>
               </div>
               {customers.length === 0 ? (
-                <div style={{ padding: "60px 20px", textAlign: "center", color: "rgba(255,255,255,.5)" }}>
-                  <Users style={{ width: 36, height: 36, opacity: 0.3, marginBottom: 12 }} />
-                  <h3 style={{ fontFamily: "Bebas Neue", fontSize: 20, letterSpacing: ".05em", marginBottom: 6 }}>
-                    {lang === "es" ? "Aún no hay clientes registrados" : "No customers registered yet"}
-                  </h3>
-                  <p style={{ fontSize: 13 }}>
-                    {lang === "es" ? "Los clientes que se registren en /register aparecerán acá." : "Customers who sign up at /register will show up here."}
-                  </p>
-                </div>
+                <AdminEmptyState icon={Users} mode="empty"
+                  titleEs="Aún no hay clientes registrados" titleEn="No customers registered yet"
+                  copyEs="Los clientes que se registren desde el sitio aparecerán acá con su historial agregado (servicios solicitados, total invertido, cumpleaños)."
+                  copyEn="Customers who sign up from the site will show up here with their aggregated history (services requested, total spent, birthday)." />
               ) : (
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
@@ -11775,8 +11837,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </tr></thead>
                   <tbody>
                     {partnersList.length === 0 ? (
-                      <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.5)" }}>
-                        {lang==="es"?"Aún no hay partners. Crea el primero con el botón de arriba.":"No partners yet. Create the first one with the button above."}
+                      <tr><td colSpan={6} style={{ padding: 0 }}>
+                        <AdminEmptyState icon={ExternalLink} mode="empty"
+                          titleEs="Aún no hay alianzas creadas" titleEn="No partners yet"
+                          copyEs="Las alianzas se usan internamente para reportes de comisión y splits de revenue. El cliente final nunca las ve. Crea la primera con el botón de arriba."
+                          copyEn="Partners are used internally for commission reports and revenue splits. End customers never see them. Create the first one with the button above." />
                       </td></tr>
                     ) : partnersList.map((p) => (
                       <tr key={p.id}>
@@ -11933,10 +11998,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </tr></thead>
                   <tbody>
                     {experiencesList.length === 0 ? (
-                      <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,.5)" }}>
-                        {lang==="es"
-                          ? "Aún no hay experiencias. Si recién aplicaste la migración, aparecerán las 3 iniciales (Beach Escape, River & Mountain, UTV Tours)."
-                          : "No experiences yet. If you just applied the migration, the 3 initial ones will appear (Beach Escape, River & Mountain, UTV Tours)."}
+                      <tr><td colSpan={7} style={{ padding: 0 }}>
+                        <AdminEmptyState icon={Star} mode="empty"
+                          titleEs="Aún no hay experiencias" titleEn="No experiences yet"
+                          copyEs="Las experiencias agrupan tus tours y stays en el Home y la página /tours. Crea la primera para empezar a clasificar."
+                          copyEn="Experiences group your tours and stays on the Home and /tours page. Create the first one to start classifying."
+                          ctaLabelEs="+ Nueva experiencia" ctaLabelEn="+ New experience"
+                          onCta={() => setEditingExperience({ id: "new", slug: "", name_es: "", name_en: "", description_es: "", description_en: "", color: "gold", sort_order: 100, active: true, cover_image: "", featured_on_home: false })} />
                       </td></tr>
                     ) : experiencesList.map((e) => {
                       const toursCount = TOURS.filter(tr => tr.experienceId === e.id).length;
@@ -12102,11 +12170,21 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
               <div>
                 <h2 style={{ fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".06em", margin: 0, marginBottom: 4 }}>
-                  {lang==="es"?"USUARIOS Y ROLES":"USERS & ROLES"}
+                  {lang==="es"?"EMPLEADOS Y ROLES":"EMPLOYEES & ROLES"}
                 </h2>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", margin: 0 }}>
-                  {users.length} {lang==="es"?"usuarios":"users"} · {users.filter((u) => u.roleRaw === "admin").length} {lang==="es"?"administradores":"administrators"} · {users.filter((u) => u.roleRaw === "user").length} {lang==="es"?"clientes":"customers"}
-                </p>
+                {/* PM 2026-06-25: empleado = admin o user con custom_role
+                    asignado. Los clientes (role 'user' sin custom_role) viven
+                    en Contactos, no acá. Conteo aclara el modelo: empleados
+                    totales, de los cuales N son administradores. */}
+                {(() => {
+                  const employees = users.filter(u => u.roleRaw === "admin" || u.customRoleId);
+                  const admins = employees.filter(u => u.roleRaw === "admin");
+                  return (
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", margin: 0 }}>
+                      {employees.length} {lang==="es"?(employees.length === 1 ? "empleado" : "empleados"):(employees.length === 1 ? "employee" : "employees")} · {admins.length} {lang==="es"?(admins.length === 1 ? "administrador" : "administradores"):(admins.length === 1 ? "administrator" : "administrators")}
+                    </p>
+                  );
+                })()}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <div className="adm-search"><Search /><input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} placeholder={lang==="es"?"Buscar equipo...":"Search team..."} /></div>
@@ -12125,7 +12203,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <table className="adm-tbl">
                   <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Correo":"Email"}</th><th>{lang==="es"?"Rol":"Role"}</th><th>{lang==="es"?"Departamento":"Department"}</th><th>{lang==="es"?"Posición":"Position"}</th><th>{lang==="es"?"Ingreso":"Joined"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
                   <tbody>
-                    {paginate(users.filter(u => matchesSearch(u, teamSearch, ["name", "email", "role", "department", "position", "phone"])), usersPage, ROWS_PER_PAGE).map((u) => (
+                    {/* PM 2026-06-25: solo STAFF en esta tabla — admin y users
+                        con custom_role asignado. Los clientes regulares (role
+                        'user' sin custom_role) viven en Contactos. */}
+                    {paginate(users.filter(u => (u.roleRaw === "admin" || u.customRoleId) && matchesSearch(u, teamSearch, ["name", "email", "role", "department", "position", "phone"])), usersPage, ROWS_PER_PAGE).map((u) => (
                       <tr key={u.id}>
                         <td style={{ fontWeight: 600 }}>
                           {u.name}

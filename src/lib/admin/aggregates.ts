@@ -179,16 +179,20 @@ export async function getDashboardSummary(
     .eq("active", true);
   const activeStaysCount = stays.count ?? 0;
 
-  // New users (current + previous).
+  // New users (current + previous). PM 2026-06-25: filtramos por role='user'
+  // (clientes/viajeros) para excluir admins y staff — el card del dashboard
+  // se llama "Nuevos Clientes" y no debe inflarse con cuentas internas.
   const [usCurr, usPrev] = await Promise.all([
     supabase
       .from("profiles")
       .select("id", { count: "exact", head: true })
+      .eq("role", "user")
       .gte("created_at", start)
       .lte("created_at", end),
     supabase
       .from("profiles")
       .select("id", { count: "exact", head: true })
+      .eq("role", "user")
       .gte("created_at", prevStart)
       .lt("created_at", prevEnd),
   ]);
