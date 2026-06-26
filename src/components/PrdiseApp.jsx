@@ -7534,17 +7534,31 @@ function AdminPanel({ onClose }) {
     }
   };
   useEffect(() => { reloadTransferLocations(); }, []);
-  // PM 2026-06-26: race-fix general. Si AdminPanel se monta antes de que
-  // loadInitialData termine, varios listas locales (hotels/tours/routes/
-  // vehicles/posts/partners/experiences/postCategoriesList) quedan vacías
-  // porque su useState init lee los globals que aún no se poblaron. Acá
-  // re-llamamos loadInitialData y resincronizamos los useState locales.
+  // PM 2026-06-26: race-fix. Si AdminPanel monta antes de que
+  // loadInitialData termine, las listas locales quedan vacías y se
+  // muestran "Aún no hay ...". NO re-llamamos loadInitialData (eso
+  // disparaba race condition: dos cargas paralelas mutando los mismos
+  // globals con .length = 0 → mostraban vacío momentáneo en el lado
+  // público también). En su lugar, polling corto: chequeamos cada
+  // 200ms hasta 5s si los globals ya están poblados, y entonces
+  // re-sincronizamos. Si fallan se rinde silenciosamente.
   useEffect(() => {
-    let cancel = false;
-    (async () => {
-      try {
-        await loadInitialData();
-        if (cancel) return;
+    if (TOURS.length > 0 || HOTELS.length > 0 || PARTNERS.length > 0) {
+      // Globals listos: sync inmediato.
+      setHotels([...HOTELS]);
+      setTours([...TOURS]);
+      setRoutes([...ROUTES]);
+      setVehicles([...VEHICLES]);
+      setPosts([...A_POSTS]);
+      setPartnersList([...PARTNERS]);
+      setExperiencesList([...EXPERIENCES]);
+      setPostCategoriesList([...POST_CATEGORIES]);
+      return;
+    }
+    let tries = 0;
+    const id = setInterval(() => {
+      tries++;
+      if (TOURS.length > 0 || HOTELS.length > 0 || PARTNERS.length > 0) {
         setHotels([...HOTELS]);
         setTours([...TOURS]);
         setRoutes([...ROUTES]);
@@ -7553,11 +7567,12 @@ function AdminPanel({ onClose }) {
         setPartnersList([...PARTNERS]);
         setExperiencesList([...EXPERIENCES]);
         setPostCategoriesList([...POST_CATEGORIES]);
-      } catch (e) {
-        console.warn("[admin] resync globals after loadInitialData:", e);
+        clearInterval(id);
+      } else if (tries > 25) {
+        clearInterval(id);
       }
-    })();
-    return () => { cancel = true; };
+    }, 200);
+    return () => clearInterval(id);
   }, []);
   const [contactsFilter, setContactsFilter] = useState("all");
   // Carga datos REALES de Supabase al montar AdminPanel: drivers, contacts y
