@@ -240,6 +240,13 @@ export async function updateUserRole(
     return { ok: false, error: "El usuario no existe." };
   }
 
+  // PM 2026-06-26: admin@livinginprdise.com es la cuenta base del sistema.
+  // No se le puede cambiar el rol bajo ninguna circunstancia.
+  const { data: targetAuth } = await admin.auth.admin.getUserById(targetUserId);
+  if ((targetAuth?.user?.email || "").toLowerCase() === "admin@livinginprdise.com") {
+    return { ok: false, error: "La cuenta admin@livinginprdise.com es la cuenta base del sistema y no puede modificarse." };
+  }
+
   if (target.role === newRole) {
     return { ok: false, error: "El usuario ya tiene ese rol." };
   }
@@ -297,6 +304,12 @@ export async function toggleUserStatus(
 
   if (fetchErr || !target) {
     return { ok: false, error: "El usuario no existe." };
+  }
+
+  // PM 2026-06-26: cuenta base intocable.
+  const { data: targetAuth } = await admin.auth.admin.getUserById(targetUserId);
+  if ((targetAuth?.user?.email || "").toLowerCase() === "admin@livinginprdise.com") {
+    return { ok: false, error: "La cuenta admin@livinginprdise.com es la cuenta base del sistema y no puede desactivarse." };
   }
 
   const nowIso = new Date().toISOString();

@@ -12495,20 +12495,37 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td><span className={`adm-pill ${u.status === "active" ? "published" : u.status === "on_leave" ? "pending" : "hidden"}`}>{u.status.replace("_", " ")}</span></td>
                         <td>
                           <div className="adm-row-actions">
-                            <button
-                              className="adm-icon-btn"
-                              title={canEditUsersOnly ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Sin permiso":"No permission")}
-                              onClick={() => { if (canEditUsersOnly) setEditingUser({ ...u }); }}
-                              disabled={!canEditUsersOnly}
-                              style={{ opacity: canEditUsersOnly ? 1 : 0.3, cursor: canEditUsersOnly ? "pointer" : "not-allowed" }}
-                            ><Pencil /></button>
-                            <button
-                              className="adm-icon-btn danger"
-                              title={canManageRoles ? (lang==="es"?"Eliminar":"Delete") : (lang==="es"?"Sin permiso":"No permission")}
-                              onClick={() => { if (canManageRoles) setDeletingUser(u); }}
-                              disabled={!canManageRoles}
-                              style={{ opacity: canManageRoles ? 1 : 0.3, cursor: canManageRoles ? "pointer" : "not-allowed" }}
-                            ><X /></button>
+                            {/* PM 2026-06-26: admin@livinginprdise.com es la
+                                cuenta SUPER ADMIN base — no se puede editar
+                                permisos ni eliminar. Otros admins/empleados
+                                siguen el flujo normal. */}
+                            {(() => {
+                              const isSuperAdmin = (u.email || "").toLowerCase() === "admin@livinginprdise.com";
+                              const editAllowed = canEditUsersOnly && !isSuperAdmin;
+                              const deleteAllowed = canManageRoles && !isSuperAdmin;
+                              return (
+                                <>
+                                  <button
+                                    className="adm-icon-btn"
+                                    title={isSuperAdmin
+                                      ? (lang==="es"?"Cuenta base — no editable":"Base account — not editable")
+                                      : editAllowed ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Sin permiso":"No permission")}
+                                    onClick={() => { if (editAllowed) setEditingUser({ ...u }); }}
+                                    disabled={!editAllowed}
+                                    style={{ opacity: editAllowed ? 1 : 0.3, cursor: editAllowed ? "pointer" : "not-allowed" }}
+                                  ><Pencil /></button>
+                                  <button
+                                    className="adm-icon-btn danger"
+                                    title={isSuperAdmin
+                                      ? (lang==="es"?"Cuenta base — no eliminable":"Base account — cannot delete")
+                                      : deleteAllowed ? (lang==="es"?"Eliminar":"Delete") : (lang==="es"?"Sin permiso":"No permission")}
+                                    onClick={() => { if (deleteAllowed) setDeletingUser(u); }}
+                                    disabled={!deleteAllowed}
+                                    style={{ opacity: deleteAllowed ? 1 : 0.3, cursor: deleteAllowed ? "pointer" : "not-allowed" }}
+                                  ><X /></button>
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
