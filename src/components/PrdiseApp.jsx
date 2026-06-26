@@ -5000,20 +5000,20 @@ function AccountPage() {
     const sess = PRDISE.load("session", null);
     if (!sess) { nav("/login"); return; }
     if (sess.role === "admin") { nav("/admin"); return; }
-    let u = PRDISE.load("user", null);
-    if (!u) {
-      u = {
-        firstName: sess.name?.split(" ")[0] || "",
-        lastName:  sess.name?.split(" ").slice(1).join(" ") || "",
-        email:     sess.email || "",
-        phone: "", phoneCode: "+1", country: "",
-        language: "Español", passport: "", passportExp: "", localId: "",
-        billingAddress: "", allergies: "", dietRestrictions: "", specialNeeds: "",
-        joinedAt: new Date().toLocaleDateString()
-      };
-      PRDISE.save("user", u);
-    }
-    setUser(u);
+    // PM 2026-06-26: NO leer de localStorage. Antes el initial state se
+    // armaba con PRDISE.load("user") que mantenía data "fantasma" de
+    // sesiones previas (ej. el cliente seleccionó "United States" pero
+    // nunca guardó — se quedó en localStorage y aparecía como real). DB
+    // es la única fuente de verdad; el useEffect de abajo la trae.
+    setUser({
+      firstName: sess.name?.split(" ")[0] || "",
+      lastName:  sess.name?.split(" ").slice(1).join(" ") || "",
+      email:     sess.email || "",
+      phone: "", phoneCode: "+1", country: "",
+      language: "Español", passport: "", passportExp: "", localId: "",
+      billingAddress: "", allergies: "", dietRestrictions: "", specialNeeds: "",
+      joinedAt: new Date().toLocaleDateString()
+    });
   }, []);
 
   // Cargar profile REAL desde Supabase (sobreescribe valores locales con los
@@ -5054,15 +5054,15 @@ function AccountPage() {
         // || ""` que mantenía valores de localStorage cuando DB era null — el
         // cliente veía "United States" en su /account aunque en DB no había
         // nada guardado, y el admin (que solo lee DB) mostraba "—". Sin fallback.
-        setUser((prev) => ({
-          ...(prev || {}),
+        const fresh = {
           firstName: prof.first_name ?? "",
           lastName: prof.last_name ?? "",
           phone: prof.phone ?? "",
+          phoneCode: "+1",
           country: prof.country ?? "",
           birthDate: prof.birth_date ?? "",
           language: prof.lang_pref === "es" ? "Español" : prof.lang_pref === "en" ? "English" : "Español",
-          email: authUser.email || prev?.email || "",
+          email: authUser.email || "",
           avatarUrl: prof.avatar_url || null,
           passport: prof.passport_number ?? "",
           passportExp: prof.passport_expiry ?? "",
@@ -5072,7 +5072,14 @@ function AccountPage() {
           dietRestrictions: prof.diet_restrictions ?? "",
           specialNeeds: prof.special_needs ?? "",
           specialNotes: prof.special_notes ?? "",
-        }));
+          joinedAt: new Date().toLocaleDateString(),
+        };
+        setUser(fresh);
+        // PM 2026-06-26: sobreescribir localStorage con la verdad de DB
+        // para limpiar cualquier dato fantasma de sesiones previas que
+        // no se persistió. Otros componentes que leen PRDISE.load("user")
+        // van a ver lo mismo que el dashboard.
+        PRDISE.save("user", fresh);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn("account load real:", e);
@@ -5084,9 +5091,13 @@ function AccountPage() {
   if (!user) return null;
 
   const updateUser = (key, val) => {
-    const updated = { ...user, [key]: val };
-    setUser(updated);
-    PRDISE.save("user", updated);
+    // PM 2026-06-26: NO persistir cada keystroke a localStorage. Antes
+    // si el cliente escribía "United States" en el dropdown de País y
+    // no clickeaba Save, localStorage quedaba con ese valor para
+    // siempre — el initial state lo leía y el cliente veía 'datos
+    // guardados' que en realidad nunca llegaron a DB. localStorage se
+    // sincroniza ahora solo en "Save All Changes" (junto con DB).
+    setUser({ ...user, [key]: val });
   };
 
   const doLogout = async () => {
@@ -5209,27 +5220,10 @@ function AccountPage() {
               {renderField(lang === "es" ? "ID local" : "Local ID", null, "localId")}
             </div>
             <h3>{lang === "es" ? "Notas especiales" : "Special Notes"}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 24 }}>
               {renderField(lang === "es" ? "Alergias" : "Allergies", null, "allergies")}
               {renderField(lang === "es" ? "Restricciones alimenticias" : "Dietary Restrictions", null, "dietRestrictions")}
               {renderField(lang === "es" ? "Necesidades especiales" : "Special Needs", null, "specialNeeds")}
-            </div>
-            {/* PM 2026-06-26: textarea libre para notas adicionales (texto
-                que el admin debería ver al armar el viaje). */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 6 }}>
-                {lang === "es" ? "Notas adicionales para el equipo PRDISE" : "Additional notes for the PRDISE team"}
-              </label>
-              <textarea
-                className="f-input"
-                rows={3}
-                value={user?.specialNotes || ""}
-                onChange={(e) => setUser({ ...user, specialNotes: e.target.value })}
-                placeholder={lang === "es"
-                  ? "Cualquier preferencia, condición de salud, idioma alternativo, ocasiones especiales..."
-                  : "Any preference, health condition, alternate language, special occasions..."}
-                style={{ width: "100%", resize: "vertical", minHeight: 70 }}
-              />
             </div>
             {/* PM 2026-06-17: Save All Changes ahora también persiste a DB los
                 campos que tienen columna en profiles. Antes solo guardaba a
@@ -13720,20 +13714,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   )}
 
-                  {(d.allergies || d.dietRestrictions || d.specialNeeds || d.specialNotes) && (
-                    <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.05)", border: "1px solid rgba(245,166,35,.18)" }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                        <AlertTriangle style={{ width: 12, height: 12 }} />
-                        {lang === "es" ? "Notas especiales del cliente" : "Customer special notes"}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                        {d.allergies && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Alergias" : "Allergies"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.allergies}</div></div>}
-                        {d.dietRestrictions && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Restricciones alimenticias" : "Diet restrictions"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.dietRestrictions}</div></div>}
-                        {d.specialNeeds && <div className="adm-info-cell" style={{ gridColumn: "1 / -1" }}><div className="adm-info-lab">{lang === "es" ? "Necesidades especiales" : "Special needs"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.specialNeeds}</div></div>}
-                        {d.specialNotes && <div className="adm-info-cell" style={{ gridColumn: "1 / -1" }}><div className="adm-info-lab">{lang === "es" ? "Notas adicionales" : "Additional notes"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.specialNotes}</div></div>}
-                      </div>
+                  {/* PM 2026-06-26: bloque SIEMPRE visible para que el admin
+                      sepa que el cliente puede completar esa info en /account.
+                      Cada campo muestra "—" cuando está vacío. */}
+                  <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.05)", border: "1px solid rgba(245,166,35,.18)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                      <AlertTriangle style={{ width: 12, height: 12 }} />
+                      {lang === "es" ? "Notas especiales del cliente" : "Customer special notes"}
                     </div>
-                  )}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                      <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Alergias" : "Allergies"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.allergies || "—"}</div></div>
+                      <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Restricciones alimenticias" : "Diet restrictions"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.dietRestrictions || "—"}</div></div>
+                      <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Necesidades especiales" : "Special needs"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.specialNeeds || "—"}</div></div>
+                    </div>
+                  </div>
 
                   {(d.recentBookings?.length > 0) && (
                     <div style={{ marginBottom: 14 }}>
