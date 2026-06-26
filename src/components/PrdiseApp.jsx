@@ -9703,6 +9703,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <table className="adm-tbl">
                     <thead><tr><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Placa":"Plate"}</th><th>{lang==="es"?"Capacidad":"Capacity"}</th><th>{lang==="es"?"Maletas":"Bags"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>{lang==="es"?"Precio Base":"Base Price"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
                     <tbody>
+                      {vehicles.length === 0 && (
+                        <tr><td colSpan={9} style={{ padding: 0 }}>
+                          <AdminEmptyState icon={Car} mode="empty"
+                            titleEs="Aún no hay vehículos cargados" titleEn="No vehicles yet"
+                            copyEs="Los vehículos definen la fórmula de cálculo de los traslados (base + $/km). Agregá el primero con 'Agregar Vehículo'."
+                            copyEn="Vehicles define the transfer pricing formula (base + $/km). Add the first one with 'Add Vehicle'." />
+                        </td></tr>
+                      )}
                       {paginate(vehicles, vehiclesPage, routesPerPage).map((v) => (
                         <tr key={v.id}>
                           <td style={{ fontWeight: 600 }}>{v.name}</td>
@@ -9919,6 +9927,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <table className="adm-tbl">
                     <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Contacto":"Contact"}</th><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>{lang==="es"?"Calificación":"Rating"}</th><th>Web</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
                     <tbody>
+                      {drivers.length === 0 && (
+                        <tr><td colSpan={8} style={{ padding: 0 }}>
+                          <AdminEmptyState icon={Users} mode="empty"
+                            titleEs="Aún no hay conductores registrados" titleEn="No drivers yet"
+                            copyEs="Los conductores son empleados con cargo 'Conductor'. Andá a Empleados y Roles para crear la cuenta y luego volvé acá."
+                            copyEn="Drivers are employees with the 'Driver' position. Go to Employees & Roles to create the account and then come back." />
+                        </td></tr>
+                      )}
                       {paginate(drivers, driversPage, routesPerPage).map((d) => (
                         <tr key={d.id}>
                           <td style={{ fontWeight: 600 }}>{d.name}</td>
@@ -10088,6 +10104,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <table className="adm-tbl">
                       <thead><tr><th>{lang==="es"?"Hora":"Time"}</th><th>{lang==="es"?"Ruta":"Route"}</th><th>{lang==="es"?"Pasajeros":"Passengers"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
                       <tbody>
+                        {transferBookings.length === 0 && (
+                          <tr><td colSpan={6} style={{ padding: 0 }}>
+                            <AdminEmptyState icon={Calendar} mode="empty"
+                              titleEs="Aún no hay reservas de traslado" titleEn="No transfer bookings yet"
+                              copyEs="Cuando un cliente concrete un traslado por WhatsApp y el admin lo registre, aparecerá acá con su hora, ruta y conductor asignado."
+                              copyEn="When a customer confirms a transfer via WhatsApp and the admin registers it, it will show up here with its time, route and assigned driver." />
+                          </td></tr>
+                        )}
                         {paginate(transferBookings, bookingsPage, routesPerPage).map((b) => (
                           <tr key={b.id}>
                             <td style={{ fontFamily: "Bebas Neue", fontSize: 16, color: "#F5A623", letterSpacing: ".05em" }}>{b.time}</td>
