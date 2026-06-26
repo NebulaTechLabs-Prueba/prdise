@@ -69,6 +69,12 @@ import {
   updateExperience as sbUpdateExperience,
   deleteExperience as sbDeleteExperience,
 } from "@/lib/admin/experiences";
+import {
+  listPostCategories as sbListPostCategories,
+  createPostCategory as sbCreatePostCategory,
+  updatePostCategory as sbUpdatePostCategory,
+  deletePostCategory as sbDeletePostCategory,
+} from "@/lib/admin/post_categories";
 // PM 2026-06-10: cero fuga. logReferral ya no se usa desde el cliente
 // porque eliminamos los botones que redirigían a aliados externos. El
 // Server Action sigue existiendo en src/lib/referrals/actions.ts por si
@@ -164,6 +170,9 @@ const VEHICLES = [];
 // experience_id que apunta acá. Si la migración no fue aplicada todavía,
 // queda vacío y la UI cae a fallback hardcoded para no romper.
 const EXPERIENCES = [];
+// PM 2026-06-26: categorías de posts dinámicas (admin CRUD). Si vacío,
+// fallback hardcoded en BlogArchive/PostDetail.
+const POST_CATEGORIES = [];
 const ROUTES = [];
 const PARTNERS = [];
 // Lista de países usada en /register y /account → Mi info. Texto en inglés
@@ -598,7 +607,7 @@ async function loadInitialData() {
     // para gestionarlos; las páginas públicas ya filtran por status del lado
     // del cliente (HomePage, /tours, /stays). Antes el conteo desplegaba 32
     // en vez de los 33 reales del DB porque uno estaba con active=false.
-    const [stays, tours, routes, locations, vehicles, posts, partners, settings, experiences] = await Promise.all([
+    const [stays, tours, routes, locations, vehicles, posts, partners, settings, experiences, postCategories] = await Promise.all([
       getStays(sb, { activeOnly: false }),
       getTours(sb, { activeOnly: false }),
       // PM 2026-06-12: rutas inactivas también se cargan para que el admin
@@ -613,6 +622,8 @@ async function loadInitialData() {
       // PM 2026-06-25: experiencias dinámicas. server action es tolerante:
       // si la tabla no existe (migración pendiente), devuelve [].
       sbListExperiences().catch(() => []),
+      // PM 2026-06-26: categorías de posts dinámicas (mismo patrón).
+      sbListPostCategories().catch(() => []),
     ]);
     void sb; // Drivers se cargan en AdminPanel via Server Action listDrivers
              // (requiere staff auth) — no se pre-carga en loadInitialData
@@ -641,6 +652,9 @@ async function loadInitialData() {
 
     EXPERIENCES.length = 0;
     (experiences || []).forEach((e) => EXPERIENCES.push(e));
+
+    POST_CATEGORIES.length = 0;
+    (postCategories || []).forEach((c) => POST_CATEGORIES.push(c));
 
     // Mergear settings de DB sobre defaults — keys no presentes mantienen
     // el default. Cualquier value vacío también cae al default vía getSetting.
@@ -7176,6 +7190,11 @@ function AdminPanel({ onClose }) {
   // se puebla en loadInitialData. Local state permite optimistic updates.
   const [experiencesList, setExperiencesList] = useState(() => Array.isArray(EXPERIENCES) ? [...EXPERIENCES] : []);
   const [editingExperience, setEditingExperience] = useState(null);
+  // PM 2026-06-26: categorías de posts gestionadas desde sub-panel dentro
+  // de Publicaciones. Mismo patrón que experiences.
+  const [postCategoriesList, setPostCategoriesList] = useState(() => Array.isArray(POST_CATEGORIES) ? [...POST_CATEGORIES] : []);
+  const [editingPostCategory, setEditingPostCategory] = useState(null);
+  const [postCategoriesOpen, setPostCategoriesOpen] = useState(false);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
   const [partnerReferralCounts, setPartnerReferralCounts] = useState({});
@@ -9334,6 +9353,169 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
             </div>
 
+            {/* PM 2026-06-26: panel colapsable para gestionar categorías de
+                posts. Vive dentro de Publicaciones (sub-panel) en vez de
+                como sección separada en el sidebar. Mismo patrón visual
+                que el accordion de Configuración. */}
+            <div style={{
+              marginBottom: 16, borderRadius: 12,
+              background: postCategoriesOpen ? "rgba(245,166,35,.04)" : "rgba(255,255,255,.025)",
+              border: `1px solid ${postCategoriesOpen ? "rgba(245,166,35,.18)" : "rgba(255,255,255,.08)"}`,
+              overflow: "hidden", transition: "all .2s",
+            }}>
+              <button type="button" onClick={() => setPostCategoriesOpen(!postCategoriesOpen)} style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                background: "transparent", border: "none", cursor: "pointer", textAlign: "left",
+              }}>
+                <span style={{ display: "inline-block", transform: postCategoriesOpen ? "rotate(90deg)" : "none", transition: "transform .15s", color: "var(--gold)" }}>▸</span>
+                <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: postCategoriesOpen ? "#F5A623" : "rgba(255,255,255,.75)" }}>
+                  {lang === "es" ? "Categorías de publicaciones" : "Post categories"}
+                </span>
+                <span className="adm-pill" style={{ marginLeft: 4 }}>{postCategoriesList.length}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(255,255,255,.4)" }}>
+                  {lang === "es" ? "Gestionar el catálogo de categorías" : "Manage the category catalog"}
+                </span>
+              </button>
+              {postCategoriesOpen && (
+                <div style={{ padding: "0 14px 14px 14px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, marginBottom: 10 }}>
+                    <button className="adm-btn adm-btn-primary" onClick={() => setEditingPostCategory({ id: "new", slug: "", name_es: "", name_en: "", color: "#F5A623", sort_order: 100, active: true })}>
+                      <Plus />{lang === "es" ? "Nueva categoría" : "New category"}
+                    </button>
+                  </div>
+                  <div className="adm-tbl-wrap">
+                    <table className="adm-tbl">
+                      <thead><tr>
+                        <th>{lang === "es" ? "Nombre" : "Name"}</th>
+                        <th>Slug</th>
+                        <th>{lang === "es" ? "Color" : "Color"}</th>
+                        <th>{lang === "es" ? "Posts" : "Posts"}</th>
+                        <th>{lang === "es" ? "Orden" : "Order"}</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "right" }}>Actions</th>
+                      </tr></thead>
+                      <tbody>
+                        {postCategoriesList.length === 0 ? (
+                          <tr><td colSpan={7} style={{ padding: 0 }}>
+                            <AdminEmptyState icon={Edit} mode="empty"
+                              titleEs="Aún no hay categorías" titleEn="No categories yet"
+                              copyEs="Las categorías agrupan tus publicaciones en el blog. Si recién aplicaste la migración, aparecerán las 7 iniciales (Season, Tips, Guide, etc.)."
+                              copyEn="Categories group your posts on the blog. If you just applied the migration, the 7 initial ones will appear (Season, Tips, Guide, etc.)."
+                              ctaLabelEs="+ Nueva categoría" ctaLabelEn="+ New category"
+                              onCta={() => setEditingPostCategory({ id: "new", slug: "", name_es: "", name_en: "", color: "#F5A623", sort_order: 100, active: true })} />
+                          </td></tr>
+                        ) : postCategoriesList.map((c) => {
+                          const postsCount = posts.filter(p => p.category === c.slug).length;
+                          return (
+                            <tr key={c.id}>
+                              <td>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ width: 12, height: 12, borderRadius: 3, background: c.color || "#F5A623" }} />
+                                  <div>
+                                    <div style={{ fontWeight: 600 }}>{c.name_es}</div>
+                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{c.name_en}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)", fontFamily: "monospace" }}>{c.slug}</td>
+                              <td style={{ fontFamily: "monospace", fontSize: 11, color: "rgba(255,255,255,.6)" }}>{c.color}</td>
+                              <td style={{ fontWeight: 700, color: "#F5A623" }}>{postsCount}</td>
+                              <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{c.sort_order ?? 100}</td>
+                              <td><span className={`adm-pill ${c.active ? "published" : "hidden"}`}>{c.active ? "active" : "inactive"}</span></td>
+                              <td>
+                                <div className="adm-row-actions">
+                                  <button className="adm-icon-btn" title="Edit" onClick={() => setEditingPostCategory({ ...c })}><Pencil /></button>
+                                  <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                                    const msg = postsCount > 0
+                                      ? (lang === "es"
+                                        ? `¿Eliminar "${c.name_es}"? Los ${postsCount} post(s) que la usan quedarán sin color de categoría.`
+                                        : `Delete "${c.name_en}"? The ${postsCount} post(s) using it will lose the category color.`)
+                                      : (lang === "es" ? "¿Eliminar esta categoría?" : "Delete this category?");
+                                    if (!confirm(msg)) return;
+                                    const prev = postCategoriesList;
+                                    setPostCategoriesList(postCategoriesList.filter(x => x.id !== c.id));
+                                    try {
+                                      const fd = new FormData(); fd.append("id", c.id);
+                                      const res = await sbDeletePostCategory(fd);
+                                      if (!res?.ok) { setPostCategoriesList(prev); alert((lang === "es" ? "No se pudo eliminar: " : "Could not delete: ") + (res?.error || "error")); return; }
+                                      const idx = POST_CATEGORIES.findIndex(x => x.id === c.id);
+                                      if (idx >= 0) POST_CATEGORIES.splice(idx, 1);
+                                    } catch (err) { setPostCategoriesList(prev); alert("Error: " + err.message); }
+                                  }}><Trash2 /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {editingPostCategory && (
+              <div className="adm-modal-bg" onClick={() => setEditingPostCategory(null)}>
+                <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+                  <button className="adm-modal-close" onClick={() => setEditingPostCategory(null)}><X /></button>
+                  <h3>{editingPostCategory.id === "new" ? (lang === "es" ? "NUEVA CATEGORÍA" : "NEW CATEGORY") : (lang === "es" ? "EDITAR CATEGORÍA" : "EDIT CATEGORY")}</h3>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre (ES)" : "Name (ES)"} *</label><input className="adm-fi" value={editingPostCategory.name_es} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, name_es: e.target.value })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre (EN)" : "Name (EN)"} *</label><input className="adm-fi" value={editingPostCategory.name_en} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, name_en: e.target.value })} /></div>
+                  </div>
+                  <div className="adm-fg">
+                    <label className="adm-fl">Slug *
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                        ({lang === "es" ? "se guarda en posts.category" : "stored in posts.category"})
+                      </span>
+                    </label>
+                    <input className="adm-fi" value={editingPostCategory.slug} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, slug: e.target.value })} placeholder="Tips" />
+                  </div>
+                  <div className="adm-fg-row">
+                    <div className="adm-fg">
+                      <label className="adm-fl">{lang === "es" ? "Color" : "Color"}</label>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input type="color" className="adm-fi" value={editingPostCategory.color || "#F5A623"} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, color: e.target.value })} style={{ width: 60, padding: 2, height: 38 }} />
+                        <input className="adm-fi" value={editingPostCategory.color || ""} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, color: e.target.value })} placeholder="#F5A623" style={{ flex: 1 }} />
+                      </div>
+                    </div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Orden" : "Order"}</label><input type="number" min="0" className="adm-fi" value={editingPostCategory.sort_order} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, sort_order: Number(e.target.value) || 0 })} /></div>
+                  </div>
+                  <div className="adm-fg" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" id="cat-active" checked={!!editingPostCategory.active} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, active: e.target.checked })} />
+                    <label htmlFor="cat-active" style={{ fontSize: 12.5, color: "rgba(255,255,255,.8)" }}>{lang === "es" ? "Activa (aparece en el dropdown del form)" : "Active (shows in form dropdown)"}</label>
+                  </div>
+                  <div className="adm-modal-actions">
+                    <button className="adm-btn adm-btn-ghost" onClick={() => setEditingPostCategory(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+                    <button className="adm-btn adm-btn-primary" onClick={async () => {
+                      const isNew = editingPostCategory.id === "new";
+                      if (!editingPostCategory.slug || !editingPostCategory.name_es || !editingPostCategory.name_en) {
+                        alert(lang === "es" ? "Slug, nombre ES y nombre EN son requeridos." : "Slug, name ES and name EN are required.");
+                        return;
+                      }
+                      const fd = new FormData();
+                      if (!isNew) fd.append("id", editingPostCategory.id);
+                      fd.append("slug", editingPostCategory.slug);
+                      fd.append("name_es", editingPostCategory.name_es);
+                      fd.append("name_en", editingPostCategory.name_en);
+                      fd.append("color", editingPostCategory.color || "#F5A623");
+                      fd.append("sort_order", String(editingPostCategory.sort_order ?? 100));
+                      fd.append("active", editingPostCategory.active ? "true" : "false");
+                      try {
+                        const res = isNew ? await sbCreatePostCategory(fd) : await sbUpdatePostCategory(fd);
+                        if (!res?.ok) { alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || "error")); return; }
+                        const fresh = await sbListPostCategories();
+                        setPostCategoriesList(fresh || []);
+                        POST_CATEGORIES.length = 0;
+                        (fresh || []).forEach(x => POST_CATEGORIES.push(x));
+                        setEditingPostCategory(null);
+                      } catch (err) { alert("Error: " + err.message); }
+                    }}><Check />{lang === "es" ? "Guardar" : "Save"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="adm-filter-row">
               <button className={`adm-fchip ${postsFilter === "all" ? "active" : ""}`} onClick={() => setPostsFilter("all")}>All <span className="adm-fchip-num">{posts.length}</span></button>
               <button className={`adm-fchip ${postsFilter === "published" ? "active" : ""}`} onClick={() => setPostsFilter("published")}>{lang==="es"?"Publicados":"Published"} <span className="adm-fchip-num">{posts.filter(p => p.status === "published").length}</span></button>
@@ -9388,8 +9570,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         );
                       }
                       return paginate(filteredPosts, postsPage, postsPerPage).map((p) => {
-                      const CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
-                      const cc = CAT_COLORS[p.category] || "#F5A623";
+                      // PM 2026-06-26: color desde POST_CATEGORIES dinámico.
+                      // Fallback al set hardcoded para compat si la tabla no
+                      // está cargada todavía.
+                      const FALLBACK_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
+                      const dynColor = POST_CATEGORIES.find(c => c.slug === p.category)?.color;
+                      const cc = dynColor || FALLBACK_COLORS[p.category] || "#F5A623";
                       return (
                         <tr key={p.id}>
                           <td>
@@ -15282,12 +15468,22 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             <div className="adm-fg"><label className="adm-fl">Slug (URL)</label><input className="adm-fi" defaultValue={it.slug || ""} placeholder="my-post-url" /></div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Category</label>
-                <select className="adm-fi" defaultValue={it.category || "Season"}>
-                  <option>Season</option>
-                  <option>Travel Advisory</option>
-                  <option>Local Event</option>
-                  <option>Tips</option>
-                  <option>Guide</option>
+                {/* PM 2026-06-26: dropdown dinámico desde POST_CATEGORIES.
+                    Fallback al set hardcoded si la tabla aún no se aplicó. */}
+                <select className="adm-fi" defaultValue={it.category || (POST_CATEGORIES[0]?.slug || "Season")} onChange={(e) => (it.category = e.target.value)}>
+                  {POST_CATEGORIES.length > 0
+                    ? POST_CATEGORIES.filter(c => c.active !== false).map(c => (
+                        <option key={c.id} value={c.slug}>{lang === "es" ? c.name_es : c.name_en}</option>
+                      ))
+                    : (
+                      <>
+                        <option>Season</option>
+                        <option>Travel Advisory</option>
+                        <option>Local Event</option>
+                        <option>Tips</option>
+                        <option>Guide</option>
+                      </>
+                    )}
                   <option>Food</option>
                   <option>Culture</option>
                 </select>
@@ -17475,7 +17671,10 @@ function BlogArchive() {
   const categories = [...new Set(published.map(p => p.category))];
   const filtered = filter === "all" ? published : published.filter(p => p.category === filter);
   const IMG_MAP = { IMG_MANGROVES, IMG_VAN_ROAD, IMG_SUNSET_JETSKI, IMG_AERIAL_BAY, IMG_PALM, IMG_LIGHTHOUSE, IMG_ZIPLINE };
-  const CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
+  // PM 2026-06-26: colores desde POST_CATEGORIES dinámico. Si el slug no
+  // está en DB (categoría legacy o desactivada) usa fallback hardcoded.
+  const FALLBACK_CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
+  const CAT_COLORS = new Proxy({}, { get: (_, slug) => (POST_CATEGORIES.find(c => c.slug === slug)?.color) || FALLBACK_CAT_COLORS[slug] || "#F5A623" });
 
   return (
     <>
@@ -17596,7 +17795,10 @@ function PostDetail({ params }) {
 
   const IMG_MAP = { IMG_MANGROVES, IMG_VAN_ROAD, IMG_SUNSET_JETSKI, IMG_AERIAL_BAY, IMG_PALM, IMG_LIGHTHOUSE, IMG_ZIPLINE };
   const coverImg = IMG_MAP[post.img] || IMG_AERIAL_BAY;
-  const CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
+  // PM 2026-06-26: colores desde POST_CATEGORIES dinámico. Si el slug no
+  // está en DB (categoría legacy o desactivada) usa fallback hardcoded.
+  const FALLBACK_CAT_COLORS = { "Season": "#F5A623", "Travel Advisory": "#29ABE2", "Local Event": "#8DC63F", "Tips": "#EF6C2B", "Guide": "#B794F4", "Food": "#F687B3", "Culture": "#4FD1C5" };
+  const CAT_COLORS = new Proxy({}, { get: (_, slug) => (POST_CATEGORIES.find(c => c.slug === slug)?.color) || FALLBACK_CAT_COLORS[slug] || "#F5A623" });
   const catColor = CAT_COLORS[post.category] || "#F5A623";
 
   return (
