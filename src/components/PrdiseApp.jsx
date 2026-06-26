@@ -3896,6 +3896,10 @@ function TourDetail({ params }) {
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   {tour.price > 0 ? (
                     <>
+                      {/* PM 2026-06-26: "Desde" — precios son guía. */}
+                      <span className="price-sub" style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>
+                        {lang === "es" ? "Desde" : "From"}
+                      </span>
                       <span className="booking-price">${tour.price}</span>
                       <span className="price-sub">{pricingUnitLabel(tour.pricingUnit || "per_person", lang).toUpperCase()}</span>
                     </>
@@ -5416,6 +5420,8 @@ function ServicesPage() {
                       <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", lineHeight: 1.5, marginBottom: 10, flex: 1, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{L(h.desc, h.descES)}</p>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                         {h.price > 0 ? <>
+                          {/* PM 2026-06-26: "Desde" — precios son guía. */}
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginRight: 4 }}>{lang === "es" ? "Desde" : "From"}</span>
                           <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".02em" }}>${h.price}</span>
                           <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>{lang === "es" ? "/ noche" : "/ night"}</span>
                         </> : <span style={{ color: "var(--gold)", fontSize: 13, fontWeight: 700 }}>{t("onRequest")}</span>}
@@ -5446,6 +5452,8 @@ function ServicesPage() {
                       <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", lineHeight: 1.5, marginBottom: 10, flex: 1, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{L(tr.desc, tr.descES)}</p>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                         {tr.price > 0 ? <>
+                          {/* PM 2026-06-26: "Desde" — precios son guía. */}
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginRight: 4 }}>{lang === "es" ? "Desde" : "From"}</span>
                           <span style={{ color: "#8DC63F", fontFamily: "Bebas Neue", fontSize: 22, letterSpacing: ".02em" }}>${tr.price}</span>
                           <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>{t("perPerson")}</span>
                         </> : <span style={{ color: "#8DC63F", fontSize: 13, fontWeight: 700 }}>{t("onRequest")}</span>}
@@ -14050,9 +14058,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("amenities", JSON.stringify(amenitiesArr));
               // Galería: combinar cover (`img`) + `gallery`, deduplicar y
               // filtrar vacíos. La cover se persiste como primera imagen.
+              // PM 2026-06-26: slice(0, 3) defensivo — el schema rechaza
+              // arrays >3. Si un servicio histórico tiene más, conservamos
+              // las primeras 3 silenciosamente al guardar.
               const coverImg = ownedUpdate.img || "";
               const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
-              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
+              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i).slice(0, 3);
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
               // PM 2026-06-17: el mapper expone id=slug y dbId=UUID. Server
@@ -14613,7 +14624,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // Image section for hotels and tours
   // PM 2026-06-15: doble entrada — paste URL externa o seleccionar archivo
   // local (Storage bucket service-images). El admin elige según convenga.
-  const maxImages = type === "tour" ? 15 : type === "hotel" ? 10 : 5;
+  // PM 2026-06-26: bajado a 3 para reducir Cached Egress de Supabase
+  // Storage. Cubre cover + 2 secundarias, suficiente para card + detail.
+  const maxImages = 3;
   const imageSection = (type === "hotel" || type === "tour") ? (
     <div className="adm-fg">
       <label className="adm-fl">Images / Gallery</label>

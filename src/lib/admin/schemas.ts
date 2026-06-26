@@ -65,9 +65,12 @@ const stringArraySchema = z
 // Supabase, signed links, etc.) sobrepasan los 120 chars de los strings de
 // negocio (amenities/includes/features). Las URLs públicas de Storage son
 // ~165 chars; las firmadas pueden superar 500. Tope generoso.
+// PM 2026-06-26: tope bajado de 30→3 por petición del cliente para
+// reducir egress de Storage en plan Free de Supabase. Cubre cover +
+// 2 secundarias, suficiente para la card + detail.
 const imageUrlArraySchema = z
   .array(z.string().trim().min(1).max(2000, "URL de imagen demasiado larga"))
-  .max(30, "Máximo 30 imágenes");
+  .max(3, "Máximo 3 imágenes por servicio");
 
 const priceCentsSchema = z.coerce
   .number({ invalid_type_error: "Precio inválido" })
