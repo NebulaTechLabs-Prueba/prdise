@@ -659,6 +659,11 @@ async function loadInitialData() {
     // Mergear settings de DB sobre defaults — keys no presentes mantienen
     // el default. Cualquier value vacío también cae al default vía getSetting.
     Object.assign(SITE_SETTINGS, settings || {});
+    // PM 2026-06-26: flag para que el polling del AdminPanel sepa cuándo
+    // TODOS los globals están listos. Antes leía TOURS.length>0 y a veces
+    // se gatillaba con solo TOURS poblado mientras PARTNERS/EXPERIENCES
+    // aún no — los setters locales se llamaban con [].
+    if (typeof window !== "undefined") window.__PRDISE_DATA_READY = true;
     return true;
   } catch (e) {
     console.error("loadInitialData error:", e);
@@ -7543,8 +7548,7 @@ function AdminPanel({ onClose }) {
   // 200ms hasta 5s si los globals ya están poblados, y entonces
   // re-sincronizamos. Si fallan se rinde silenciosamente.
   useEffect(() => {
-    if (TOURS.length > 0 || HOTELS.length > 0 || PARTNERS.length > 0) {
-      // Globals listos: sync inmediato.
+    const syncAll = () => {
       setHotels([...HOTELS]);
       setTours([...TOURS]);
       setRoutes([...ROUTES]);
@@ -7553,22 +7557,20 @@ function AdminPanel({ onClose }) {
       setPartnersList([...PARTNERS]);
       setExperiencesList([...EXPERIENCES]);
       setPostCategoriesList([...POST_CATEGORIES]);
+    };
+    if (typeof window !== "undefined" && window.__PRDISE_DATA_READY) {
+      syncAll();
       return;
     }
     let tries = 0;
     const id = setInterval(() => {
       tries++;
-      if (TOURS.length > 0 || HOTELS.length > 0 || PARTNERS.length > 0) {
-        setHotels([...HOTELS]);
-        setTours([...TOURS]);
-        setRoutes([...ROUTES]);
-        setVehicles([...VEHICLES]);
-        setPosts([...A_POSTS]);
-        setPartnersList([...PARTNERS]);
-        setExperiencesList([...EXPERIENCES]);
-        setPostCategoriesList([...POST_CATEGORIES]);
+      if (typeof window !== "undefined" && window.__PRDISE_DATA_READY) {
+        syncAll();
         clearInterval(id);
-      } else if (tries > 25) {
+      } else if (tries > 50) {
+        // Fallback: sincroniza con lo que haya tras 10s, mejor que nada.
+        syncAll();
         clearInterval(id);
       }
     }, 200);
