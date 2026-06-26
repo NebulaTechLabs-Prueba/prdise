@@ -9477,8 +9477,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     downloadCsv(`prdise-vehicles-${ts}.csv`, vehicles.map(v => ({ name: v.name, type: v.type, plate: v.plate, seats: v.seats, bags: v.bags, base_price_usd: v.base, status: v.status })));
                   } else if (transferTab === "drivers") {
                     downloadCsv(`prdise-drivers-${ts}.csv`, drivers.map(d => ({ name: d.name, phone: d.phone, email: d.email, license: d.license, status: d.status, trips: d.trips })));
-                  } else {
-                    downloadCsv(`prdise-bookings-${ts}.csv`, transferBookings.map(b => ({ ref: b.ref, customer: b.customer, route: b.route, date: b.date, time: b.time, pax: b.pax, total_usd: b.total, status: b.status })));
                   }
                 }}><Database />{t("adm_export")}</button>
                 {/* PM 2026-06-11: shortcuts CRUD siempre visibles. No es
@@ -9496,18 +9494,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
             </div>
             {(() => {
-              const todayISO = new Date().toISOString().slice(0, 10);
-              const todaysBookings = transferBookings.filter((b) => b.date === todayISO);
-              const inProgress = transferBookings.filter((b) => b.status === "confirmed").length;
               const availableDrivers = drivers.filter((d) => d.status === "available").length;
               const driversPct = drivers.length > 0 ? Math.round((availableDrivers / drivers.length) * 100) : 0;
               return (
             <div className="adm-stats">
-              <div className="adm-stat gold">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Traslados hoy":"Transfers today"}<InfoTip text="Reservas de traslados con fecha de hoy. Source: tabla bookings de Supabase." /></span><div className="adm-stat-ico"><Car /></div></div>
-                <div className="adm-stat-val">{todaysBookings.length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{inProgress} {lang==="es"?"confirmadas":"confirmed"}</div>
-              </div>
               <div className="adm-stat green">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Conductores activos":"Active drivers"}<InfoTip text="Conductores con status 'available'. Source: Transfers → Drivers tab." /></span><div className="adm-stat-ico"><Users /></div></div>
                 <div className="adm-stat-val">{drivers.length === 0 ? "—" : `${availableDrivers} / ${drivers.length}`}</div>
@@ -9527,10 +9517,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   )}
                 </div>
               </div>
-              <div className="adm-stat orange">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pendientes":"Pending"}<InfoTip text="Reservas con status 'pending_payment' o 'pending' esperando confirmación. Source: bookings Supabase." /></span><div className="adm-stat-ico"><Clock /></div></div>
-                <div className="adm-stat-val">{transferBookings.filter((b) => b.status === "pending" || b.status === "pending_payment").length}</div>
-                <div className="adm-stat-trend"><AlertTriangle />{lang==="es"?"requieren acción":"need action"}</div>
+              <div className="adm-stat gold">
+                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Vehículos":"Vehicles"}<InfoTip text="Vehículos cargados con su fórmula de precio (base + $/km). Source: Transfers → Vehicles tab." /></span><div className="adm-stat-ico"><Car /></div></div>
+                <div className="adm-stat-val">{vehicles.length}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{transferLocations.length} {lang==="es"?"destinos":"locations"}</div>
               </div>
             </div>
               );
@@ -9541,7 +9531,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <button className={`adm-fchip ${transferTab === "locations" ? "active" : ""}`} onClick={() => setTransferTab("locations")}>{lang === "es" ? "Destinos" : "Locations"} <span className="adm-fchip-num">{transferLocations.length}</span></button>
               <button className={`adm-fchip ${transferTab === "vehicles" ? "active" : ""}`} onClick={() => setTransferTab("vehicles")}>{lang === "es" ? "Vehículos" : "Vehicles"} <span className="adm-fchip-num">{vehicles.length}</span></button>
               <button className={`adm-fchip ${transferTab === "drivers" ? "active" : ""}`} onClick={() => setTransferTab("drivers")}>{lang === "es" ? "Conductores" : "Drivers"} <span className="adm-fchip-num">{drivers.length}</span></button>
-              <button className={`adm-fchip ${transferTab === "bookings" ? "active" : ""}`} onClick={() => setTransferTab("bookings")}>{lang === "es" ? "Reservas" : "Bookings"} <span className="adm-fchip-num">{transferBookings.length}</span></button>
               <div style={{ marginLeft: "auto" }}>
                 <PageSizeSelector value={routesPerPage} options={[10, 20, 50]} onChange={setRoutesPerPage} />
               </div>
@@ -10095,135 +10084,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
             )}
 
-            {transferTab === "bookings" && (
-              <>
-                <div className="adm-card">
-                  <div className="adm-card-head">
-                    <div className="adm-card-title"><Calendar />{lang==="es"?"Reservas Próximas":"Upcoming Bookings"}</div>
-                    {/* PM 2026-06-25: el botón "Auto-Asignar Pendientes"
-                        quedó como código muerto post-pivote 2026-06-04: el
-                        catálogo público ya no genera bookings — los clientes
-                        coordinan por WhatsApp y el admin emite Facturas. Los
-                        campos que la lógica usaba (route.assignedDrivers,
-                        route.autoAssign, driver.status='available') ya no
-                        existen en el modelo actual. Se retira para no
-                        confundir; si se reactiva el flujo de bookings reales
-                        se vuelve a hookear. */}
-                  </div>
-                  <div className="adm-tbl-wrap">
-                    <table className="adm-tbl">
-                      <thead><tr><th>{lang==="es"?"Hora":"Time"}</th><th>{lang==="es"?"Ruta":"Route"}</th><th>{lang==="es"?"Pasajeros":"Passengers"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
-                      <tbody>
-                        {transferBookings.length === 0 && (
-                          <tr><td colSpan={6} style={{ padding: 0 }}>
-                            <AdminEmptyState icon={Calendar} mode="empty"
-                              titleEs="Aún no hay reservas de traslado" titleEn="No transfer bookings yet"
-                              copyEs="Cuando un cliente concrete un traslado por WhatsApp y el admin lo registre, aparecerá acá con su hora, ruta y conductor asignado."
-                              copyEn="When a customer confirms a transfer via WhatsApp and the admin registers it, it will show up here with its time, route and assigned driver." />
-                          </td></tr>
-                        )}
-                        {paginate(transferBookings, bookingsPage, routesPerPage).map((b) => (
-                          <tr key={b.id}>
-                            <td style={{ fontFamily: "Bebas Neue", fontSize: 16, color: "#F5A623", letterSpacing: ".05em" }}>{b.time}</td>
-                            <td style={{ fontWeight: 600 }}>{b.route}</td>
-                            <td>{b.pax} pax</td>
-                            <td>
-                              {b.driver ? (
-                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <span style={{ color: "rgba(255,255,255,.85)" }}>{b.driver}</span>
-                                  <button onClick={() => setTransferBookings(transferBookings.map(x => x.id === b.id ? { ...x, driver: "", status: "pending" } : x))} title="Unassign" style={{ background: "none", border: "none", color: "rgba(255,255,255,.3)", cursor: "pointer", padding: 2, fontSize: 11 }}>×</button>
-                                </div>
-                              ) : (
-                                <div style={{ display: "flex", gap: 4 }}>
-                                  <select onChange={(e) => {
-                                    if (e.target.value) {
-                                      setTransferBookings(transferBookings.map(x => x.id === b.id ? { ...x, driver: e.target.value, status: "confirmed" } : x));
-                                    }
-                                  }} className="adm-fi" style={{ padding: "5px 8px", fontSize: 11, width: "auto", minWidth: 120 }}>
-                                    <option value="">Assign driver...</option>
-                                    {drivers.filter(d => d.status === "available" && d.webVisible).map(d => <option key={d.id} value={d.name.split(" ")[0] + " " + (d.name.split(" ")[1]?.[0] || "") + "."}>{d.name}</option>)}
-                                  </select>
-                                  <button onClick={() => {
-                                    const suggested = autoAssignDriver(b.route);
-                                    if (suggested) setTransferBookings(transferBookings.map(x => x.id === b.id ? { ...x, driver: suggested, status: "confirmed" } : x));
-                                  }} title="Auto-assign (round-robin)" style={{ padding: "4px 8px", borderRadius: 6, background: "rgba(141,198,63,.1)", border: "1px solid rgba(141,198,63,.25)", color: "#8DC63F", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                                    <Zap style={{ width: 12, height: 12 }} />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                            <td><span className={`adm-pill ${b.status === "confirmed" ? "published" : b.status === "in_route" ? "in_use" : "pending"}`}>{b.status.replace("_", " ")}</span></td>
-                            <td>
-                              <div className="adm-row-actions">
-                                <button className="adm-icon-btn" title="Edit" onClick={() => setEditingBooking(b)}><Pencil /></button>
-                                <button className="adm-icon-btn danger" title="Cancel booking" onClick={() => setTransferBookings(transferBookings.filter(x => x.id !== b.id))}><X /></button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <PaginationBar current={bookingsPage} total={Math.ceil(transferBookings.length / routesPerPage)} onPage={setBookingsPage} />
-                </div>
-
-                {/* Booking Edit Modal */}
-                {editingBooking && (
-                  <div className="adm-modal-bg" onClick={() => setEditingBooking(null)}>
-                    <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-                      <button className="adm-modal-close" onClick={() => setEditingBooking(null)}><X /></button>
-                      <h3>EDIT BOOKING</h3>
-                      <p className="adm-modal-sub">Booking at {editingBooking.time} — {editingBooking.route}</p>
-
-                      <div className="adm-fg-row">
-                        <div className="adm-fg"><label className="adm-fl">Time</label><input type="time" className="adm-fi" defaultValue={editingBooking.time?.replace(":", ":")} onChange={(e) => setEditingBooking({ ...editingBooking, time: e.target.value })} /></div>
-                        <div className="adm-fg"><label className="adm-fl">Passengers</label><input type="number" className="adm-fi" min={1} defaultValue={editingBooking.pax} onChange={(e) => setEditingBooking({ ...editingBooking, pax: parseInt(e.target.value) || 1 })} /></div>
-                      </div>
-
-                      <div className="adm-fg"><label className="adm-fl">Route</label><input className="adm-fi" defaultValue={editingBooking.route} onChange={(e) => setEditingBooking({ ...editingBooking, route: e.target.value })} /></div>
-
-                      <div className="adm-fg">
-                        <label className="adm-fl">Assign Driver</label>
-                        <select className="adm-fi" value={editingBooking.driver || ""} onChange={(e) => setEditingBooking({ ...editingBooking, driver: e.target.value })}>
-                          <option value="">Unassigned</option>
-                          {drivers.filter(d => d.webVisible).map(d => (
-                            <option key={d.id} value={d.name.split(" ")[0] + " " + (d.name.split(" ")[1]?.[0] || "") + "."}>{d.name} — {d.vehicle} ({d.status})</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="adm-fg">
-                        <label className="adm-fl">Status</label>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {[
-                            { value: "confirmed", label: "Confirmed", color: "#8DC63F" },
-                            { value: "pending", label: "Pending", color: "#F5A623" },
-                            { value: "in_route", label: "In Route", color: "#29ABE2" },
-                          ].map(s => (
-                            <button key={s.value} type="button" onClick={() => setEditingBooking({ ...editingBooking, status: s.value })} style={{
-                              flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                              background: editingBooking.status === s.value ? s.color + "20" : "transparent",
-                              border: `1px solid ${editingBooking.status === s.value ? s.color + "66" : "rgba(255,255,255,.08)"}`,
-                              color: editingBooking.status === s.value ? s.color : "rgba(255,255,255,.4)",
-                            }}>
-                              <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: s.color, marginRight: 6 }} />{s.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="adm-modal-actions">
-                        <button className="adm-btn adm-btn-ghost" onClick={() => setEditingBooking(null)}>Cancel</button>
-                        <button className="adm-btn adm-btn-primary" onClick={() => {
-                          setTransferBookings(transferBookings.map(x => x.id === editingBooking.id ? editingBooking : x));
-                          setEditingBooking(null);
-                        }}><Check />Save Changes</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+            {/* PM 2026-06-25: tab "Reservas" removido. Post-pivote 2026-06-04
+                el catálogo público ya no genera bookings — los clientes
+                coordinan por WhatsApp, el admin revisa la ruta al momento
+                de armar la Factura. Las reservas de traslado viven ahora
+                como líneas dentro de cada factura. */}
           </>
         )}
 
