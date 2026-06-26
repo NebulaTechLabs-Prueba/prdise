@@ -243,6 +243,17 @@ export async function listCustomers(): Promise<ActionResult<{ items: CustomerRow
 }
 
 export type CustomerDetail = CustomerRow & {
+  // PM 2026-06-26: campos extras del cliente (migración 20260626210000)
+  // que antes vivían solo en localStorage. El admin los ve al armar el
+  // viaje (alergias, dieta, pasaporte, notas). Todos opcionales.
+  passportNumber?: string | null;
+  passportExpiry?: string | null;
+  localId?: string | null;
+  billingAddress?: string | null;
+  allergies?: string | null;
+  dietRestrictions?: string | null;
+  specialNeeds?: string | null;
+  specialNotes?: string | null;
   recentInvoices: Array<{
     id: string;
     number: string;
@@ -337,6 +348,10 @@ export async function getCustomerDetail(
     }
   }
 
+  // PM 2026-06-26: cast a Record<string, unknown> para acceder a las
+  // columnas extras sin romper si la migración no se aplicó (los types
+  // generados no las conocen todavía).
+  const p = prof as unknown as Record<string, string | null | undefined>;
   const detail: CustomerDetail = {
     id: prof.id,
     email,
@@ -352,6 +367,14 @@ export async function getCustomerDetail(
     invoicesPaid: invoicesPaidCount,
     serviceCount: Number(stats?.service_count ?? 0),
     mostFrequentServiceType: stats?.most_frequent_service_type ?? null,
+    passportNumber: p.passport_number ?? null,
+    passportExpiry: p.passport_expiry ?? null,
+    localId: p.local_id ?? null,
+    billingAddress: p.billing_address ?? null,
+    allergies: p.allergies ?? null,
+    dietRestrictions: p.diet_restrictions ?? null,
+    specialNeeds: p.special_needs ?? null,
+    specialNotes: p.special_notes ?? null,
     recentInvoices: invs.slice(0, 10).map((i) => ({
       id: i.id,
       number: i.number,

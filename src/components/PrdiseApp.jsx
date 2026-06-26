@@ -5031,22 +5031,47 @@ function AccountPage() {
         // no podía editar/mostrar fecha de nacimiento y al recargar tras
         // editar el nombre, el load le sobreescribía con el null del DB
         // (porque save antes era solo a localStorage).
-        const { data: profile } = await sb
+        // PM 2026-06-26: incluimos los nuevos campos extras de la migración
+        // 20260626210000 (pasaporte, alergias, notas, etc). Si la migración
+        // no se aplicó aún, esos campos vienen undefined y se manejan como "".
+        const { data: profile, error: profileErr } = await sb
           .from("profiles")
-          .select("first_name, last_name, phone, country, avatar_url, birth_date, lang_pref")
+          .select("first_name, last_name, phone, country, avatar_url, birth_date, lang_pref, passport_number, passport_expiry, local_id, billing_address, allergies, diet_restrictions, special_needs, special_notes")
           .eq("id", authUser.id)
           .maybeSingle();
-        if (!profile || !mounted) return;
+        // Si las columnas nuevas no existen (42703), reintentar con el set base.
+        let prof = profile;
+        if (profileErr && profileErr.code === "42703") {
+          const fallback = await sb
+            .from("profiles")
+            .select("first_name, last_name, phone, country, avatar_url, birth_date, lang_pref")
+            .eq("id", authUser.id)
+            .maybeSingle();
+          prof = fallback.data;
+        }
+        if (!prof || !mounted) return;
+        // DB es la fuente de verdad. Antes había fallback `profile.X || prev?.X
+        // || ""` que mantenía valores de localStorage cuando DB era null — el
+        // cliente veía "United States" en su /account aunque en DB no había
+        // nada guardado, y el admin (que solo lee DB) mostraba "—". Sin fallback.
         setUser((prev) => ({
           ...(prev || {}),
-          firstName: profile.first_name || prev?.firstName || "",
-          lastName: profile.last_name || prev?.lastName || "",
-          phone: profile.phone || prev?.phone || "",
-          country: profile.country || prev?.country || "",
-          birthDate: profile.birth_date || prev?.birthDate || "",
-          language: profile.lang_pref === "es" ? "Español" : profile.lang_pref === "en" ? "English" : (prev?.language || "Español"),
+          firstName: prof.first_name ?? "",
+          lastName: prof.last_name ?? "",
+          phone: prof.phone ?? "",
+          country: prof.country ?? "",
+          birthDate: prof.birth_date ?? "",
+          language: prof.lang_pref === "es" ? "Español" : prof.lang_pref === "en" ? "English" : "Español",
           email: authUser.email || prev?.email || "",
-          avatarUrl: profile.avatar_url || null,
+          avatarUrl: prof.avatar_url || null,
+          passport: prof.passport_number ?? "",
+          passportExp: prof.passport_expiry ?? "",
+          localId: prof.local_id ?? "",
+          billingAddress: prof.billing_address ?? "",
+          allergies: prof.allergies ?? "",
+          dietRestrictions: prof.diet_restrictions ?? "",
+          specialNeeds: prof.special_needs ?? "",
+          specialNotes: prof.special_notes ?? "",
         }));
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -5184,10 +5209,27 @@ function AccountPage() {
               {renderField(lang === "es" ? "ID local" : "Local ID", null, "localId")}
             </div>
             <h3>{lang === "es" ? "Notas especiales" : "Special Notes"}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10, marginBottom: 12 }}>
               {renderField(lang === "es" ? "Alergias" : "Allergies", null, "allergies")}
               {renderField(lang === "es" ? "Restricciones alimenticias" : "Dietary Restrictions", null, "dietRestrictions")}
               {renderField(lang === "es" ? "Necesidades especiales" : "Special Needs", null, "specialNeeds")}
+            </div>
+            {/* PM 2026-06-26: textarea libre para notas adicionales (texto
+                que el admin debería ver al armar el viaje). */}
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 6 }}>
+                {lang === "es" ? "Notas adicionales para el equipo PRDISE" : "Additional notes for the PRDISE team"}
+              </label>
+              <textarea
+                className="f-input"
+                rows={3}
+                value={user?.specialNotes || ""}
+                onChange={(e) => setUser({ ...user, specialNotes: e.target.value })}
+                placeholder={lang === "es"
+                  ? "Cualquier preferencia, condición de salud, idioma alternativo, ocasiones especiales..."
+                  : "Any preference, health condition, alternate language, special occasions..."}
+                style={{ width: "100%", resize: "vertical", minHeight: 70 }}
+              />
             </div>
             {/* PM 2026-06-17: Save All Changes ahora también persiste a DB los
                 campos que tienen columna en profiles. Antes solo guardaba a
@@ -5225,6 +5267,10 @@ function AccountPage() {
                     }
                     bdValid = bdRaw;
                   }
+                  // PM 2026-06-26: persistir también los campos extras
+                  // (pasaporte, alergias, notas, etc) que antes solo vivían
+                  // en localStorage. Permite que el admin los vea en su
+                  // detail del cliente. Requiere migración 20260626210000.
                   const patch = {
                     first_name: (user.firstName || "").trim() || null,
                     last_name: (user.lastName || "").trim() || null,
@@ -5232,8 +5278,29 @@ function AccountPage() {
                     country: (user.country || "").trim() || null,
                     birth_date: bdValid,
                     lang_pref: langCode,
+                    passport_number: (user.passport || "").trim() || null,
+                    passport_expiry: (user.passportExp || "").trim() || null,
+                    local_id: (user.localId || "").trim() || null,
+                    billing_address: (user.billingAddress || "").trim() || null,
+                    allergies: (user.allergies || "").trim() || null,
+                    diet_restrictions: (user.dietRestrictions || "").trim() || null,
+                    special_needs: (user.specialNeeds || "").trim() || null,
+                    special_notes: (user.specialNotes || "").trim() || null,
                   };
-                  const { error } = await sb.from("profiles").update(patch).eq("id", authUser.id);
+                  let { error } = await sb.from("profiles").update(patch).eq("id", authUser.id);
+                  // Si las columnas extras aún no existen (migración pendiente),
+                  // reintentar con el set base para no bloquear el guardado.
+                  if (error && error.code === "42703") {
+                    const basePatch = {
+                      first_name: patch.first_name,
+                      last_name: patch.last_name,
+                      phone: patch.phone,
+                      country: patch.country,
+                      birth_date: patch.birth_date,
+                      lang_pref: patch.lang_pref,
+                    };
+                    ({ error } = await sb.from("profiles").update(basePatch).eq("id", authUser.id));
+                  }
                   if (error) {
                     alert((lang === "es" ? "No se pudo guardar en el servidor: " : "Could not save to server: ") + error.message);
                     return;
@@ -13633,6 +13700,40 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Registrado" : "Joined"}</div><div className="adm-info-val">{(d.joinedAt || "").slice(0, 10) || "—"}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Status" : "Status"}</div><div className="adm-info-val">{d.status || "—"}</div></div>
                   </div>
+
+                  {/* PM 2026-06-26: campos extras del cliente — pasaporte,
+                      ID local, dirección, alergias, dieta, necesidades,
+                      notas. Cada bloque se oculta si está vacío para no
+                      desordenar el detalle cuando el cliente no completó
+                      esos campos. */}
+                  {(d.passportNumber || d.passportExpiry || d.localId || d.billingAddress) && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: 8 }}>
+                        {lang === "es" ? "Documentos / Dirección" : "Documents / Address"}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        {d.passportNumber && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Pasaporte" : "Passport"}</div><div className="adm-info-val">{d.passportNumber}</div></div>}
+                        {d.passportExpiry && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Vencimiento pasaporte" : "Passport expiry"}</div><div className="adm-info-val">{d.passportExpiry}</div></div>}
+                        {d.localId && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "ID local" : "Local ID"}</div><div className="adm-info-val">{d.localId}</div></div>}
+                        {d.billingAddress && <div className="adm-info-cell" style={{ gridColumn: "1 / -1" }}><div className="adm-info-lab">{lang === "es" ? "Dirección de facturación" : "Billing address"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.billingAddress}</div></div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {(d.allergies || d.dietRestrictions || d.specialNeeds || d.specialNotes) && (
+                    <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, background: "rgba(245,166,35,.05)", border: "1px solid rgba(245,166,35,.18)" }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                        <AlertTriangle style={{ width: 12, height: 12 }} />
+                        {lang === "es" ? "Notas especiales del cliente" : "Customer special notes"}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        {d.allergies && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Alergias" : "Allergies"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.allergies}</div></div>}
+                        {d.dietRestrictions && <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Restricciones alimenticias" : "Diet restrictions"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.dietRestrictions}</div></div>}
+                        {d.specialNeeds && <div className="adm-info-cell" style={{ gridColumn: "1 / -1" }}><div className="adm-info-lab">{lang === "es" ? "Necesidades especiales" : "Special needs"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.specialNeeds}</div></div>}
+                        {d.specialNotes && <div className="adm-info-cell" style={{ gridColumn: "1 / -1" }}><div className="adm-info-lab">{lang === "es" ? "Notas adicionales" : "Additional notes"}</div><div className="adm-info-val" style={{ whiteSpace: "pre-wrap" }}>{d.specialNotes}</div></div>}
+                      </div>
+                    </div>
+                  )}
 
                   {(d.recentBookings?.length > 0) && (
                     <div style={{ marginBottom: 14 }}>
