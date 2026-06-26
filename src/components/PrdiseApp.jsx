@@ -7534,6 +7534,31 @@ function AdminPanel({ onClose }) {
     }
   };
   useEffect(() => { reloadTransferLocations(); }, []);
+  // PM 2026-06-26: race-fix general. Si AdminPanel se monta antes de que
+  // loadInitialData termine, varios listas locales (hotels/tours/routes/
+  // vehicles/posts/partners/experiences/postCategoriesList) quedan vacías
+  // porque su useState init lee los globals que aún no se poblaron. Acá
+  // re-llamamos loadInitialData y resincronizamos los useState locales.
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        await loadInitialData();
+        if (cancel) return;
+        setHotels([...HOTELS]);
+        setTours([...TOURS]);
+        setRoutes([...ROUTES]);
+        setVehicles([...VEHICLES]);
+        setPosts([...A_POSTS]);
+        setPartnersList([...PARTNERS]);
+        setExperiencesList([...EXPERIENCES]);
+        setPostCategoriesList([...POST_CATEGORIES]);
+      } catch (e) {
+        console.warn("[admin] resync globals after loadInitialData:", e);
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
   const [contactsFilter, setContactsFilter] = useState("all");
   // Carga datos REALES de Supabase al montar AdminPanel: drivers, contacts y
   // transfer bookings. Antes estos modulos siempre mostraban arrays vacios
