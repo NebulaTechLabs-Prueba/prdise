@@ -96,3 +96,4 @@ desktop.ini
 /scripts/sanitize-tours-partner-data.mjs
 /scripts/sanitize-partners-table.mjs
 /scripts/apply-experiences-migration.mjs
+/scripts/strip-tours-structured-meta.mjs
