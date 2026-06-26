@@ -15,6 +15,9 @@ import { createClient } from "@/lib/supabase/client";
  * NO toca nada visual. NO devuelve markup. Solo efectos.
  */
 type SessionShape = {
+  id: string; // PM 2026-06-26: ID del usuario en auth.users / profiles.
+  // Antes faltaba y varias features (admin invisible en Empleados, deep-links
+  // por usuario) no podían identificar al admin actual.
   email: string;
   role: "admin" | "manager" | "employee" | "user";
   name: string;
@@ -88,6 +91,7 @@ export default function AuthBridge() {
         .trim() || user.email || "Usuario";
 
       const session: SessionShape = {
+        id: user.id,
         email: user.email ?? "",
         role: profile.role,
         name: fullName,

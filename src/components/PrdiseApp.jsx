@@ -12417,23 +12417,29 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           // permisos/RLS, el admin actual no aparecía en su propia tabla y
           // el conteo decía "0 empleados · 0 administradores". Fallback:
           // siempre inyectar al admin de la sesión si no está en `users`.
-          const sess = typeof window !== "undefined" ? PRDISE.load("session", null) : null;
+          // Matchea primero por id, luego por email (sesiones viejas no
+          // tienen id porque AuthBridge lo agregó después).
+          const sess = typeof window !== "undefined" ? (PRDISE.load("session", null) || PRDISE.load("adminSession", null)) : null;
           const effectiveUsers = (() => {
-            if (!sess?.id) return users;
-            if (users.some(u => u.id === sess.id)) return users;
+            if (!sess) return users;
+            // Match por id O email
+            const matchByIdOrEmail = (u) =>
+              (sess.id && u.id === sess.id) ||
+              (sess.email && u.email && u.email.toLowerCase() === sess.email.toLowerCase());
+            if (users.some(matchByIdOrEmail)) return users;
             return [{
-              id: sess.id,
+              id: sess.id || `session-${sess.email || "admin"}`,
               email: sess.email || "",
               name: sess.name || sess.email || "Admin",
               role: lang === "es" ? "Administrador" : "Administrator",
               roleRaw: sess.role || "admin",
               customRoleId: null,
               status: "active",
-              department: "",
-              position: lang === "es" ? "Administrador" : "Administrator",
+              department: sess.department || "",
+              position: sess.position || (lang === "es" ? "Administrador" : "Administrator"),
               phone: "",
-              joinedAt: "",
-              joined: "",
+              joinedAt: sess.loginAt || "",
+              joined: (sess.loginAt || "").slice(0, 10),
             }, ...users];
           })();
           return (
@@ -12557,10 +12563,23 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       const isDisabled = isSuperAdmin || isBase || !canManageRoles;
                       const permEntries = Object.entries(r.perms || {});
                       const permLabel = (v) => v === "full" ? (lang==="es"?"acceso completo":"full") : v === "edit" ? (lang==="es"?"editar":"edit") : v === "view" ? (lang==="es"?"ver":"view") : v;
+                      // PM 2026-06-26: contar por roleRaw (enum) para roles
+                      // base, y por customRoleId para roles custom. Antes
+                      // matcheaba `u.role === r.name` (display string) y nunca
+                      // pegaba — "Admin" no es igual a "Administrador".
+                      const usersInRole = (() => {
+                        if (r.id === "admin" || r.name === "Admin" || (isBase && r.id === "admin")) {
+                          return effectiveUsers.filter(u => u.roleRaw === "admin").length;
+                        }
+                        if (r.id === "user" || r.name === "Cliente" || (isBase && r.id === "user")) {
+                          return effectiveUsers.filter(u => u.roleRaw === "user").length;
+                        }
+                        return effectiveUsers.filter(u => u.customRoleId === r.id).length;
+                      })();
                       return (
                         <tr key={r.id}>
                           <td style={{ fontWeight: 700, color: "#F5A623" }}>{r.name}</td>
-                          <td>{users.filter(u => u.role === r.name).length}</td>
+                          <td>{usersInRole}</td>
                           <td style={{ fontSize: 12, color: "rgba(255,255,255,.7)" }}>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                               {permEntries.length === 0 ? (
