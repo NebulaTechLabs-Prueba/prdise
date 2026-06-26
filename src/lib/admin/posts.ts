@@ -62,6 +62,7 @@ export async function createPost(formData: FormData): Promise<ActionResult> {
     tags: readListField(formData, "tags"),
     featured: asBool(formData, "featured"),
     status: readStatus(formData) ?? "draft",
+    publish_at: formData.get("publish_at") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -89,6 +90,8 @@ export async function createPost(formData: FormData): Promise<ActionResult> {
       author_id: actorId,
       // Si arranca publicado directo, sellar published_at.
       published_at: d.status === "published" ? new Date().toISOString() : null,
+      // PM 2026-06-26: fecha programada. Solo relevante si status='scheduled'.
+      publish_at: (d.status === "scheduled" ? d.publish_at : null) as never,
     })
     .select("id")
     .single();
@@ -125,6 +128,7 @@ export async function updatePost(formData: FormData): Promise<ActionResult> {
     tags: readListField(formData, "tags"),
     featured: asBool(formData, "featured"),
     status: readStatus(formData) ?? "draft",
+    publish_at: formData.get("publish_at") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: firstZodError(parsed.error) };
@@ -149,6 +153,9 @@ export async function updatePost(formData: FormData): Promise<ActionResult> {
       tags: d.tags as never,
       featured: d.featured,
       status: d.status,
+      // PM 2026-06-26: solo guardar publish_at si el estado es scheduled;
+      // al cambiar a published/draft se limpia para no confundir.
+      publish_at: (d.status === "scheduled" ? d.publish_at : null) as never,
     })
     .eq("id", id);
 

@@ -454,6 +454,19 @@ const postBaseSchema = z.object({
       errorMap: () => ({ message: "Estado de publicación inválido" }),
     })
     .default("draft"),
+  // PM 2026-06-26: fecha futura programada de publicación. Se normaliza
+  // como ISO string. "" o ausente → null (no programado).
+  publish_at: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .or(z.literal(""))
+    .transform((v) => {
+      if (!v) return null;
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }),
 });
 
 export const createPostSchema = postBaseSchema;

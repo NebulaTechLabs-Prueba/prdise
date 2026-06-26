@@ -506,6 +506,12 @@ function mapPostToAdminPost(p) {
     excerptES: p.excerpt_es || "",
     body: p.body_en || "",
     bodyES: p.body_es || "",
+    // PM 2026-06-26: fecha programada de publicación. El modal de edit
+    // pre-llena scheduleDate / scheduleTime con esto. publishAt (ISO) se
+    // mantiene para mostrar badge "LIVE" cuando ya pasó la fecha.
+    publishAt: p.publish_at || null,
+    scheduleDate: p.publish_at ? p.publish_at.slice(0, 10) : "",
+    scheduleTime: p.publish_at ? p.publish_at.slice(11, 16) : "09:00",
   };
 }
 
@@ -9403,9 +9409,39 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             </div>
                           </td>
                           <td>
-                            <span className={`adm-pill ${p.status === "published" ? "published" : p.status === "draft" ? "draft" : "pending"}`}>
-                              {p.status}
-                            </span>
+                            {/* PM 2026-06-26: si está scheduled y publishAt
+                                ya pasó, el post YA es público (filtro híbrido
+                                del reader). Mostramos badge "LIVE" para que
+                                el admin entienda el estado real. */}
+                            {(() => {
+                              const isLive = p.status === "scheduled" && p.publishAt && new Date(p.publishAt) <= new Date();
+                              if (isLive) {
+                                return (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+                                    <span className="adm-pill published">LIVE</span>
+                                    <span style={{ fontSize: 9.5, color: "rgba(255,255,255,.35)", fontStyle: "italic" }}>
+                                      {lang==="es"?"programado (auto-publicado)":"scheduled (auto-live)"}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (p.status === "scheduled" && p.publishAt) {
+                                const d = new Date(p.publishAt);
+                                return (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+                                    <span className="adm-pill pending">scheduled</span>
+                                    <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>
+                                      {d.toLocaleString(lang === "es" ? "es" : "en", { dateStyle: "short", timeStyle: "short" })}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <span className={`adm-pill ${p.status === "published" ? "published" : p.status === "draft" ? "draft" : "pending"}`}>
+                                  {p.status}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td>
                             <div className="adm-row-actions">
@@ -13878,6 +13914,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               fd.append("image", ownedUpdate.img || "");
               fd.append("status", ownedUpdate.status || "draft");
+              // PM 2026-06-26: programación. Combina date+time del form en
+              // ISO local; el server normaliza a UTC. Solo se envía si el
+              // status es scheduled.
+              if (ownedUpdate.status === "scheduled" && ownedUpdate.scheduleDate) {
+                const t = ownedUpdate.scheduleTime || "09:00";
+                fd.append("publish_at", `${ownedUpdate.scheduleDate}T${t}:00`);
+              } else {
+                fd.append("publish_at", "");
+              }
               const action = editing.isNew ? sbCreatePost : sbUpdatePost;
               // PM 2026-06-17: ver stay — mandar UUID (dbId), no slug.
               if (!editing.isNew) fd.append("id", ownedUpdate.dbId || ownedUpdate.id || "");

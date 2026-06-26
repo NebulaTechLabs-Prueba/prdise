@@ -217,7 +217,16 @@ export async function getPublishedPosts(
 ): Promise<Tables<"posts">[]> {
   const { featured, limit } = opts;
 
-  let query = client.from("posts").select("*").eq("status", "published");
+  // PM 2026-06-26: filtro híbrido sin cron — un post sale público si:
+  //   * status='published' (publicado a mano), O
+  //   * status='scheduled' AND publish_at <= now() (programado y ya llegó
+  //     la fecha). Aparece automáticamente en la siguiente request que
+  //     toque esta query, sin necesidad de promover el status.
+  const nowIso = new Date().toISOString();
+  let query = client
+    .from("posts")
+    .select("*")
+    .or(`status.eq.published,and(status.eq.scheduled,publish_at.lte.${nowIso})`);
 
   if (typeof featured === "boolean") query = query.eq("featured", featured);
   query = query
@@ -236,11 +245,14 @@ export async function getPostBySlug(
 ): Promise<Tables<"posts"> | null> {
   if (!slug) return null;
 
+  // PM 2026-06-26: mismo filtro híbrido que getPublishedPosts. Si el post
+  // está programado para el futuro, devuelve null (404 público).
+  const nowIso = new Date().toISOString();
   const { data, error } = await client
     .from("posts")
     .select("*")
     .eq("slug", slug)
-    .eq("status", "published")
+    .or(`status.eq.published,and(status.eq.scheduled,publish_at.lte.${nowIso})`)
     .maybeSingle();
 
   if (error) throw error;
