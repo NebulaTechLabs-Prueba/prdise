@@ -8986,14 +8986,66 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-search"><Search /><input value={staysSearch} onChange={(e) => setStaysSearch(e.target.value)} placeholder={lang==="es"?"Buscar estadías...":"Search stays..."} /></div>
               </div>
             </div>
+            {(() => {
+              const filteredStays = filterServices("stays", hotels)
+                .filter(h => hotelsFilter === "all" || h.status === hotelsFilter)
+                .filter(h => matchesSearch(h, staysSearch, ["name", "nameES", "desc", "descES", "zone", "category", "id"]));
+
+              // PM 2026-06-25: empty state para mantener distribución y guiar
+              // la acción cuando la lista está vacía. Distingue "no hay nada"
+              // de "el filtro/búsqueda no devolvió resultados".
+              if (filteredStays.length === 0) {
+                const isSearchEmpty = staysSearch.trim().length > 0;
+                const isFilterEmpty = hotelsFilter !== "all";
+                const isTrulyEmpty = !isSearchEmpty && !isFilterEmpty;
+                return (
+                  <div style={{
+                    padding: "70px 24px", textAlign: "center", borderRadius: 16,
+                    background: "rgba(255,255,255,.025)",
+                    border: "1px dashed rgba(255,255,255,.1)",
+                    color: "rgba(255,255,255,.65)",
+                  }}>
+                    <Home style={{ width: 44, height: 44, opacity: .35, marginBottom: 14, color: "var(--gold)" }} />
+                    <h3 style={{ fontFamily: "Bebas Neue", fontSize: 24, letterSpacing: ".04em", marginBottom: 8, color: "#fff" }}>
+                      {isTrulyEmpty
+                        ? (lang==="es" ? "Tu catálogo de estadías está vacío" : "Your stays catalog is empty")
+                        : isSearchEmpty
+                          ? (lang==="es" ? "Sin resultados para tu búsqueda" : "No matches for your search")
+                          : (lang==="es" ? "No hay estadías en este filtro" : "No stays under this filter")}
+                    </h3>
+                    <p style={{ fontSize: 13, maxWidth: 460, margin: "0 auto 20px", lineHeight: 1.55 }}>
+                      {isTrulyEmpty
+                        ? (lang==="es"
+                            ? "Cargá tu primera estadía para que aparezca en el catálogo público y los viajeros la puedan encontrar."
+                            : "Add your first stay so it shows up in the public catalog and travelers can find it.")
+                        : (lang==="es"
+                            ? "Probá con otro filtro o limpiá la búsqueda."
+                            : "Try another filter or clear the search.")}
+                    </p>
+                    {isTrulyEmpty ? (
+                      <button
+                        className="adm-btn adm-btn-primary"
+                        onClick={() => { if (canCreateInModule("stays")) setEditing({ type: "hotel", isNew: true }); }}
+                        disabled={!canCreateInModule("stays")}
+                        style={{ opacity: canCreateInModule("stays") ? 1 : 0.4, cursor: canCreateInModule("stays") ? "pointer" : "not-allowed" }}
+                      >
+                        <Plus />{lang==="es" ? "Crear primera estadía" : "Create first stay"}
+                      </button>
+                    ) : (
+                      <button
+                        className="adm-btn adm-btn-ghost"
+                        onClick={() => { setHotelsFilter("all"); setStaysSearch(""); }}
+                      >
+                        {lang==="es" ? "Limpiar filtros" : "Clear filters"}
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
             <div className="adm-cards-grid">
-              {paginate(
-                filterServices("stays", hotels)
-                  .filter(h => hotelsFilter === "all" || h.status === hotelsFilter)
-                  .filter(h => matchesSearch(h, staysSearch, ["name", "nameES", "desc", "descES", "zone", "category", "id"])),
-                staysPage,
-                staysPerPage
-              ).map((h) => {
+              {paginate(filteredStays, staysPage, staysPerPage).map((h) => {
                 const svcPerm = getServicePerm("stays", h.id);
                 const canEdit = svcPerm === "edit" || svcPerm === "full";
                 const canDelete = svcPerm === "full";
@@ -9064,6 +9116,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 );
               })}
             </div>
+              );
+            })()}
             <PaginationBar current={staysPage} total={Math.ceil(hotels.filter(h => hotelsFilter === "all" || h.status === hotelsFilter).length / staysPerPage)} onPage={setStaysPage} />
           </>
         )}
