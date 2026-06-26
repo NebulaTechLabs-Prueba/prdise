@@ -9510,13 +9510,22 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               </div>
               <div className="adm-stat green">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Conductores activos":"Active drivers"}<InfoTip text="Conductores con status 'available'. Source: Transfers → Drivers tab." /></span><div className="adm-stat-ico"><Users /></div></div>
-                <div className="adm-stat-val">{availableDrivers} / {drivers.length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{driversPct}% {lang==="es"?"disponible":"available"}</div>
+                <div className="adm-stat-val">{drivers.length === 0 ? "—" : `${availableDrivers} / ${drivers.length}`}</div>
+                <div className="adm-stat-trend up">
+                  {drivers.length === 0
+                    ? <><Info />{lang==="es"?"Sin conductores cargados":"No drivers loaded"}</>
+                    : <><TrendingUp />{driversPct}% {lang==="es"?"disponible":"available"}</>}
+                </div>
               </div>
               <div className="adm-stat sky">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Rutas configuradas":"Configured routes"}<InfoTip text="Total de rutas activas e inactivas. Source: Transfers → Routes tab." /></span><div className="adm-stat-ico"><MapPin /></div></div>
                 <div className="adm-stat-val">{routes.length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{vehicles.length} {lang==="es"?"vehículos":"vehicles"}</div>
+                <div className="adm-stat-trend up"><TrendingUp />
+                  {routes.filter(r => r.active !== false).length} {lang==="es"?"activas":"active"}
+                  {routes.filter(r => r.active === false).length > 0 && (
+                    <> · {routes.filter(r => r.active === false).length} {lang==="es"?"inactivas":"inactive"}</>
+                  )}
+                </div>
               </div>
               <div className="adm-stat orange">
                 <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Pendientes":"Pending"}<InfoTip text="Reservas con status 'pending_payment' o 'pending' esperando confirmación. Source: bookings Supabase." /></span><div className="adm-stat-ico"><Clock /></div></div>
@@ -10091,14 +10100,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-card">
                   <div className="adm-card-head">
                     <div className="adm-card-title"><Calendar />{lang==="es"?"Reservas Próximas":"Upcoming Bookings"}</div>
-                    <button className="adm-btn adm-btn-ghost" onClick={() => {
-                      // Auto-assign all pending bookings that don't have a driver
-                      setTransferBookings(transferBookings.map(b => {
-                        if (b.driver || b.status !== "pending") return b;
-                        const suggested = autoAssignDriver(b.route);
-                        return suggested ? { ...b, driver: suggested, status: "confirmed" } : b;
-                      }));
-                    }}><Zap />{lang==="es"?"Auto-Asignar Pendientes":"Auto-Assign All Pending"}</button>
+                    {/* PM 2026-06-25: el botón "Auto-Asignar Pendientes"
+                        quedó como código muerto post-pivote 2026-06-04: el
+                        catálogo público ya no genera bookings — los clientes
+                        coordinan por WhatsApp y el admin emite Facturas. Los
+                        campos que la lógica usaba (route.assignedDrivers,
+                        route.autoAssign, driver.status='available') ya no
+                        existen en el modelo actual. Se retira para no
+                        confundir; si se reactiva el flujo de bookings reales
+                        se vuelve a hookear. */}
                   </div>
                   <div className="adm-tbl-wrap">
                     <table className="adm-tbl">
