@@ -12496,20 +12496,19 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td>
                           <div className="adm-row-actions">
                             {/* PM 2026-06-26: admin@livinginprdise.com es la
-                                cuenta SUPER ADMIN base — no se puede editar
-                                permisos ni eliminar. Otros admins/empleados
-                                siguen el flujo normal. */}
+                                cuenta SUPER ADMIN base — editable parcialmente
+                                (nombre, teléfono, posición, departamento) pero
+                                rol/email/status están bloqueados en el modal y
+                                NO se puede eliminar. */}
                             {(() => {
                               const isSuperAdmin = (u.email || "").toLowerCase() === "admin@livinginprdise.com";
-                              const editAllowed = canEditUsersOnly && !isSuperAdmin;
+                              const editAllowed = canEditUsersOnly; // siempre permitido, restricciones viven en el modal
                               const deleteAllowed = canManageRoles && !isSuperAdmin;
                               return (
                                 <>
                                   <button
                                     className="adm-icon-btn"
-                                    title={isSuperAdmin
-                                      ? (lang==="es"?"Cuenta base — no editable":"Base account — not editable")
-                                      : editAllowed ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Sin permiso":"No permission")}
+                                    title={editAllowed ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Sin permiso":"No permission")}
                                     onClick={() => { if (editAllowed) setEditingUser({ ...u }); }}
                                     disabled={!editAllowed}
                                     style={{ opacity: editAllowed ? 1 : 0.3, cursor: editAllowed ? "pointer" : "not-allowed" }}
@@ -12661,20 +12660,33 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             </div>
 
             {/* EMPLOYEE EDIT MODAL */}
-            {editingUser && (
+            {editingUser && (() => {
+              // PM 2026-06-26: cuenta base — bloqueamos email, rol y status.
+              // Edición permitida: nombre, teléfono, posición, departamento.
+              const isSuperAdmin = (editingUser.email || "").toLowerCase() === "admin@livinginprdise.com";
+              return (
               <div className="adm-modal-bg" onClick={() => setEditingUser(null)}>
                 <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
                   <button className="adm-modal-close" onClick={() => setEditingUser(null)}><X /></button>
                   <h3>{editingUser.id === "new" ? (lang==="es"?"NUEVO EMPLEADO":"NEW EMPLOYEE") : (lang==="es"?"EDITAR EMPLEADO":"EDIT EMPLOYEE")}</h3>
                   <p className="adm-modal-sub">{editingUser.id === "new" ? (lang==="es"?"Agregar miembro del equipo.":"Add a new team member.") : (lang==="es"?`Editando: ${editingUser.name}`:`Editing: ${editingUser.name}`)}</p>
 
+                  {isSuperAdmin && (
+                    <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", marginBottom: 14, display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "rgba(255,255,255,.75)" }}>
+                      <Lock style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
+                      <span>{lang==="es"
+                        ? "Cuenta base del sistema. Email, rol y status no se pueden modificar — solo nombre, departamento, posición y teléfono."
+                        : "Base system account. Email, role and status cannot be changed — only name, department, position and phone."}</span>
+                    </div>
+                  )}
+
                   <div className="adm-fg-row">
                     <div className="adm-fg"><label className="adm-fl">Full Name *</label><input className="adm-fi" value={editingUser.name} onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} placeholder="Full name" /></div>
-                    <div className="adm-fg"><label className="adm-fl">Email *</label><input type="email" className="adm-fi" value={editingUser.email} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} placeholder="email@prdise.com" /></div>
+                    <div className="adm-fg"><label className="adm-fl">Email *</label><input type="email" className="adm-fi" value={editingUser.email} onChange={(e) => { if (!isSuperAdmin) setEditingUser({ ...editingUser, email: e.target.value }); }} placeholder="email@prdise.com" disabled={isSuperAdmin} style={{ opacity: isSuperAdmin ? 0.55 : 1, cursor: isSuperAdmin ? "not-allowed" : "text" }} /></div>
                   </div>
                   <div className="adm-fg-row">
                     <div className="adm-fg"><label className="adm-fl">Role</label>
-                      <select className="adm-fi" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}>
+                      <select className="adm-fi" value={editingUser.role} onChange={(e) => { if (!isSuperAdmin) setEditingUser({ ...editingUser, role: e.target.value }); }} disabled={isSuperAdmin} style={{ opacity: isSuperAdmin ? 0.55 : 1, cursor: isSuperAdmin ? "not-allowed" : "pointer" }}>
                         {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                       </select>
                     </div>
@@ -12713,17 +12725,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   )}
 
-                  {/* STATUS */}
+                  {/* STATUS — bloqueado para super admin (cuenta base) */}
                   <div className="adm-fg" style={{ marginTop: 14 }}>
                     <label className="adm-fl">Status</label>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6, opacity: isSuperAdmin ? 0.55 : 1 }}>
                       {[
                         { value: "active", label: "Active", color: "#8DC63F" },
                         { value: "on_leave", label: "On Leave", color: "#F5A623" },
                         { value: "inactive", label: "Inactive", color: "rgba(255,255,255,.4)" },
                       ].map(s => (
-                        <button key={s.value} type="button" onClick={() => setEditingUser({ ...editingUser, status: s.value })} style={{
-                          flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        <button key={s.value} type="button" onClick={() => { if (!isSuperAdmin) setEditingUser({ ...editingUser, status: s.value }); }} disabled={isSuperAdmin} style={{
+                          flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: isSuperAdmin ? "not-allowed" : "pointer",
                           background: editingUser.status === s.value ? s.color + "20" : "transparent",
                           border: `1px solid ${editingUser.status === s.value ? s.color + "66" : "rgba(255,255,255,.08)"}`,
                           color: editingUser.status === s.value ? s.color : "rgba(255,255,255,.4)",
@@ -12932,7 +12944,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* DELETE EMPLOYEE CONFIRMATION MODAL */}
             {deletingUser && (
