@@ -629,32 +629,27 @@ async function loadInitialData() {
              // (requiere staff auth) — no se pre-carga en loadInitialData
              // porque el catálogo público no necesita drivers.
 
-    HOTELS.length = 0;
-    (stays || []).forEach((s) => HOTELS.push(mapStayToHotel(s)));
-
-    TOURS.length = 0;
-    (tours || []).forEach((t) => TOURS.push(mapTourToTour(t)));
-
-    VEHICLES.length = 0;
-    (vehicles || []).forEach((v) => VEHICLES.push(mapVehicleToVehicle(v)));
-
-    ROUTES.length = 0;
-    (routes || []).forEach((r) => ROUTES.push(mapRouteToRoute(r)));
-
-    TRANSFER_LOCATIONS.length = 0;
-    (locations || []).forEach((l) => TRANSFER_LOCATIONS.push(l));
-
-    A_POSTS.length = 0;
-    (posts || []).forEach((p) => A_POSTS.push(mapPostToAdminPost(p)));
-
-    PARTNERS.length = 0;
-    (partners || []).forEach((p) => PARTNERS.push(p));
-
-    EXPERIENCES.length = 0;
-    (experiences || []).forEach((e) => EXPERIENCES.push(e));
-
-    POST_CATEGORIES.length = 0;
-    (postCategories || []).forEach((c) => POST_CATEGORIES.push(c));
+    // PM 2026-06-26: cada bloque defensivo independiente. Si un mapper
+    // crashea (shape inesperada de DB, migración pendiente, etc.), no
+    // aborta los siguientes. Antes, un solo crash silencioso dejaba el
+    // 80% de los catálogos vacíos.
+    const safePopulate = (label, arr, source, mapper) => {
+      try {
+        arr.length = 0;
+        (source || []).forEach((x) => arr.push(mapper ? mapper(x) : x));
+      } catch (e) {
+        console.error(`[loadInitialData] crash poblando ${label}:`, e);
+      }
+    };
+    safePopulate("HOTELS", HOTELS, stays, mapStayToHotel);
+    safePopulate("TOURS", TOURS, tours, mapTourToTour);
+    safePopulate("VEHICLES", VEHICLES, vehicles, mapVehicleToVehicle);
+    safePopulate("ROUTES", ROUTES, routes, mapRouteToRoute);
+    safePopulate("TRANSFER_LOCATIONS", TRANSFER_LOCATIONS, locations, null);
+    safePopulate("A_POSTS", A_POSTS, posts, mapPostToAdminPost);
+    safePopulate("PARTNERS", PARTNERS, partners, null);
+    safePopulate("EXPERIENCES", EXPERIENCES, experiences, null);
+    safePopulate("POST_CATEGORIES", POST_CATEGORIES, postCategories, null);
 
     // Mergear settings de DB sobre defaults — keys no presentes mantienen
     // el default. Cualquier value vacío también cae al default vía getSetting.
