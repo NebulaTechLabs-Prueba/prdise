@@ -13809,7 +13809,6 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("experience_category", ownedUpdate.experienceCategory || "");
               fd.append("experience_id", ownedUpdate.experienceId || "");
               fd.append("partner_name", ownedUpdate.partnerName || "");
-              fd.append("markup_pct", ownedUpdate.markupPct == null ? "10" : String(ownedUpdate.markupPct));
               // PM 2026-06-15: ver bloque stay — markup en columnas dedicadas.
               fd.append("markup_type", ownedUpdate.markupType || "");
               fd.append("markup_value", ownedUpdate.markupValue == null ? "" : String(ownedUpdate.markupValue));
@@ -14880,25 +14879,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 )}
               </div>
             </div>
-            <div className="adm-fg-row">
-              <div className="adm-fg" style={{ flex: 1, maxWidth: 200 }}>
-                <label className="adm-fl">{lang === "es" ? "Markup %" : "Markup %"}
-                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-                    ({lang === "es" ? "sobre precio del aliado" : "over partner price"})
-                  </span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  className="adm-fi"
-                  defaultValue={it.markupPct == null ? 10 : it.markupPct}
-                  onChange={(e) => (it.markupPct = Number(e.target.value))}
-                  placeholder="10"
-                />
-              </div>
-            </div>
+            {/* PM 2026-06-25: "Markup %" eliminado del UI por duplicación
+                con el bloque "Sobreprecio / Comisión" (que ya aplica el
+                markup_type / markup_value al precio efectivo y muestra el
+                Precio Final en vivo). La columna tours.markup_pct queda
+                en DB sin uso — se dropea en migración futura. */}
             <div className="adm-fg">
               <label className="adm-fl">What is Included</label>
               <div style={{ display: "flex", gap: 6 }}>
