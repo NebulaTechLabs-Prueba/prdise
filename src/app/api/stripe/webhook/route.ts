@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
-import { getStripe } from "@/lib/stripe/client";
+import { getStripe, getStripeWebhookSecret } from "@/lib/stripe/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyAllAdmins } from "@/lib/admin/notifications";
 
@@ -18,19 +18,25 @@ export const dynamic = "force-dynamic";
  *     `metadata.invoice_id` que dejamos al crear el Payment Link en
  *     `createInvoiceManual`.
  *
- * Configuración requerida en `.env`:
- *   - STRIPE_SECRET_KEY     (usado por getStripe() para construir eventos)
- *   - STRIPE_WEBHOOK_SECRET (firma del endpoint en Stripe Dashboard)
+ * Configuración (orden de prioridad — DB → env):
+ *   1. Admin → Configuración → Integraciones → Stripe → guardar
+ *      `secret_key` + `webhook_secret`. RECOMENDADO. Cambios inmediatos
+ *      sin re-deploy.
+ *   2. Fallback: `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` en
+ *      `.env.local` del server.
  *
  * Para probar local: `stripe listen --forward-to localhost:3000/api/stripe/webhook`
  * y usar el `whsec_...` que imprime el CLI.
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  // PM 2026-06-29: secret leído desde DB primero (payment_provider_configs),
+  // fallback a env. Permite al admin configurar el webhook desde el panel
+  // sin re-deploy.
+  const secret = await getStripeWebhookSecret();
   if (!secret) {
-    console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET no configurada");
+    console.error("[stripe-webhook] webhook_secret no configurado (ni en DB ni en env)");
     return NextResponse.json(
-      { error: "Webhook no configurado" },
+      { error: "Webhook no configurado. Andá a Admin → Configuración → Integraciones → Stripe y pegá el Webhook Secret." },
       { status: 500 }
     );
   }

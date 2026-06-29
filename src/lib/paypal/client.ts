@@ -77,6 +77,14 @@ export async function isPayPalConfigured(): Promise<boolean> {
   return (await getPayPalConfig()) !== null;
 }
 
+/**
+ * PM 2026-06-29: invalidar el cache cuando el admin guarda nuevas keys.
+ * Próxima request lee las frescas sin esperar TTL.
+ */
+export function invalidatePayPalCache(): void {
+  _paypalCfgCache = null;
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 async function getAccessToken(cfg: PayPalConfig): Promise<string> {

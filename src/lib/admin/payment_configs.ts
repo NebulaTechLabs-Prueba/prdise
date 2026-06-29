@@ -145,6 +145,16 @@ export async function savePaymentConfig(
 
   if (error) return { ok: false, error: `No se pudo guardar: ${error.message}` };
 
+  // PM 2026-06-29: invalidar el cache del provider correspondiente para
+  // que la próxima request lea las nuevas keys sin esperar el TTL de 60s.
+  if (provider === "stripe") {
+    const { invalidateStripeCache } = await import("@/lib/stripe/client");
+    invalidateStripeCache();
+  } else if (provider === "paypal") {
+    const { invalidatePayPalCache } = await import("@/lib/paypal/client");
+    invalidatePayPalCache();
+  }
+
   await writeAuditLog(actorId, "payment_config.save", "payment_config", provider, {
     enabled: d.enabled,
     mode: d.mode,

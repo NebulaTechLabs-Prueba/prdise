@@ -58,3 +58,46 @@ export async function isStripeConfigured(): Promise<boolean> {
   const key = await resolveStripeKey();
   return Boolean(key);
 }
+
+/**
+ * PM 2026-06-29: webhook secret — mismo patrón. Lee primero la tabla
+ * `payment_provider_configs.webhook_secret`, fallback a env var
+ * STRIPE_WEBHOOK_SECRET. El handler de /api/stripe/webhook valida la
+ * firma con este secret.
+ */
+let _stripeWebhookSecretCache: { secret: string | null; expiresAt: number } | null = null;
+
+/**
+ * PM 2026-06-29: el admin acaba de guardar nuevas keys desde el panel.
+ * Invalidamos los caches para que la próxima request use los valores
+ * frescos sin esperar el TTL de 60s.
+ */
+export function invalidateStripeCache(): void {
+  _stripeKeyCache = null;
+  _stripeWebhookSecretCache = null;
+  _stripe = null;
+}
+
+export async function getStripeWebhookSecret(): Promise<string | null> {
+  const now = Date.now();
+  if (_stripeWebhookSecretCache && _stripeWebhookSecretCache.expiresAt > now) {
+    return _stripeWebhookSecretCache.secret;
+  }
+  let secret: string | null = null;
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("payment_provider_configs")
+      .select("webhook_secret, enabled")
+      .eq("provider", "stripe")
+      .maybeSingle();
+    if (data?.enabled && data.webhook_secret && data.webhook_secret.trim()) {
+      secret = data.webhook_secret.trim();
+    }
+  } catch {
+    // best-effort: fallback al env.
+  }
+  if (!secret) secret = process.env.STRIPE_WEBHOOK_SECRET || null;
+  _stripeWebhookSecretCache = { secret, expiresAt: now + KEY_CACHE_MS };
+  return secret;
+}
