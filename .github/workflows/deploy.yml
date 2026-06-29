@@ -43,16 +43,38 @@ jobs:
     steps:
       - name: SSH + pull + build + reload
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          # PM 2026-06-26: claves de Stripe inyectadas al .env del server
+          # en cada deploy. Si los secrets están vacíos, se omiten — no se
+          # borran valores previos. Permite agregar/rotar keys desde
+          # GitHub → Settings → Secrets sin tocar SSH.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
           script: |
             set -euo pipefail
             cd "${{ secrets.DEPLOY_PATH }}"
             git fetch --all
             git reset --hard origin/main
+
+            # PM 2026-06-26: sync de las claves de Stripe al .env.local
+            # del server. Solo escribe si el secret está definido en
+            # GitHub. Si está vacío, mantiene el valor actual.
+            touch .env.local
+            if [ -n "${STRIPE_SECRET_KEY:-}" ]; then
+              sed -i '/^STRIPE_SECRET_KEY=/d' .env.local
+              echo "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}" >> .env.local
+            fi
+            if [ -n "${STRIPE_WEBHOOK_SECRET:-}" ]; then
+              sed -i '/^STRIPE_WEBHOOK_SECRET=/d' .env.local
+              echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" >> .env.local
+            fi
+
             npm ci --no-audit --no-fund
             npm run build
             pm2 reload prdise || pm2 start npm --name prdise -- start
