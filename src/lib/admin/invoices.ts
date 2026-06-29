@@ -460,6 +460,14 @@ export async function regenerateStripePaymentLink(
   if (inv.status === "paid") {
     return { ok: false, error: "La factura ya está pagada." };
   }
+  // PM 2026-06-29: los borradores no pueden generar links de pago.
+  // Primero deben consolidarse como Pendiente desde el modal viewer.
+  if (inv.status === "draft") {
+    return { ok: false, error: "El borrador debe consolidarse como Pendiente antes de generar un link de pago." };
+  }
+  if (inv.status === "cancelled") {
+    return { ok: false, error: "La factura está cancelada — no se puede generar link." };
+  }
 
   try {
     const stripe = await getStripe();
@@ -526,6 +534,13 @@ export async function regeneratePaypalPaymentLink(
   if (!inv) return { ok: false, error: "Factura no encontrada" };
   if (inv.status === "paid") {
     return { ok: false, error: "La factura ya está pagada." };
+  }
+  // PM 2026-06-29: borradores y canceladas no generan link.
+  if (inv.status === "draft") {
+    return { ok: false, error: "El borrador debe consolidarse como Pendiente antes de generar un link de pago." };
+  }
+  if (inv.status === "cancelled") {
+    return { ok: false, error: "La factura está cancelada — no se puede generar link." };
   }
 
   const appUrl =

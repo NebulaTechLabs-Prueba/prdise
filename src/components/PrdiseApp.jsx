@@ -10683,9 +10683,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   ) : (
                                     <button
                                       className="adm-icon-btn"
-                                      title={lang==="es"?"Generar link de pago Stripe":"Generate Stripe payment link"}
-                                      disabled={!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled"}
-                                      style={{ opacity: (!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled") ? 0.4 : 1, cursor: (!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled") ? "not-allowed" : "pointer" }}
+                                      title={inv.status === "draft" ? (lang==="es"?"Consolidá el borrador como Pendiente primero":"Consolidate the draft to Pending first") : (lang==="es"?"Generar link de pago Stripe":"Generate Stripe payment link")}
+                                      disabled={!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled" || inv.status === "draft"}
+                                      style={{ opacity: (!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled" || inv.status === "draft") ? 0.4 : 1, cursor: (!canEditInvoices() || busy === "stripe" || inv.status === "paid" || inv.status === "cancelled" || inv.status === "draft") ? "not-allowed" : "pointer" }}
                                       onClick={async () => {
                                         if (!canEditInvoices()) return;
                                         setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "stripe" }));
@@ -10725,9 +10725,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   ) : (
                                     <button
                                       className="adm-icon-btn"
-                                      title={lang==="es"?"Generar link de pago PayPal":"Generate PayPal payment link"}
-                                      disabled={!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled"}
-                                      style={{ color: "#0070BA", opacity: (!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled") ? 0.4 : 1, cursor: (!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled") ? "not-allowed" : "pointer" }}
+                                      title={inv.status === "draft" ? (lang==="es"?"Consolidá el borrador como Pendiente primero":"Consolidate the draft to Pending first") : (lang==="es"?"Generar link de pago PayPal":"Generate PayPal payment link")}
+                                      disabled={!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled" || inv.status === "draft"}
+                                      style={{ color: "#0070BA", opacity: (!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled" || inv.status === "draft") ? 0.4 : 1, cursor: (!canEditInvoices() || busy === "paypal" || inv.status === "paid" || inv.status === "cancelled" || inv.status === "draft") ? "not-allowed" : "pointer" }}
                                       onClick={async () => {
                                         if (!canEditInvoices()) return;
                                         setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "paypal" }));
@@ -10800,6 +10800,29 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               style={{ opacity: (canEditInvoices() && inv.status === "draft") ? 1 : 0.3, cursor: (canEditInvoices() && inv.status === "draft") ? "pointer" : "not-allowed" }}
                               disabled={!canEditInvoices() || inv.status !== "draft"}
                             ><Pencil /></button>
+                            {/* PM 2026-06-29: botón "Consolidar a Pendiente" solo
+                                visible cuando es borrador. Mueve draft → pending
+                                y habilita la generación de link de pago. */}
+                            {inv.status === "draft" && (
+                              <button
+                                className="adm-icon-btn"
+                                title={lang==="es"?"Consolidar como Pendiente":"Consolidate as Pending"}
+                                disabled={!canEditInvoices()}
+                                style={{ color: "#F5A623", borderColor: "rgba(245,166,35,.4)", opacity: canEditInvoices() ? 1 : 0.3, cursor: canEditInvoices() ? "pointer" : "not-allowed" }}
+                                onClick={async () => {
+                                  if (!canEditInvoices()) return;
+                                  if (!confirm(lang==="es"?`Consolidar la factura ${inv.num} como Pendiente? El cliente podrá pagar.`:`Consolidate invoice ${inv.num} as Pending? Customer will be able to pay.`)) return;
+                                  try {
+                                    const fd = new FormData();
+                                    fd.append("id", inv.sbId || inv.id);
+                                    fd.append("status", "pending");
+                                    const res = await sbUpdateInvoiceStatus(fd);
+                                    if (!res?.ok) { alert((lang==="es"?"No se pudo consolidar: ":"Could not consolidate: ") + (res?.error || "error")); return; }
+                                    await reloadInvoices();
+                                  } catch (e) { alert("Error: " + e.message); }
+                                }}
+                              ><CheckCircle /></button>
+                            )}
                             {(() => {
                               const canDelete = canDeleteInvoices() && inv.status === "draft";
                               const canCancel = canEditInvoices() && (inv.status === "pending" || inv.status === "sent" || inv.status === "overdue");
@@ -11269,19 +11292,70 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
               )}
 
+              {/* PM 2026-06-29: cada estado tiene su botón propio de transición.
+                  Flujo:
+                    draft   → editar / eliminar / [Consolidar a Pendiente]
+                    pending → editar / [Enviar al cliente] / cancelar
+                    sent    → [Marcar como pagada] / cancelar
+                    paid    → solo imprimir (terminal)
+                    cancelled / overdue → según contexto.
+                  Las opciones que no aplican al estado actual NO se muestran. */}
               <div className="adm-modal-actions inv-no-print" style={{ padding: "14px 20px", margin: 0 }}>
-                <button className="adm-btn adm-btn-ghost" onClick={() => {
-                  const link = `${window.location.origin}/pay/${viewingInvoice.num}`;
-                  if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert(lang === "es" ? "Enlace de pago copiado" : "Payment link copied"));
-                  else alert(lang === "es" ? "Enlace: " + link : "Link: " + link);
-                }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
                 {viewingInvoice.status === "draft" && (
-                  <button className="adm-btn adm-btn-ghost" onClick={() => { setEditingInvoice({ ...viewingInvoice, lineItems: viewingInvoice.lineItems || [] }); setViewingInvoice(null); }}><Pencil style={{ width: 12, height: 12 }} />{lang === "es" ? "Editar" : "Edit"}</button>
+                  <>
+                    <button className="adm-btn adm-btn-ghost" onClick={() => { setEditingInvoice({ ...viewingInvoice, lineItems: viewingInvoice.lineItems || [] }); setViewingInvoice(null); }}>
+                      <Pencil style={{ width: 12, height: 12 }} />{lang === "es" ? "Editar" : "Edit"}
+                    </button>
+                    <button className="adm-btn adm-btn-ghost" style={{ color: "#F5A623", borderColor: "rgba(245,166,35,.4)" }} onClick={async () => {
+                      if (!canEditInvoices()) return;
+                      try {
+                        const fd = new FormData();
+                        fd.append("id", viewingInvoice.sbId || viewingInvoice.id);
+                        fd.append("status", "pending");
+                        const res = await sbUpdateInvoiceStatus(fd);
+                        if (!res?.ok) { alert((lang==="es"?"No se pudo consolidar: ":"Could not consolidate: ") + (res?.error || "error")); return; }
+                        await reloadInvoices();
+                        setViewingInvoice(null);
+                      } catch (e) { alert("Error: " + e.message); }
+                    }}>
+                      <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Consolidar como pendiente" : "Consolidate as pending"}
+                    </button>
+                  </>
+                )}
+                {viewingInvoice.status === "pending" && (
+                  <>
+                    <button className="adm-btn adm-btn-ghost" onClick={() => {
+                      const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl || `${window.location.origin}/pay/${viewingInvoice.num}`;
+                      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert(lang === "es" ? "Enlace de pago copiado" : "Payment link copied"));
+                      else alert(lang === "es" ? "Enlace: " + link : "Link: " + link);
+                    }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
+                    <button className="adm-btn adm-btn-ghost" style={{ color: "#29ABE2", borderColor: "rgba(41,171,226,.4)" }} onClick={async () => {
+                      if (!canEditInvoices()) return;
+                      try {
+                        const fd = new FormData();
+                        fd.append("id", viewingInvoice.sbId || viewingInvoice.id);
+                        fd.append("status", "sent");
+                        const res = await sbUpdateInvoiceStatus(fd);
+                        if (!res?.ok) { alert((lang==="es"?"No se pudo marcar como enviada: ":"Could not mark as sent: ") + (res?.error || "error")); return; }
+                        await reloadInvoices();
+                        setViewingInvoice(null);
+                      } catch (e) { alert("Error: " + e.message); }
+                    }}>
+                      <ArrowRight style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como enviada" : "Mark as sent"}
+                    </button>
+                  </>
                 )}
                 {(viewingInvoice.status === "sent" || viewingInvoice.status === "overdue") && (
-                  <button className="adm-btn adm-btn-ghost" style={{ color: "#8DC63F", borderColor: "rgba(141,198,63,.4)" }} onClick={() => { setMarkPaidInvoice(viewingInvoice); setPaymentRef(""); setViewingInvoice(null); }}>
-                    <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como pagada" : "Mark as paid"}
-                  </button>
+                  <>
+                    <button className="adm-btn adm-btn-ghost" onClick={() => {
+                      const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl || `${window.location.origin}/pay/${viewingInvoice.num}`;
+                      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert(lang === "es" ? "Enlace de pago copiado" : "Payment link copied"));
+                      else alert(lang === "es" ? "Enlace: " + link : "Link: " + link);
+                    }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
+                    <button className="adm-btn adm-btn-ghost" style={{ color: "#8DC63F", borderColor: "rgba(141,198,63,.4)" }} onClick={() => { setMarkPaidInvoice(viewingInvoice); setPaymentRef(""); setViewingInvoice(null); }}>
+                      <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como pagada" : "Mark as paid"}
+                    </button>
+                  </>
                 )}
                 <button className="adm-btn adm-btn-primary" onClick={() => window.print()}><Printer style={{ width: 12, height: 12 }} />{lang === "es" ? "Imprimir / PDF" : "Print / PDF"}</button>
               </div>
