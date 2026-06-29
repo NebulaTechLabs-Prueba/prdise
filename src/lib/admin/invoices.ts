@@ -354,6 +354,11 @@ export async function createInvoiceManual(
       due_at: d.dueAt || null,
       notes: d.notes || null,
       status: "draft",
+      // PM 2026-06-26: persistir método elegido (Stripe/PayPal/off_system)
+      // para que el UI muestre solo el botón del método correspondiente.
+      // Cast as never porque los types generados aún no incluyen la columna
+      // hasta regenerar tras aplicar la migración 20260626230000.
+      payment_method: paymentMethod as never,
     })
     .select("id, number")
     .single();

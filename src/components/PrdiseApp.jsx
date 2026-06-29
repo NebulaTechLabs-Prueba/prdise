@@ -7684,6 +7684,10 @@ function AdminPanel({ onClose }) {
             link: !!i.stripe_payment_link_url || !!i.paypal_payment_link_url,
             source: "supabase",
             paymentRef: i.payment_ref || "",
+            // PM 2026-06-26: método elegido al crear la factura. Si la
+            // migración no se aplicó aún, viene undefined → fallback
+            // inferido por los links que ya tenga generados.
+            paymentMethod: i.payment_method || (i.stripe_payment_link_url ? "stripe" : i.paypal_payment_link_url ? "paypal" : "off_system"),
             // Shape requerida por el modal "Ver" + tabla draft-edit: usamos
             // {type, name, price, qty} para evitar .toFixed crash. El type se
             // deriva de qué FK está set (tour / stay / transfer / custom).
@@ -10663,9 +10667,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             {inv.source === "supabase" && (() => {
                               const busy = invoiceRowBusy[inv.sbId];
                               const hasLink = !!inv.stripePaymentLinkUrl;
+                              // PM 2026-06-26: mostrar solo el botón del método
+                              // elegido al crear la factura. Si fue off_system,
+                              // no muestra ningún botón de generar link (el
+                              // admin marca pagada manualmente).
+                              const method = inv.paymentMethod || "off_system";
+                              const showStripe = method === "stripe";
+                              const showPaypal = method === "paypal";
                               return (
                                 <>
-                                  {hasLink ? (
+                                  {showStripe && (hasLink ? (
                                     <button
                                       className="adm-icon-btn"
                                       title={lang==="es"?"Copiar link de pago Stripe":"Copy Stripe payment link"}
@@ -10702,11 +10713,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                         }
                                       }}
                                     >{busy === "stripe" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw />}</button>
-                                  )}
+                                  ))}
                                   {/* PM 2026-06-18: PayPal — paridad con Stripe.
                                       Si ya hay approve URL, botón copiar (azul PayPal);
                                       si no, botón generar (intent=CAPTURE → webhook marca paid). */}
-                                  {inv.paypalPaymentLinkUrl ? (
+                                  {showPaypal && (inv.paypalPaymentLinkUrl ? (
                                     <button
                                       className="adm-icon-btn"
                                       title={lang==="es"?"Copiar link de pago PayPal":"Copy PayPal payment link"}
@@ -10744,7 +10755,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                         }
                                       }}
                                     >{busy === "paypal" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <Globe />}</button>
-                                  )}
+                                  ))}
                                   <button
                                     className="adm-icon-btn"
                                     title={lang==="es"?"Descargar PDF":"Download PDF"}
