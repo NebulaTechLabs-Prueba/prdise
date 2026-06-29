@@ -7471,7 +7471,7 @@ function AdminPanel({ onClose }) {
       fd.append("entries", JSON.stringify(entries));
       const res = await sbUpdateSiteSettingsBulk(fd);
       if (!res?.ok) {
-        alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
+        showToast({ type: "error", message: (lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || "") });
         return;
       }
       // Re-fetch para confirmar que los valores quedaron persistidos en DB.
@@ -7513,7 +7513,7 @@ function AdminPanel({ onClose }) {
       fd.append("entries", JSON.stringify(entries));
       const res = await sbUpdateSiteSettingsBulk(fd);
       if (!res?.ok) {
-        alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
+        showToast({ type: "error", message: (lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || "") });
         return;
       }
       Object.assign(SITE_SETTINGS, legalSettings);
@@ -9609,7 +9609,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       if (!res?.ok) { setPostCategoriesList(prev); alert((lang === "es" ? "No se pudo eliminar: " : "Could not delete: ") + (res?.error || "error")); return; }
                                       const idx = POST_CATEGORIES.findIndex(x => x.id === c.id);
                                       if (idx >= 0) POST_CATEGORIES.splice(idx, 1);
-                                    } catch (err) { setPostCategoriesList(prev); alert("Error: " + err.message); }
+                                    } catch (err) { setPostCategoriesList(prev); showToast({ type: "error", message: "Error: " + err.message }); }
                                   }}><Trash2 /></button>
                                 </div>
                               </td>
@@ -9678,7 +9678,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         POST_CATEGORIES.length = 0;
                         (fresh || []).forEach(x => POST_CATEGORIES.push(x));
                         setEditingPostCategory(null);
-                      } catch (err) { alert("Error: " + err.message); }
+                      } catch (err) { showToast({ type: "error", message: "Error: " + err.message }); }
                     }}><Check />{lang === "es" ? "Guardar" : "Save"}</button>
                   </div>
                 </div>
@@ -9807,7 +9807,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   const fd = new FormData(); fd.append("id", p.dbId || p.id);
                                   const res = await sbTogglePostFeatured(fd);
                                   if (!res?.ok) { setPosts(prev); alert("No se pudo cambiar destacado: " + (res?.error || "error")); }
-                                } catch (e) { setPosts(prev); alert("Error: " + e.message); }
+                                } catch (e) { setPosts(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                               }}>
                                 <Star style={{ fill: p.featured ? "#F5A623" : "none", color: p.featured ? "#F5A623" : "currentColor" }} />
                               </button>
@@ -9820,7 +9820,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   const fd = new FormData(); fd.append("id", p.dbId || p.id);
                                   const res = await sbTogglePostPublish(fd);
                                   if (!res?.ok) { setPosts(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
-                                } catch (e) { setPosts(prev); alert("Error: " + e.message); }
+                                } catch (e) { setPosts(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                               }}>
                                 {p.status === "published" ? <EyeOff /> : <Eye />}
                               </button>
@@ -9840,7 +9840,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   const fd = new FormData(); fd.append("id", p.dbId || p.id);
                                   const res = await sbDeletePost(fd);
                                   if (!res?.ok) { setPosts(prev); alert("No se pudo archivar: " + (res?.error || "error")); }
-                                } catch (e) { setPosts(prev); alert("Error: " + e.message); }
+                                } catch (e) { setPosts(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                               }}><Trash2 /></button>
                             </div>
                           </td>
@@ -9994,7 +9994,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   if (r.vehicleId) fd.append("vehicle_id", r.vehicleId);
                                   const res = await sbUpdateRoute(fd);
                                   if (!res?.ok) { setRoutes(prev); alert("No se pudo cambiar estado: " + (res?.error || "error")); }
-                                } catch (e) { setRoutes(prev); alert("Error: " + e.message); }
+                                } catch (e) { setRoutes(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                               }}>{r.active !== false ? <EyeOff /> : <Eye />}</button>
                               <button className="adm-icon-btn" onClick={() => setEditing({ type: "route", item: r })}><Pencil /></button>
                               <button className="adm-icon-btn danger" onClick={async () => {
@@ -10013,7 +10013,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   const fd = new FormData(); fd.append("id", r.id);
                                   const res = await sbDeleteRoute(fd);
                                   if (!res?.ok) { setRoutes(prev); alert("No se pudo eliminar: " + (res?.error || "error")); }
-                                } catch (e) { setRoutes(prev); alert("Error: " + e.message); }
+                                } catch (e) { setRoutes(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                               }}><Trash2 /></button>
                             </div>
                           </td>
@@ -10135,7 +10135,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   const fd = new FormData(); fd.append("id", v.id);
                                   const res = await sbDeleteVehicle(fd);
                                   if (!res?.ok) { setVehicles(prev); alert("No se pudo eliminar: " + (res?.error || "error")); }
-                                } catch (e) { setVehicles(prev); alert("Error: " + e.message); }
+                                } catch (e) { setVehicles(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                               }}><Trash2 /></button>
                             </div>
                           </td>
@@ -10359,7 +10359,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 const fd = new FormData(); fd.append("id", d.id);
                                 const res = await sbToggleDriverVisibility(fd);
                                 if (!res?.ok) { setDrivers(prev); alert("No se pudo cambiar visibilidad: " + (res?.error || "error")); }
-                              } catch (e) { setDrivers(prev); alert("Error: " + e.message); }
+                              } catch (e) { setDrivers(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                             }}
                               style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, color: d.webVisible ? "#8DC63F" : "rgba(255,255,255,.25)" }}>
                               {d.webVisible ? <Eye style={{ width: 14, height: 14 }} /> : <EyeOff style={{ width: 14, height: 14 }} />}
@@ -10736,9 +10736,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       onClick={async () => {
                                         try {
                                           await navigator.clipboard.writeText(inv.stripePaymentLinkUrl);
-                                          alert(lang==="es"?"Link copiado al portapapeles":"Link copied to clipboard");
+                                          showToast({ type: "success", message: lang==="es"?"Link copiado al portapapeles":"Link copied to clipboard" });
                                         } catch {
-                                          alert(lang==="es"?"No se pudo copiar":"Could not copy");
+                                          showToast({ type: "error", message: lang==="es"?"No se pudo copiar":"Could not copy" });
                                         }
                                       }}
                                     ><Copy /></button>
@@ -10757,9 +10757,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                           const res = await sbRegenerateStripeLink(fd);
                                           if (res?.ok) {
                                             await reloadInvoices();
-                                            alert(lang==="es"?"Link generado":"Link generated");
+                                            showToast({ type: "success", message: lang==="es"?"Link generado":"Link generated" });
                                           } else {
-                                            alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                                            showToast({ type: "error", message: (lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown") });
                                           }
                                         } finally {
                                           setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
@@ -10778,9 +10778,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       onClick={async () => {
                                         try {
                                           await navigator.clipboard.writeText(inv.paypalPaymentLinkUrl);
-                                          alert(lang==="es"?"Link PayPal copiado":"PayPal link copied");
+                                          showToast({ type: "success", message: lang==="es"?"Link PayPal copiado":"PayPal link copied" });
                                         } catch {
-                                          alert(lang==="es"?"No se pudo copiar":"Could not copy");
+                                          showToast({ type: "error", message: lang==="es"?"No se pudo copiar":"Could not copy" });
                                         }
                                       }}
                                     ><Copy /></button>
@@ -10799,9 +10799,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                           const res = await sbRegeneratePaypalLink(fd);
                                           if (res?.ok) {
                                             await reloadInvoices();
-                                            alert(lang==="es"?"Link PayPal generado":"PayPal link generated");
+                                            showToast({ type: "success", message: lang==="es"?"Link PayPal generado":"PayPal link generated" });
                                           } else {
-                                            alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                                            showToast({ type: "error", message: (lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown") });
                                           }
                                         } finally {
                                           setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
@@ -10824,7 +10824,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                           window.open(res.data.pdfUrl, "_blank");
                                           await reloadInvoices();
                                         } else {
-                                          alert((lang==="es"?"Error generando PDF: ":"PDF error: ") + (res?.error || "unknown"));
+                                          showToast({ type: "error", message: (lang==="es"?"Error generando PDF: ":"PDF error: ") + (res?.error || "unknown") });
                                         }
                                       } finally {
                                         setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
@@ -10845,7 +10845,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                         if (res?.ok && res.data?.url) {
                                           window.open(res.data.url, "_blank");
                                         } else {
-                                          alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                                          showToast({ type: "error", message: (lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown") });
                                         }
                                       } finally {
                                         setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
@@ -10890,7 +10890,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                     const res = await sbUpdateInvoiceStatus(fd);
                                     if (!res?.ok) { alert((lang==="es"?"No se pudo consolidar: ":"Could not consolidate: ") + (res?.error || "error")); return; }
                                     await reloadInvoices();
-                                  } catch (e) { alert("Error: " + e.message); }
+                                  } catch (e) { showToast({ type: "error", message: "Error: " + e.message }); }
                                 }}
                               ><CheckCircle /></button>
                             )}
@@ -11387,7 +11387,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         if (!res?.ok) { alert((lang==="es"?"No se pudo consolidar: ":"Could not consolidate: ") + (res?.error || "error")); return; }
                         await reloadInvoices();
                         setViewingInvoice(null);
-                      } catch (e) { alert("Error: " + e.message); }
+                      } catch (e) { showToast({ type: "error", message: "Error: " + e.message }); }
                     }}>
                       <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Consolidar como pendiente" : "Consolidate as pending"}
                     </button>
@@ -11410,7 +11410,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         if (!res?.ok) { alert((lang==="es"?"No se pudo marcar como enviada: ":"Could not mark as sent: ") + (res?.error || "error")); return; }
                         await reloadInvoices();
                         setViewingInvoice(null);
-                      } catch (e) { alert("Error: " + e.message); }
+                      } catch (e) { showToast({ type: "error", message: "Error: " + e.message }); }
                     }}>
                       <ArrowRight style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como enviada" : "Mark as sent"}
                     </button>
@@ -11487,7 +11487,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         // Optimistic + reload para confirmar.
                         setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "cancelled" } : i));
                         await reloadInvoices();
-                      } catch (e) { alert("Error: " + e.message); }
+                      } catch (e) { showToast({ type: "error", message: "Error: " + e.message }); }
                     } else {
                       setInvoiceConfirm(null);
                       try {
@@ -11498,7 +11498,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         if (!res?.ok) { alert((lang==="es"?"No se pudo cancelar: ":"Could not cancel: ") + (res?.error || "error")); return; }
                         setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "cancelled" } : i));
                         await reloadInvoices();
-                      } catch (e) { alert("Error: " + e.message); }
+                      } catch (e) { showToast({ type: "error", message: "Error: " + e.message }); }
                     }
                   }}>
                     {isDelete
@@ -11568,7 +11568,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     if (paymentRef.trim()) fd.append("paymentRef", paymentRef.trim());
                     const res = await sbMarkInvoicePaid(fd);
                     if (!res?.ok) {
-                      alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown"));
+                      showToast({ type: "error", message: (lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown") });
                       return;
                     }
                     await reloadInvoices();
@@ -12305,7 +12305,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 const fd = new FormData(); fd.append("id", p.id);
                                 const res = await sbDeletePartner(fd);
                                 if (!res?.ok) { setPartnersList(prev); alert("No se pudo eliminar: " + (res?.error || "error")); }
-                              } catch (e) { setPartnersList(prev); alert("Error: " + e.message); }
+                              } catch (e) { setPartnersList(prev); showToast({ type: "error", message: "Error: " + e.message }); }
                             }}><Trash2 /></button>
                           </div>
                         </td>
@@ -12489,7 +12489,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 if (!res?.ok) { setExperiencesList(prev); alert((lang==="es"?"No se pudo eliminar: ":"Could not delete: ") + (res?.error || "error")); return; }
                                 const idx = EXPERIENCES.findIndex(x => x.id === e.id);
                                 if (idx >= 0) EXPERIENCES.splice(idx, 1);
-                              } catch (err) { setExperiencesList(prev); alert("Error: " + err.message); }
+                              } catch (err) { setExperiencesList(prev); showToast({ type: "error", message: "Error: " + err.message }); }
                             }}><Trash2 /></button>
                           </div>
                         </td>
@@ -12582,7 +12582,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         EXPERIENCES.length = 0;
                         (fresh || []).forEach(x => EXPERIENCES.push(x));
                         setEditingExperience(null);
-                      } catch (err) { alert("Error: " + err.message); }
+                      } catch (err) { showToast({ type: "error", message: "Error: " + err.message }); }
                     }}><Check />{lang==="es"?"Guardar":"Save"}</button>
                   </div>
                 </div>
@@ -13717,7 +13717,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       setNotifPrefsSaved(true);
                       setTimeout(() => setNotifPrefsSaved(false), 2500);
                     } else {
-                      alert((lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || ""));
+                      showToast({ type: "error", message: (lang === "es" ? "No se pudo guardar: " : "Could not save: ") + (res?.error || "") });
                     }
                   }}
                   onTest={async () => {
