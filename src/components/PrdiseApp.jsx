@@ -9818,20 +9818,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <p className="sub">{lang==="es"?"Rutas, vehículos, conductores y reservas — gestión completa de flota":"Routes, vehicles, drivers and bookings — full fleet management"}</p>
               </div>
               <div className="adm-ph-actions" style={{ flexWrap: "wrap" }}>
-                <button className="adm-btn adm-btn-ghost" onClick={() => {
-                  // Exporta el contenido de la sub-pestaña activa para evitar
-                  // confundir al admin con un dump enorme de todo.
-                  const ts = new Date().toISOString().slice(0,10);
-                  if (transferTab === "routes") {
-                    downloadCsv(`prdise-routes-${ts}.csv`, routes.map(r => ({ from: r.from, to: r.to, price_usd: r.price, max_pax: r.maxPax, vehicle_id: r.vehicleId, distance_km: r.distanceKm, duration_min: r.durationMinutes, featured: r.featured ? "yes" : "no", active: r.active !== false ? "yes" : "no" })));
-                  } else if (transferTab === "locations") {
-                    downloadCsv(`prdise-locations-${ts}.csv`, transferLocations.map(l => ({ name: l.name, label_es: l.label_es, label_en: l.label_en, sort_order: l.sort_order, active: l.active ? "yes" : "no" })));
-                  } else if (transferTab === "vehicles") {
-                    downloadCsv(`prdise-vehicles-${ts}.csv`, vehicles.map(v => ({ name: v.name, type: v.type, plate: v.plate, seats: v.seats, bags: v.bags, base_price_usd: v.base, status: v.status })));
-                  } else if (transferTab === "drivers") {
-                    downloadCsv(`prdise-drivers-${ts}.csv`, drivers.map(d => ({ name: d.name, phone: d.phone, email: d.email, license: d.license, status: d.status, trips: d.trips })));
-                  }
-                }}><Database />{t("adm_export")}</button>
+                {/* PM 2026-06-29: botón EXPORTAR oculto por pedido del
+                    cliente. El export sigue disponible para otras
+                    secciones (publicaciones, tours, stays); solo se quita
+                    de transfers. Si en el futuro lo querés activar, descomentar. */}
                 {/* PM 2026-06-11: shortcuts CRUD siempre visibles. No es
                     intuitivo que el botón "Add new" cambie según la pestaña
                     activa, así que cada acción tiene su propio botón. */}
@@ -17490,32 +17480,19 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                 </div>
               </div>
               <div className="adm-fg-row">
-                {/* PM 2026-06-26: WhatsApp con un toggle "Usar el mismo
-                    teléfono". Caso común — uno solo basta. Si el cliente
-                    quiere uno distinto, destilda y edita. */}
+                {/* PM 2026-06-29: un solo campo Teléfono/WhatsApp.
+                    Antes había un checkbox "usar el mismo número" que no
+                    se podía destildar correctamente y confundía. Hoy
+                    asumimos que el número de teléfono ES el de WhatsApp
+                    (caso común). Si el cliente tiene uno distinto, se
+                    edita desde el perfil del cliente. */}
                 <div className="adm-fg" style={{ flex: 1 }}>
                   <label className="adm-fl">{T("Teléfono / WhatsApp", "Phone / WhatsApp")}</label>
                   <input className="adm-fi" value={customerPhone} onChange={(e) => {
                     setCustomerPhone(e.target.value);
-                    // Si WhatsApp estaba sincronizado con teléfono, mantenerlo.
-                    if (!customerWhatsapp || customerWhatsapp === customerPhone) {
-                      setCustomerWhatsapp(e.target.value);
-                    }
+                    // WhatsApp se mantiene sincronizado con teléfono.
+                    setCustomerWhatsapp(e.target.value);
                   }} placeholder="+1 787 555 0100" />
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                    <input
-                      type="checkbox"
-                      id="wa-same"
-                      checked={!customerWhatsapp || customerWhatsapp === customerPhone}
-                      onChange={(e) => setCustomerWhatsapp(e.target.checked ? customerPhone : (customerWhatsapp || customerPhone))}
-                    />
-                    <label htmlFor="wa-same" style={{ fontSize: 11, color: "rgba(255,255,255,.6)", cursor: "pointer" }}>
-                      {T("Usar el mismo número para WhatsApp", "Use the same number for WhatsApp")}
-                    </label>
-                  </div>
-                  {customerWhatsapp && customerWhatsapp !== customerPhone && (
-                    <input className="adm-fi" value={customerWhatsapp} onChange={(e) => setCustomerWhatsapp(e.target.value)} placeholder={T("WhatsApp distinto", "Different WhatsApp")} style={{ marginTop: 6 }} />
-                  )}
                 </div>
                 <div className="adm-fg" style={{ flex: 1 }}>
                   <label className="adm-fl">{T("Vencimiento", "Due date")}</label>
