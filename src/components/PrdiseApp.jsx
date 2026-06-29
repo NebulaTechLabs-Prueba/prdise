@@ -7250,6 +7250,12 @@ function AdminPanel({ onClose }) {
   };
   const [editingUser, setEditingUser] = useState(null);
   const [deletingUser, setDeletingUser] = useState(null);
+  // PM 2026-06-29: confirm dialog estilo del proyecto (reemplaza window.confirm).
+  // Uso: const ok = await askConfirm({ title, body, confirmLabel, danger });
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const askConfirm = (opts) => new Promise((resolve) => {
+    setConfirmDialog({ ...opts, resolve });
+  });
   // Per-user service permissions: { [userId]: { tours: {[serviceId]: 'view'|'edit'|'hidden'}, stays: {...}, transfers: {...}, canCreate: { tours: bool, stays: bool, transfers: bool } } }
   const [userServicePerms, setUserServicePerms] = useState(() => PRDISE.load("userServicePerms", {}));
   useEffect(() => { PRDISE.save("userServicePerms", userServicePerms); }, [userServicePerms]);
@@ -8256,7 +8262,16 @@ function AdminPanel({ onClose }) {
     }
   };
   const deleteItem = async (type, id) => {
-    if (!confirm("Delete this item? This cannot be undone.")) return;
+    const label = type === "hotels" ? (lang==="es"?"estadía":"stay") : type === "tours" ? "tour" : (lang==="es"?"vehículo":"vehicle");
+    const ok = await askConfirm({
+      title: lang==="es" ? "Eliminar elemento" : "Delete item",
+      body: lang==="es"
+        ? `Vas a eliminar este ${label}. Esta acción no se puede deshacer.`
+        : `You're about to delete this ${label}. This action cannot be undone.`,
+      confirmLabel: lang==="es" ? "Eliminar" : "Delete",
+      accent: "danger",
+    });
+    if (!ok) return;
     const setter = type === "hotels" ? setHotels : type === "tours" ? setTours : setVehicles;
     const list = type === "hotels" ? hotels : type === "tours" ? tours : vehicles;
     const item = list.find((it) => it.id === id);
@@ -9557,12 +9572,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 <div className="adm-row-actions">
                                   <button className="adm-icon-btn" title="Edit" onClick={() => setEditingPostCategory({ ...c })}><Pencil /></button>
                                   <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
-                                    const msg = postsCount > 0
+                                    const body = postsCount > 0
                                       ? (lang === "es"
-                                        ? `¿Eliminar "${c.name_es}"? Los ${postsCount} post(s) que la usan quedarán sin color de categoría.`
-                                        : `Delete "${c.name_en}"? The ${postsCount} post(s) using it will lose the category color.`)
+                                        ? `Vas a eliminar "${c.name_es}". Los ${postsCount} post(s) que la usan quedarán sin color de categoría.`
+                                        : `You're about to delete "${c.name_en}". The ${postsCount} post(s) using it will lose the category color.`)
                                       : (lang === "es" ? "¿Eliminar esta categoría?" : "Delete this category?");
-                                    if (!confirm(msg)) return;
+                                    const ok = await askConfirm({
+                                      title: lang === "es" ? "Eliminar categoría" : "Delete category",
+                                      body,
+                                      confirmLabel: lang === "es" ? "Eliminar" : "Delete",
+                                      accent: "danger",
+                                    });
+                                    if (!ok) return;
                                     const prev = postCategoriesList;
                                     setPostCategoriesList(postCategoriesList.filter(x => x.id !== c.id));
                                     try {
@@ -9787,7 +9808,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 {p.status === "published" ? <EyeOff /> : <Eye />}
                               </button>
                               <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
-                                if (!confirm(lang==="es"?"¿Archivar este post?":"Archive this post?")) return;
+                                const ok = await askConfirm({
+                                  title: lang==="es" ? "Archivar publicación" : "Archive post",
+                                  body: lang==="es"
+                                    ? "El post quedará archivado y dejará de mostrarse al público. Podés revertirlo cambiando su estado."
+                                    : "The post will be archived and stop showing to the public. You can revert it by changing its status.",
+                                  confirmLabel: lang==="es" ? "Archivar" : "Archive",
+                                  accent: "danger",
+                                });
+                                if (!ok) return;
                                 const prev = posts;
                                 setPosts(posts.filter(x => x.id !== p.id));
                                 try {
@@ -9952,7 +9981,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               }}>{r.active !== false ? <EyeOff /> : <Eye />}</button>
                               <button className="adm-icon-btn" onClick={() => setEditing({ type: "route", item: r })}><Pencil /></button>
                               <button className="adm-icon-btn danger" onClick={async () => {
-                                if (!confirm(lang==="es"?"¿Eliminar esta ruta?":"Delete this route?")) return;
+                                const ok = await askConfirm({
+                                  title: lang==="es" ? "Eliminar ruta" : "Delete route",
+                                  body: lang==="es"
+                                    ? "La ruta dejará de estar disponible para nuevas facturas. Las facturas históricas que la referencian no se ven afectadas."
+                                    : "The route will no longer be available for new invoices. Historical invoices referencing it are not affected.",
+                                  confirmLabel: lang==="es" ? "Eliminar" : "Delete",
+                                  accent: "danger",
+                                });
+                                if (!ok) return;
                                 const prev = routes;
                                 setRoutes(routes.filter(x => x.id !== r.id));
                                 try {
@@ -10066,7 +10103,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             <div className="adm-row-actions">
                               <button className="adm-icon-btn" onClick={() => setEditingVehicle({...v})}><Pencil /></button>
                               <button className="adm-icon-btn danger" onClick={async () => {
-                                if (!confirm(lang==="es"?"¿Eliminar este vehículo?":"Delete this vehicle?")) return;
+                                const ok = await askConfirm({
+                                  title: lang==="es" ? "Eliminar vehículo" : "Delete vehicle",
+                                  body: lang==="es"
+                                    ? "El vehículo se elimina del catálogo. Las rutas que lo tenían asignado quedan sin vehículo (se pueden re-asignar)."
+                                    : "The vehicle is removed from the catalog. Routes that had it assigned will be left without one (you can re-assign).",
+                                  confirmLabel: lang==="es" ? "Eliminar" : "Delete",
+                                  accent: "danger",
+                                });
+                                if (!ok) return;
                                 const prev = vehicles;
                                 setVehicles(vehicles.filter(x => x.id !== v.id));
                                 try {
@@ -10811,7 +10856,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                 style={{ color: "#F5A623", borderColor: "rgba(245,166,35,.4)", opacity: canEditInvoices() ? 1 : 0.3, cursor: canEditInvoices() ? "pointer" : "not-allowed" }}
                                 onClick={async () => {
                                   if (!canEditInvoices()) return;
-                                  if (!confirm(lang==="es"?`Consolidar la factura ${inv.num} como Pendiente? El cliente podrá pagar.`:`Consolidate invoice ${inv.num} as Pending? Customer will be able to pay.`)) return;
+                                  const ok = await askConfirm({
+                                    title: lang==="es" ? "Consolidar factura" : "Consolidate invoice",
+                                    body: lang==="es"
+                                      ? `Vas a consolidar la factura ${inv.num} como Pendiente. Desde ese momento se podrá generar un link de pago y enviarse al cliente.`
+                                      : `You're about to consolidate invoice ${inv.num} as Pending. From that moment a payment link can be generated and sent to the customer.`,
+                                    confirmLabel: lang==="es" ? "Consolidar" : "Consolidate",
+                                    accent: "gold",
+                                    icon: "check",
+                                  });
+                                  if (!ok) return;
                                   try {
                                     const fd = new FormData();
                                     fd.append("id", inv.sbId || inv.id);
@@ -12115,9 +12169,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       className="adm-icon-btn"
                                       title={lang==="es"?"Reactivar cliente":"Reactivate customer"}
                                       onClick={async () => {
-                                        if (!confirm(lang==="es"
-                                          ? `¿Reactivar a "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? Podrá iniciar sesión y reservar de nuevo.`
-                                          : `Reactivate "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? They will be able to sign in and book again.`)) return;
+                                        const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email;
+                                        const ok = await askConfirm({
+                                          title: lang==="es" ? "Reactivar cliente" : "Reactivate customer",
+                                          body: lang==="es"
+                                            ? `Vas a reactivar a "${name}". Podrá iniciar sesión y reservar de nuevo.`
+                                            : `You're about to reactivate "${name}". They will be able to sign in and book again.`,
+                                          confirmLabel: lang==="es" ? "Reactivar" : "Reactivate",
+                                          accent: "gold",
+                                        });
+                                        if (!ok) return;
                                         const fd = new FormData(); fd.append("targetUserId", c.id);
                                         const res = await sbToggleUserStatus(fd);
                                         if (!res?.ok) { alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "")); return; }
@@ -12130,9 +12191,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       className="adm-icon-btn"
                                       title={lang==="es"?"Deshabilitar cliente":"Disable customer"}
                                       onClick={async () => {
-                                        if (!confirm(lang==="es"
-                                          ? `¿Deshabilitar a "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? No podrá iniciar sesión hasta que lo reactives. Sus reservas y facturas quedan intactas.`
-                                          : `Disable "${[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}"? They won't be able to sign in until reactivated. Their bookings and invoices remain intact.`)) return;
+                                        const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email;
+                                        const ok = await askConfirm({
+                                          title: lang==="es" ? "Deshabilitar cliente" : "Disable customer",
+                                          body: lang==="es"
+                                            ? `Vas a deshabilitar a "${name}". No podrá iniciar sesión hasta que lo reactives. Sus reservas y facturas quedan intactas.`
+                                            : `You're about to disable "${name}". They won't be able to sign in until reactivated. Their bookings and invoices remain intact.`,
+                                          confirmLabel: lang==="es" ? "Deshabilitar" : "Disable",
+                                          accent: "danger",
+                                        });
+                                        if (!ok) return;
                                         const fd = new FormData(); fd.append("targetUserId", c.id);
                                         const res = await sbToggleUserStatus(fd);
                                         if (!res?.ok) { alert((lang==="es"?"Error: ":"Error: ") + (res?.error || "")); return; }
@@ -12205,7 +12273,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <div className="adm-row-actions">
                             <button className="adm-icon-btn" title="Edit" onClick={() => setEditingPartner({ ...p })}><Pencil /></button>
                             <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
-                              if (!confirm(lang==="es"?"¿Eliminar este partner? Stays/tours que apunten a él perderán el link.":"Delete this partner? Stays/tours pointing to it will lose the link.")) return;
+                              const ok = await askConfirm({
+                                title: lang==="es" ? "Eliminar alianza" : "Delete partner",
+                                body: lang==="es"
+                                  ? "El partner se elimina. Stays y tours que apunten a él perderán el link, pero los registros no se eliminan."
+                                  : "The partner is removed. Stays and tours pointing to it will lose the link, but the records are not deleted.",
+                                confirmLabel: lang==="es" ? "Eliminar" : "Delete",
+                                accent: "danger",
+                              });
+                              if (!ok) return;
                               const prev = partnersList;
                               setPartnersList(partnersList.filter(x => x.id !== p.id));
                               try {
@@ -12376,12 +12452,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <div className="adm-row-actions">
                             <button className="adm-icon-btn" title="Edit" onClick={() => setEditingExperience({ ...e })}><Pencil /></button>
                             <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
-                              const msg = toursCount > 0
+                              const body = toursCount > 0
                                 ? (lang==="es"
-                                  ? `¿Eliminar "${e.name_es}"? Los ${toursCount} tour(s) asociados perderán la asignación (no se borran).`
-                                  : `Delete "${e.name_en}"? The ${toursCount} associated tour(s) will lose the link (not deleted).`)
+                                  ? `Vas a eliminar "${e.name_es}". Los ${toursCount} tour(s) asociados perderán la asignación (no se borran).`
+                                  : `You're about to delete "${e.name_en}". The ${toursCount} associated tour(s) will lose the link (not deleted).`)
                                 : (lang==="es"?"¿Eliminar esta experiencia?":"Delete this experience?");
-                              if (!confirm(msg)) return;
+                              const ok = await askConfirm({
+                                title: lang==="es" ? "Eliminar experiencia" : "Delete experience",
+                                body,
+                                confirmLabel: lang==="es" ? "Eliminar" : "Delete",
+                                accent: "danger",
+                              });
+                              if (!ok) return;
                               const prev = experiencesList;
                               setExperiencesList(experiencesList.filter(x => x.id !== e.id));
                               try {
@@ -14577,6 +14659,49 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           setEditing(null);
         }} />
       )}
+
+      {/* PM 2026-06-29: confirm dialog reusable estilo del proyecto.
+          Reemplaza window.confirm() en todo el AdminPanel. Devuelve via
+          promise (askConfirm helper). accent: 'gold' | 'danger'. */}
+      {confirmDialog && (() => {
+        const isDanger = confirmDialog.accent === "danger";
+        const close = (ok) => { confirmDialog.resolve(!!ok); setConfirmDialog(null); };
+        return (
+          <div className="adm-modal-bg" onClick={() => close(false)} style={{ zIndex: 70 }}>
+            <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+              <button className="adm-modal-close" onClick={() => close(false)}><X /></button>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 56, height: 56, borderRadius: "50%", margin: "0 auto 16px",
+                background: isDanger ? "rgba(239,108,43,.12)" : "rgba(245,166,35,.12)",
+              }}>
+                {isDanger
+                  ? <AlertTriangle style={{ width: 26, height: 26, color: "#EF6C2B" }} />
+                  : <CheckCircle style={{ width: 26, height: 26, color: "var(--gold)" }} />}
+              </div>
+              <h3 style={{ textAlign: "center", color: "#fff", marginBottom: 8 }}>
+                {confirmDialog.title}
+              </h3>
+              <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,.65)", marginBottom: 6, lineHeight: 1.55, padding: "0 8px" }}>
+                {confirmDialog.body}
+              </p>
+              <div className="adm-modal-actions" style={{ justifyContent: "center", marginTop: 18 }}>
+                <button className="adm-btn adm-btn-ghost" onClick={() => close(false)}>
+                  {confirmDialog.cancelLabel || (lang === "es" ? "Cancelar" : "Cancel")}
+                </button>
+                <button
+                  className="adm-btn adm-btn-primary"
+                  style={isDanger ? { background: "#EF6C2B", borderColor: "#EF6C2B" } : undefined}
+                  onClick={() => close(true)}
+                >
+                  {isDanger ? <AlertTriangle style={{ width: 12, height: 12 }} /> : <CheckCircle style={{ width: 12, height: 12 }} />}
+                  {confirmDialog.confirmLabel || (lang === "es" ? "Confirmar" : "Confirm")}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
