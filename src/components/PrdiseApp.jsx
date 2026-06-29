@@ -17821,9 +17821,16 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
                   type="button"
                   onClick={() => setPaymentMethod(m.id)}
                   style={{
+                    // PM 2026-06-29: border y outline constantes en ancho
+                    // (solo cambia el color al seleccionar). Antes pasaba
+                    // de 1px a 1.5px y el botón crecía 0.5px, desbordando
+                    // el contenedor con un borde dorado "cortado".
                     textAlign: "left", padding: 12, borderRadius: 10, cursor: "pointer",
                     background: sel ? "rgba(245,166,35,.1)" : "rgba(255,255,255,.03)",
-                    border: sel ? "1.5px solid rgba(245,166,35,.5)" : "1px solid rgba(255,255,255,.08)",
+                    border: `1px solid ${sel ? "rgba(245,166,35,.55)" : "rgba(255,255,255,.08)"}`,
+                    outline: sel ? "1px solid rgba(245,166,35,.35)" : "none",
+                    outlineOffset: sel ? "1px" : "0",
+                    transition: "background .15s ease, border-color .15s ease, outline-color .15s ease",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
