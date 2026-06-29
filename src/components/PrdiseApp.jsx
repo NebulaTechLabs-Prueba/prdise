@@ -5383,7 +5383,7 @@ function AccountPage() {
                 const userData = PRDISE.load("user", null);
                 const userEmail = (session?.email || userData?.email || "").toLowerCase();
                 if (!userEmail) {
-                  alert(lang === "es" ? "No se pudo identificar tu cuenta." : "Could not identify your account.");
+                  toast({ type: "error", message: lang === "es" ? "No se pudo identificar tu cuenta." : "Could not identify your account." });
                   return;
                 }
                 if (!window.confirm(lang === "es"
@@ -5399,7 +5399,7 @@ function AccountPage() {
                   // específico; otros errores sí los reportamos.
                   const msg = String(e?.message || e);
                   if (!/NEXT_REDIRECT/.test(msg)) {
-                    alert((lang === "es" ? "No se pudo desactivar: " : "Could not deactivate: ") + msg);
+                    toast({ type: "error", message: (lang === "es" ? "No se pudo desactivar: " : "Could not deactivate: ") + msg });
                     return;
                   }
                 }
@@ -6067,7 +6067,7 @@ function ContactPage() {
   const [sent, setSent] = useState(false);
   const submit = async () => {
     if (!form.name || !form.email || !form.message) {
-      alert(lang==="es"?"Completá los campos requeridos":"Please complete the required fields");
+      toast({ type: "error", message: lang==="es"?"Completá los campos requeridos":"Please complete the required fields" });
       return;
     }
     try {
@@ -6078,11 +6078,11 @@ function ContactPage() {
       fd.append("message", `[${form.subject}] ${form.message}`);
       const res = await sbSubmitContact(fd);
       if (!res?.ok) {
-        alert((lang==="es"?"No se pudo enviar el mensaje: ":"Could not send the message: ") + (res?.error || (lang==="es"?"error desconocido":"unknown error")));
+        toast({ type: "error", message: (lang==="es"?"No se pudo enviar el mensaje: ":"Could not send the message: ") + (res?.error || (lang==="es"?"error desconocido":"unknown error")) });
         return;
       }
     } catch (e) {
-      alert((lang==="es"?"Error al enviar el mensaje: ":"Error sending the message: ") + (e?.message || e));
+      toast({ type: "error", message: (lang==="es"?"Error al enviar el mensaje: ":"Error sending the message: ") + (e?.message || e) });
       return;
     }
     setSent(true);
@@ -7546,7 +7546,7 @@ function AdminPanel({ onClose }) {
         return;
       }
       Object.assign(SITE_SETTINGS, legalSettings);
-      alert(lang === "es" ? "Contenido legal guardado." : "Legal content saved.");
+      toast({ type: "success", message: lang === "es" ? "Contenido legal guardado." : "Legal content saved." });
     } catch (e) {
       toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)) });
     } finally {
@@ -9688,7 +9688,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       const isNew = editingPostCategory.id === "new";
                       if (!editingPostCategory.slug || !editingPostCategory.name_es || !editingPostCategory.name_en) {
-                        alert(lang === "es" ? "Slug, nombre ES y nombre EN son requeridos." : "Slug, name ES and name EN are required.");
+                        toast({ type: "error", message: lang === "es" ? "Slug, nombre ES y nombre EN son requeridos." : "Slug, name ES and name EN are required." });
                         return;
                       }
                       const fd = new FormData();
@@ -10321,7 +10321,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         res = { ok: false, error: e?.message || String(e) };
                       }
                       if (!res?.ok) {
-                        alert("No se pudo guardar el vehículo: " + (res?.error || "error desconocido"));
+                        toast({ type: "error", message: "No se pudo guardar el vehículo: " + (res?.error || "error desconocido") });
                         return;
                       }
                       if (isNew) {
@@ -10499,7 +10499,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         res = await action(fd);
                       } catch (e) { res = { ok: false, error: e?.message || String(e) }; }
                       if (!res?.ok) {
-                        alert("No se pudo guardar el conductor: " + (res?.error || "error desconocido"));
+                        toast({ type: "error", message: "No se pudo guardar el conductor: " + (res?.error || "error desconocido") });
                         return;
                       }
                       if (isNew) {
@@ -10994,14 +10994,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                           if (stRes?.ok) {
                                             setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent" } : i));
                                           } else {
-                                            alert((lang==="es"?"WhatsApp abierto, pero no se pudo marcar como enviada: ":"WhatsApp opened, but could not mark as sent: ") + (stRes?.error || "unknown"));
+                                            toast({ type: "error", message: (lang==="es"?"WhatsApp abierto, pero no se pudo marcar como enviada: ":"WhatsApp opened, but could not mark as sent: ") + (stRes?.error || "unknown") });
                                           }
                                         }
                                       } else {
-                                        alert((lang==="es"?"No se pudo abrir WhatsApp: ":"Could not open WhatsApp: ") + (res?.error || "unknown"));
+                                        toast({ type: "error", message: (lang==="es"?"No se pudo abrir WhatsApp: ":"Could not open WhatsApp: ") + (res?.error || "unknown") });
                                       }
                                     } else {
-                                      alert(lang === "es" ? "Factura legacy sin link Supabase" : "Legacy invoice without Supabase link");
+                                      toast({ type: "info", message: lang === "es" ? "Factura legacy sin link Supabase" : "Legacy invoice without Supabase link" });
                                     }
                                   }}
                                 ><Send /></button>
@@ -11225,7 +11225,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   }
                   setEditingInvoice(null);
                   setInvoiceErrors({});
-                  alert(lang === "es" ? `Factura ${editingInvoice.num} enviada a ${editingInvoice.email}. Vence el ${dueDate}.` : `Invoice ${editingInvoice.num} sent to ${editingInvoice.email}. Due ${dueDate}.`);
+                  toast({ type: "success", message: lang === "es" ? `Factura ${editingInvoice.num} enviada a ${editingInvoice.email}. Vence el ${dueDate}.` : `Invoice ${editingInvoice.num} sent to ${editingInvoice.email}. Due ${dueDate}.`, durationMs: 6000 });
                 }}><Send style={{ width: 12, height: 12 }} />{lang === "es" ? "Guardar y Enviar" : "Save & Send"}</button>
                 <button className="adm-btn adm-btn-primary" onClick={() => {
                   const errs = {};
@@ -11685,9 +11685,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <button className="adm-btn adm-btn-ghost" onClick={() => {
                   const text = `To: ${composeEmail.to}\nSubject: ${composeEmail.subject}\n\n${composeEmail.body}`;
                   if (navigator.clipboard) {
-                    navigator.clipboard.writeText(text).then(() => alert(lang === "es" ? "Correo copiado al portapapeles" : "Email copied to clipboard"));
+                    navigator.clipboard.writeText(text).then(() => toast({ type: "success", message: lang === "es" ? "Correo copiado al portapapeles" : "Email copied to clipboard" }));
                   } else {
-                    alert(text);
+                    toast({ type: "info", message: text });
                   }
                 }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar" : "Copy"}</button>
                 <button className="adm-btn adm-btn-ghost" onClick={() => {
@@ -11697,14 +11697,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   window.location.href = url;
                 }}><ExternalLink style={{ width: 12, height: 12 }} />{lang === "es" ? "Abrir en Mail" : "Open in Mail"}</button>
                 <button className="adm-btn adm-btn-primary" onClick={() => {
-                  if (!composeEmail.to || !composeEmail.subject) { alert(lang === "es" ? "Completa destinatario y asunto" : "Complete recipient and subject"); return; }
+                  if (!composeEmail.to || !composeEmail.subject) { toast({ type: "error", message: lang === "es" ? "Completa destinatario y asunto" : "Complete recipient and subject" }); return; }
                   // Save to sent log for this demo
                   const sentLog = PRDISE.load("sentEmailsLog", []);
                   sentLog.unshift({ id: "sent-" + Date.now(), to: composeEmail.to, subject: composeEmail.subject, body: composeEmail.body, sentAt: new Date().toISOString() });
                   PRDISE.save("sentEmailsLog", sentLog);
-                  alert(lang === "es"
-                    ? `Correo registrado para ${composeEmail.to}.\n\nNota: para envío real, conecta SendGrid o Resend en Configuración → Integraciones.`
-                    : `Email logged for ${composeEmail.to}.\n\nNote: for real delivery, connect SendGrid or Resend in Settings → Integrations.`);
+                  toast({ type: "success", message: lang === "es"
+                    ? `Correo registrado para ${composeEmail.to}. Para envío real, conectá SendGrid o Resend en Configuración → Integraciones.`
+                    : `Email logged for ${composeEmail.to}. For real delivery, connect SendGrid or Resend in Settings → Integrations.`, durationMs: 6000 });
                   setComposeEmail(null);
                 }}><Send style={{ width: 12, height: 12 }} />{lang === "es" ? "Enviar" : "Send"}</button>
               </div>
@@ -12407,7 +12407,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingPartner(null)}>{lang==="es"?"Cancelar":"Cancel"}</button>
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       if (!editingPartner.name || !editingPartner.slug || !editingPartner.base_url) {
-                        alert(lang==="es"?"Nombre, slug y URL base son requeridos":"Name, slug and base URL are required"); return;
+                        toast({ type: "error", message: lang==="es"?"Nombre, slug y URL base son requeridos":"Name, slug and base URL are required" }); return;
                       }
                       const isNew = editingPartner.id === "new";
                       let res = { ok: false, error: "" };
@@ -12608,7 +12608,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       const isNew = editingExperience.id === "new";
                       if (!editingExperience.slug || !editingExperience.name_es || !editingExperience.name_en) {
-                        alert(lang==="es"?"Slug, nombre ES y nombre EN son requeridos.":"Slug, name ES and name EN are required.");
+                        toast({ type: "error", message: lang==="es"?"Slug, nombre ES y nombre EN son requeridos.":"Slug, name ES and name EN are required." });
                         return;
                       }
                       const fd = new FormData();
@@ -13386,12 +13386,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         if (!editingRole.name?.trim()) { alert(lang === "es" ? "El nombre es requerido" : "Name is required"); return; }
                         // If duplicating Super Admin name, prevent it
                         if (editingRole.name === "Super Admin" && roles.find(r => r.name === "Super Admin" && r.id !== editingRole.id)) {
-                          alert(lang === "es" ? "Ese nombre está reservado" : "That name is reserved");
+                          toast({ type: "error", message: lang === "es" ? "Ese nombre está reservado" : "That name is reserved" });
                           return;
                         }
                         // Check duplicate names
                         if (roles.some(r => r.id !== editingRole.id && r.name.toLowerCase() === editingRole.name.trim().toLowerCase())) {
-                          alert(lang === "es" ? "Ya existe un rol con ese nombre" : "A role with that name already exists");
+                          toast({ type: "error", message: lang === "es" ? "Ya existe un rol con ese nombre" : "A role with that name already exists" });
                           return;
                         }
                         if (editingRole.id === "new") {
@@ -13568,7 +13568,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       setTimeout(() => setMaintenanceUrlCopied(false), 2500);
                     } catch {
                       // Fallback: seleccionar el texto si clipboard API falla.
-                      alert(loginUrl);
+                      toast({ type: "info", message: loginUrl, durationMs: 8000 });
                     }
                   };
                   return (
@@ -13776,7 +13776,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       soundPlayedRef.current = false; // permitir que vuelva a sonar al abrirse el bell.
                       setNotifsOpen(true);
                     } else {
-                      alert(res?.error || "Error");
+                      toast({ type: "error", message: res?.error || "Error" });
                     }
                   }}
                 />
@@ -13803,7 +13803,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       const fd = new FormData(); fd.append("email", email);
                       const res = await sbRequestPasswordReset(fd);
                       if (res?.ok === false) { alert((lang==="es"?"Error: ":"Error: ") + (res.error || "")); return; }
-                      alert(lang==="es"?`Te enviamos un correo a ${email} con un enlace para restablecer tu contraseña.`:`We sent an email to ${email} with a link to reset your password.`);
+                      toast({ type: "success", message: lang==="es"?`Te enviamos un correo a ${email} con un enlace para restablecer tu contraseña.`:`We sent an email to ${email} with a link to reset your password.`, durationMs: 6000 });
                     } catch { alert(lang==="es"?"No se pudo enviar el correo. Intenta más tarde.":"Could not send email. Try later."); }
                   }}><Key />{lang==="es"?"Cambiar Contraseña":"Change Password"}</button>
                 </div>
@@ -14370,9 +14370,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       : `Send password reset email to ${c.email}?`)) return;
                     const today = new Date().toISOString().split("T")[0];
                     updateContact({ lastPasswordResetSent: today });
-                    alert(lang === "es"
+                    toast({ type: "success", message: lang === "es"
                       ? `Correo enviado a ${c.email}. El enlace expira en 1 hora.`
-                      : `Email sent to ${c.email}. The link expires in 1 hour.`);
+                      : `Email sent to ${c.email}. The link expires in 1 hour.`, durationMs: 6000 });
                   }}
                   style={{ color: "#29ABE2", borderColor: "rgba(41,171,226,.4)" }}
                 >
@@ -14405,9 +14405,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         PRDISE.save("disabledAccounts", next);
                       }
                     }
-                    alert(lang === "es"
+                    toast({ type: "success", message: lang === "es"
                       ? `Cuenta ${!isActive ? "reactivada" : "desactivada"}.`
-                      : `Account ${!isActive ? "reactivated" : "disabled"}.`);
+                      : `Account ${!isActive ? "reactivated" : "disabled"}.` });
                   }}
                   style={{ color: isActive ? "#EF6C2B" : "#8DC63F", borderColor: isActive ? "rgba(239,108,43,.4)" : "rgba(141,198,63,.4)" }}
                 >
@@ -14692,7 +14692,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             saveResult = { ok: false, error: e?.message || String(e) };
           }
           if (!saveResult?.ok) {
-            alert("No se pudo guardar: " + (saveResult?.error || "error desconocido"));
+            toast({ type: "error", message: "No se pudo guardar: " + (saveResult?.error || "error desconocido") });
             return;
           }
           if (editing.type === "hotel") {
@@ -14975,7 +14975,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       setContentLang("es");
     } catch (err) {
       console.error("Translation error:", err);
-      alert("Translation failed. Please try again.");
+      toast({ type: "error", message: "Translation failed. Please try again." });
     }
     setTranslating(false);
   };
@@ -15378,19 +15378,19 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
        // usa (route_price o route_plus_vehicle). En vehicle_formula puede ser 0.
       if ((routePricingMode === "route_price" || routePricingMode === "route_plus_vehicle")
           && (!routePrice || updated.price <= 0)) {
-        alert(lang === "es"
+        toast({ type: "error", message: lang === "es"
           ? "Con este modo de precio necesitás un precio base mayor a cero."
-          : "This pricing mode requires a base price greater than zero.");
+          : "This pricing mode requires a base price greater than zero." });
         return;
       }
       if ((routePricingMode === "vehicle_formula" || routePricingMode === "route_plus_vehicle")
           && (!updated.distanceKm || updated.distanceKm <= 0)) {
-        alert(lang === "es"
+        toast({ type: "error", message: lang === "es"
           ? "Con este modo de precio necesitás indicar la distancia (km) de la ruta."
-          : "This pricing mode requires the route distance (km).");
+          : "This pricing mode requires the route distance (km)." });
         return;
       }
-      if (!routeVehicleId) { alert(lang === "es" ? "Asigná un vehículo a la ruta antes de guardar." : "Assign a vehicle to the route before saving."); return; }
+      if (!routeVehicleId) { toast({ type: "error", message: lang === "es" ? "Asigná un vehículo a la ruta antes de guardar." : "Assign a vehicle to the route before saving." }); return; }
     }
     // Pricing mixto + categoría — aplica a stays/tours (route ya tiene su propio
     // pricingUnit gestionado arriba).
@@ -16955,7 +16955,7 @@ function AuthToolsPanel({ lang }) {
   const copy = (txt) => {
     try {
       navigator.clipboard.writeText(txt);
-      alert(lang === "es" ? "Copiado al portapapeles." : "Copied to clipboard.");
+      toast({ type: "success", message: lang === "es" ? "Copiado al portapapeles." : "Copied to clipboard." });
     } catch {}
   };
 
@@ -18539,9 +18539,9 @@ function PostDetail({ params }) {
               const copyLink = async () => {
                 try {
                   await navigator.clipboard.writeText(shareUrl);
-                  alert(lang === "es" ? "Enlace copiado al portapapeles" : "Link copied to clipboard");
+                  toast({ type: "success", message: lang === "es" ? "Enlace copiado al portapapeles" : "Link copied to clipboard" });
                 } catch {
-                  alert(lang === "es" ? "No se pudo copiar" : "Could not copy");
+                  toast({ type: "error", message: lang === "es" ? "No se pudo copiar" : "Could not copy" });
                 }
               };
               // PM 2026-06-23 (D): Instagram no soporta share-URL como
@@ -18551,9 +18551,9 @@ function PostDetail({ params }) {
               // deeplink instagram:// y el clipboard listo igual.
               const shareInstagram = async () => {
                 try { await navigator.clipboard.writeText(shareUrl); } catch {}
-                alert(lang === "es"
+                toast({ type: "success", message: lang === "es"
                   ? "Enlace copiado al portapapeles. Abrí Instagram y pegalo en tu Story o en un DM para compartirlo."
-                  : "Link copied to clipboard. Open Instagram and paste it into your Story or a DM to share.");
+                  : "Link copied to clipboard. Open Instagram and paste it into your Story or a DM to share.", durationMs: 6000 });
                 // Best-effort: intentar abrir la app/web de Instagram.
                 window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
               };
