@@ -16715,6 +16715,18 @@ function IntegrationsPanel() {
 function IntegrationModal({ integrationId, config, initialData, isConnected, onClose, onSave }) {
   const { lang } = useLang();
   const [data, setData] = useState(initialData);
+  // PM 2026-06-29: re-sincronizar `data` cuando `initialData` cambia.
+  // Antes useState(initialData) solo leía el valor en el primer mount —
+  // si el panel padre cargaba las keys de DB DESPUÉS de que el modal
+  // se abriera (race condition común tras un refresh), el modal se
+  // quedaba con {} y los inputs aparecían vacíos. El cliente asumía
+  // que "no se guardó" cuando en realidad solo no se mostraban.
+  useEffect(() => {
+    if (initialData && Object.keys(initialData).length > 0) {
+      setData(initialData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData]);
   const [showSecret, setShowSecret] = useState({});
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
