@@ -442,10 +442,10 @@ export async function regenerateStripePaymentLink(
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { ok: false, error: "ID requerido" };
 
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     return {
       ok: false,
-      error: "Stripe no está configurado en el servidor.",
+      error: "Stripe no está configurado. Andá a Configuración → Integraciones y guardá las claves.",
     };
   }
 
@@ -462,7 +462,7 @@ export async function regenerateStripePaymentLink(
   }
 
   try {
-    const stripe = getStripe();
+    const stripe = await getStripe();
     const price = await stripe.prices.create({
       currency: "usd",
       unit_amount: inv.total_cents,
@@ -508,7 +508,7 @@ export async function regeneratePaypalPaymentLink(
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { ok: false, error: "ID requerido" };
 
-  const cfg = getPayPalConfig();
+  const cfg = await getPayPalConfig();
   if (!cfg) {
     return {
       ok: false,

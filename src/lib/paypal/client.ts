@@ -22,20 +22,59 @@ export type PayPalConfig = {
   secret: string;
 };
 
-export function getPayPalConfig(): PayPalConfig | null {
-  const env = (process.env.PAYPAL_ENV ?? "sandbox") as PayPalEnv;
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const secret = process.env.PAYPAL_SECRET;
-  if (!clientId || !secret) return null;
-  const base =
-    env === "live"
-      ? "https://api-m.paypal.com"
-      : "https://api-m.sandbox.paypal.com";
-  return { env, base, clientId, secret };
+/**
+ * PM 2026-06-29: lee primero tabla `payment_provider_configs` (admin la
+ * edita desde Configuración → Integraciones), fallback a env vars. Cache
+ * de 60s para no martillar Supabase.
+ */
+let _paypalCfgCache: { cfg: PayPalConfig | null; expiresAt: number } | null = null;
+const PAYPAL_CACHE_MS = 60_000;
+
+export async function getPayPalConfig(): Promise<PayPalConfig | null> {
+  const now = Date.now();
+  if (_paypalCfgCache && _paypalCfgCache.expiresAt > now) {
+    return _paypalCfgCache.cfg;
+  }
+  let cfg: PayPalConfig | null = null;
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("payment_provider_configs")
+      .select("client_id, client_secret, mode, enabled")
+      .eq("provider", "paypal")
+      .maybeSingle();
+    if (data?.enabled && data.client_id && data.client_secret) {
+      const env: PayPalEnv = data.mode === "live" ? "live" : "sandbox";
+      cfg = {
+        env,
+        base: env === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com",
+        clientId: data.client_id,
+        secret: data.client_secret,
+      };
+    }
+  } catch {
+    // best-effort: si falla, fallback a env.
+  }
+  if (!cfg) {
+    const env = (process.env.PAYPAL_ENV ?? "sandbox") as PayPalEnv;
+    const clientId = process.env.PAYPAL_CLIENT_ID;
+    const secret = process.env.PAYPAL_SECRET;
+    if (clientId && secret) {
+      cfg = {
+        env,
+        base: env === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com",
+        clientId,
+        secret,
+      };
+    }
+  }
+  _paypalCfgCache = { cfg, expiresAt: now + PAYPAL_CACHE_MS };
+  return cfg;
 }
 
-export function isPayPalConfigured(): boolean {
-  return getPayPalConfig() !== null;
+export async function isPayPalConfigured(): Promise<boolean> {
+  return (await getPayPalConfig()) !== null;
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────

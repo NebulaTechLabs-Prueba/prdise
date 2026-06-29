@@ -101,6 +101,7 @@ import {
 import {
   listPaymentConfigs as sbListPaymentConfigs,
   savePaymentConfig as sbSavePaymentConfig,
+  getPaymentProvidersStatus as sbGetPaymentProvidersStatus,
 } from "@/lib/admin/payment_configs";
 import {
   getDashboardSummary as sbGetDashboardSummary,
@@ -16962,6 +16963,23 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
   // de pago NO se genera automáticamente — se genera al hacer click desde la
   // lista de facturas cuando el admin esté listo.
   const [paymentMethod, setPaymentMethod] = useState("off_system");
+  // PM 2026-06-29: status de qué providers están conectados (Stripe / PayPal).
+  // Cargado al montar el modal. Off-system siempre disponible. Si stripe/paypal
+  // no están conectados, se filtran del selector.
+  const [providersStatus, setProvidersStatus] = useState({ stripe: false, paypal: false });
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await sbGetPaymentProvidersStatus();
+        const status = s || { stripe: false, paypal: false };
+        setProvidersStatus(status);
+        // Auto-reset si el método elegido ya no está disponible.
+        if (paymentMethod === "stripe" && !status.stripe) setPaymentMethod("off_system");
+        if (paymentMethod === "paypal" && !status.paypal) setPaymentMethod("off_system");
+      } catch { /* fallback: ambos en false */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Cada item: { description, quantity, unitPrice, tourId?, stayId?, transferRouteId? }
   // PM 2026-06-26: ítem inicial incluye __calc para que la calculadora
   // aparezca también en líneas custom sin vínculo al catálogo.
@@ -17772,12 +17790,28 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
               "Choose how this invoice will be paid. The payment link is NOT generated on creation — generate it later when you're ready."
             )}
           </p>
+          {/* PM 2026-06-29: hint si no hay providers digitales conectados —
+              guía al admin a Configuración → Integraciones. */}
+          {!providersStatus.stripe && !providersStatus.paypal && (
+            <div style={{ padding: "8px 11px", borderRadius: 8, background: "rgba(245,166,35,.08)", border: "1px solid rgba(245,166,35,.25)", marginBottom: 10, fontSize: 11.5, color: "rgba(255,255,255,.75)", display: "flex", alignItems: "center", gap: 8 }}>
+              <Info style={{ width: 12, height: 12, color: "var(--gold)", flexShrink: 0 }} />
+              <span>{T(
+                "Solo 'Fuera del sistema' está disponible. Configurá Stripe o PayPal en Configuración → Integraciones para habilitar cobros con link.",
+                "Only 'Off-system' is available. Configure Stripe or PayPal in Settings → Integrations to enable link-based payments."
+              )}</span>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            {/* PM 2026-06-29: solo mostrar los providers conectados. Off-system
+                siempre está disponible. Si admin selecciona stripe/paypal y
+                después los desactiva, el estado puede quedar inválido — al
+                cargar status reseteamos a off_system si el método elegido ya
+                no está disponible. */}
             {[
-              { id: "stripe", label: "Stripe", desc: T("Tarjeta de crédito", "Credit card"), color: "#635BFF" },
-              { id: "paypal", label: "PayPal", desc: T("Cuenta PayPal", "PayPal account"), color: "#0070BA" },
-              { id: "off_system", label: T("Fuera del sistema", "Off-system"), desc: T("Efectivo, ATH, transferencia", "Cash, ATH, transfer"), color: "#8DC63F" },
-            ].map((m) => {
+              { id: "stripe", label: "Stripe", desc: T("Tarjeta de crédito", "Credit card"), color: "#635BFF", available: providersStatus.stripe },
+              { id: "paypal", label: "PayPal", desc: T("Cuenta PayPal", "PayPal account"), color: "#0070BA", available: providersStatus.paypal },
+              { id: "off_system", label: T("Fuera del sistema", "Off-system"), desc: T("Efectivo, ATH, transferencia", "Cash, ATH, transfer"), color: "#8DC63F", available: true },
+            ].filter(m => m.available).map((m) => {
               const sel = paymentMethod === m.id;
               return (
                 <button

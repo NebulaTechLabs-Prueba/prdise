@@ -19,6 +19,31 @@ import type { Tables } from "@/lib/supabase/database.types";
 
 export type PaymentConfigRow = Tables<"payment_provider_configs">;
 
+/**
+ * PM 2026-06-29: status público de qué proveedores están conectados.
+ * No requiere staff — devuelve solo booleans, sin keys. Lo usa el modal
+ * de "Nueva Factura" para filtrar qué métodos de cobro mostrar.
+ */
+export async function getPaymentProvidersStatus(): Promise<{ stripe: boolean; paypal: boolean }> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("payment_provider_configs")
+      .select("provider, enabled, secret_key, client_id, client_secret");
+    const rows = data ?? [];
+    const stripeRow = rows.find((r) => r.provider === "stripe");
+    const paypalRow = rows.find((r) => r.provider === "paypal");
+    const stripeFromDb = !!(stripeRow?.enabled && stripeRow.secret_key && stripeRow.secret_key.trim());
+    const paypalFromDb = !!(paypalRow?.enabled && paypalRow.client_id && paypalRow.client_secret);
+    // Fallback a env vars si la DB no tiene config (compat instalaciones viejas).
+    const stripe = stripeFromDb || !!process.env.STRIPE_SECRET_KEY;
+    const paypal = paypalFromDb || !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_SECRET);
+    return { stripe, paypal };
+  } catch {
+    return { stripe: false, paypal: false };
+  }
+}
+
 export async function listPaymentConfigs(): Promise<PaymentConfigRow[]> {
   const guard = await getStaffOrError();
   if (!guard.ok) return [];

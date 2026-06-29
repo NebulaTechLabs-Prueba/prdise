@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    const stripe = getStripe();
+    const stripe = await getStripe();
     event = stripe.webhooks.constructEvent(rawBody, signature, secret);
   } catch (e) {
     console.warn("[stripe-webhook] firma inválida:", e);

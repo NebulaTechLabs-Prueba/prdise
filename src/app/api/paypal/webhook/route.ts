@@ -31,7 +31,7 @@ export const dynamic = "force-dynamic";
  *   Events PAYMENT.CAPTURE.COMPLETED
  */
 export async function POST(req: NextRequest) {
-  const cfg = getPayPalConfig();
+  const cfg = await getPayPalConfig();
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
   if (!cfg || !webhookId) {
     console.error("[paypal-webhook] PAYPAL_* no configuradas");
