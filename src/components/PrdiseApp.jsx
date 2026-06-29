@@ -7880,6 +7880,11 @@ function AdminPanel({ onClose }) {
         source: "supabase",
         paymentRef: i.payment_ref || "",
         notes: i.notes || "",
+        // PM 2026-06-29: incluir paymentMethod en el reload (estaba solo
+        // en el bootstrap). Sin esto, después de crear o actualizar una
+        // factura, el método volvía a undefined → fallback off_system →
+        // los botones de Stripe/PayPal en la fila desaparecían.
+        paymentMethod: i.payment_method || (i.stripe_payment_link_url ? "stripe" : i.paypal_payment_link_url ? "paypal" : "off_system"),
         // PM 2026-06-17: rating del cliente (1-5) + fecha + comentario opcional.
         rating: i.rating == null ? null : Number(i.rating),
         ratedAt: i.rated_at || null,
