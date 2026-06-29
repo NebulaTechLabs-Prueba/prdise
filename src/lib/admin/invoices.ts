@@ -405,11 +405,74 @@ export async function createInvoiceManual(
       .eq("id", invoice.id);
   }
 
+  // PM 2026-06-29: si la factura nace como Pendiente y el método elegido es
+  // Stripe/PayPal, auto-generar el link de pago en el mismo flujo. Antes
+  // quedaba en pending con stripe_payment_link_url=null y el admin tenía
+  // que clickear el botón refresh manualmente. El botón "CREAR FACTURA
+  // (PENDIENTE)" prometía "lista para generar link de pago" → ambiguo.
+  // Ahora lo genera de una.
+  let stripePaymentLinkUrl: string | null = null;
+  let stripeError: string | null = null;
+  if (!saveAsDraft && paymentMethod === "stripe") {
+    try {
+      const stripe = await getStripe();
+      const price = await stripe.prices.create({
+        currency: "usd",
+        unit_amount: totalCents,
+        product_data: { name: `Factura ${number} — ${d.customerName}` },
+      });
+      const link = await stripe.paymentLinks.create({
+        line_items: [{ price: price.id, quantity: 1 }],
+        metadata: { invoice_id: invoice.id, invoice_number: number },
+      });
+      await supabase
+        .from("invoices")
+        .update({
+          stripe_payment_link_url: link.url,
+          stripe_payment_link_id: link.id,
+        })
+        .eq("id", invoice.id);
+      stripePaymentLinkUrl = link.url;
+    } catch (e) {
+      stripeError = e instanceof Error ? e.message : String(e);
+    }
+  } else if (!saveAsDraft && paymentMethod === "paypal") {
+    try {
+      const { getPayPalConfig, createCheckoutOrder } = await import("@/lib/paypal/client");
+      const cfg = await getPayPalConfig();
+      if (cfg) {
+        const origin = process.env.NEXT_PUBLIC_SITE_URL || "https://livinginprdise.com";
+        const order = await createCheckoutOrder({
+          cfg,
+          invoiceId: invoice.id,
+          invoiceNumber: number,
+          customerName: d.customerName,
+          totalCents,
+          returnUrl: `${origin}/account/invoices?paid=${invoice.id}`,
+          cancelUrl: `${origin}/account/invoices?cancelled=${invoice.id}`,
+        });
+        await supabase
+          .from("invoices")
+          .update({
+            paypal_payment_link_url: order.approveUrl,
+            paypal_order_id: order.orderId,
+          })
+          .eq("id", invoice.id);
+        stripePaymentLinkUrl = order.approveUrl; // reusamos el campo para el toast
+      } else {
+        stripeError = "PayPal no está configurado. Andá a Configuración → Integraciones.";
+      }
+    } catch (e) {
+      stripeError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   await writeAuditLog(actorId, "invoice.create_manual", "invoice", invoice.id, {
     number,
     total_cents: totalCents,
     items: d.items.length,
     payment_method: paymentMethod,
+    link_generated: !!stripePaymentLinkUrl,
   });
 
   return {
@@ -417,8 +480,8 @@ export async function createInvoiceManual(
     data: {
       invoiceId: invoice.id,
       number: invoice.number,
-      stripePaymentLinkUrl: null,
-      stripeError: null,
+      stripePaymentLinkUrl,
+      stripeError,
     },
   };
 }

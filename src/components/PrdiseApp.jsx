@@ -7737,6 +7737,7 @@ function AdminPanel({ onClose }) {
             link: !!i.stripe_payment_link_url || !!i.paypal_payment_link_url,
             source: "supabase",
             paymentRef: i.payment_ref || "",
+            notes: i.notes || "",
             // PM 2026-06-26: método elegido al crear la factura. Si la
             // migración no se aplicó aún, viene undefined → fallback
             // inferido por los links que ya tenga generados.
@@ -7878,6 +7879,7 @@ function AdminPanel({ onClose }) {
         link: !!i.stripe_payment_link_url || !!i.paypal_payment_link_url,
         source: "supabase",
         paymentRef: i.payment_ref || "",
+        notes: i.notes || "",
         // PM 2026-06-17: rating del cliente (1-5) + fecha + comentario opcional.
         rating: i.rating == null ? null : Number(i.rating),
         ratedAt: i.rated_at || null,
@@ -11356,6 +11358,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   </div>
                 </div>
+
+                {/* PM 2026-06-29: si el admin agregó notas al crear
+                    la factura, se muestran en la vista — antes el
+                    campo se guardaba en DB pero nunca se renderizaba
+                    en ningún lado. */}
+                {viewingInvoice.notes && (
+                  <div style={{ marginTop: 24, padding: "12px 16px", background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)", borderRadius: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "#9C6B16", marginBottom: 6 }}>{lang === "es" ? "NOTAS" : "NOTES"}</div>
+                    <div style={{ fontSize: 12, color: "#0F1822", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{viewingInvoice.notes}</div>
+                  </div>
+                )}
 
                 {/* PM 2026-06-29: footer usa email/WhatsApp reales de
                     site_settings. Antes hardcoded "hello@prdise.com"
