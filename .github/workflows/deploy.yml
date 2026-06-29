@@ -75,7 +75,16 @@ jobs:
               echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" >> .env.local
             fi
 
+            # Diagnóstico: imprime qué variables de Stripe quedaron en
+            # .env.local SIN exponer los valores. Util para confirmar que
+            # el secret llegó al server.
+            echo "[deploy] Stripe envs presentes en .env.local:"
+            grep -E '^STRIPE_' .env.local | sed -E 's/=.*/=***SET***/' || echo "(ninguna)"
+
             npm ci --no-audit --no-fund
             npm run build
-            pm2 reload prdise || pm2 start npm --name prdise -- start
+            # pm2 restart (no reload) para forzar relectura del .env.local.
+            # `reload` mantiene el process activo y a veces conserva env
+            # vars viejas; `restart` hace kill+spawn y siempre relee.
+            pm2 restart prdise --update-env || pm2 start npm --name prdise -- start
             pm2 save
