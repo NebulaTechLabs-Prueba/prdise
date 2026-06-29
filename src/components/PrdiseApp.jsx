@@ -11333,13 +11333,38 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <button className="adm-btn adm-btn-ghost" onClick={() => setInvoiceConfirm(null)}>
                     {lang === "es" ? "Cerrar" : "Close"}
                   </button>
-                  <button className="adm-btn adm-btn-primary" style={{ background: isDelete ? "#EF6C2B" : "#9CA3AF", borderColor: isDelete ? "#EF6C2B" : "#9CA3AF" }} onClick={() => {
+                  <button className="adm-btn adm-btn-primary" style={{ background: isDelete ? "#EF6C2B" : "#9CA3AF", borderColor: isDelete ? "#EF6C2B" : "#9CA3AF" }} onClick={async () => {
+                    // PM 2026-06-29: antes solo actualizaba state local —
+                    // al recargar el reload traía el estado real de DB
+                    // (pending) y la cancelación "volvía atrás". Ahora
+                    // llama al server action y recarga.
                     if (isDelete) {
-                      setInvoices(invoices.filter(x => x.id !== inv.id));
+                      // Delete físico: no hay server action; usamos
+                      // updateInvoiceStatus → cancelled como soft delete
+                      // (auditoría preservada).
+                      setInvoiceConfirm(null);
+                      try {
+                        const fd = new FormData();
+                        fd.append("id", inv.sbId || inv.id);
+                        fd.append("status", "cancelled");
+                        const res = await sbUpdateInvoiceStatus(fd);
+                        if (!res?.ok) { alert((lang==="es"?"No se pudo cancelar: ":"Could not cancel: ") + (res?.error || "error")); return; }
+                        // Optimistic + reload para confirmar.
+                        setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "cancelled" } : i));
+                        await reloadInvoices();
+                      } catch (e) { alert("Error: " + e.message); }
                     } else {
-                      setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "cancelled" } : i));
+                      setInvoiceConfirm(null);
+                      try {
+                        const fd = new FormData();
+                        fd.append("id", inv.sbId || inv.id);
+                        fd.append("status", "cancelled");
+                        const res = await sbUpdateInvoiceStatus(fd);
+                        if (!res?.ok) { alert((lang==="es"?"No se pudo cancelar: ":"Could not cancel: ") + (res?.error || "error")); return; }
+                        setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "cancelled" } : i));
+                        await reloadInvoices();
+                      } catch (e) { alert("Error: " + e.message); }
                     }
-                    setInvoiceConfirm(null);
                   }}>
                     {isDelete
                       ? (<><Trash2 style={{ width: 12, height: 12 }} />{lang === "es" ? "Eliminar" : "Delete"}</>)
