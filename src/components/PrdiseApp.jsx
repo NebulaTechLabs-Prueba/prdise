@@ -684,6 +684,24 @@ const PRDISE = {
 };
 const fmt = (n) => "$" + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
+/**
+ * PM 2026-06-29: toast helper invocable desde CUALQUIER lugar del archivo.
+ * AdminPanel monta el container y registra su setter en window.__prdiseToast.
+ * Si el container no está activo (lado público), cae al window.alert default.
+ * Permite migrar alerts en componentes que están fuera del AdminPanel sin
+ * romper nada — el fallback al alert nativo mantiene compat.
+ */
+function toast(opts) {
+  if (typeof window === "undefined") return;
+  const fn = window.__prdiseToast;
+  if (fn) {
+    fn(typeof opts === "string" ? { type: "info", message: opts } : opts);
+  } else {
+    const msg = typeof opts === "string" ? opts : opts?.message || "";
+    if (msg) window.alert(msg);
+  }
+}
+
 // PM 2026-06-17: label de unidad de precio según pricing_unit del servicio.
 // Antes las cards hardcodeaban "/ person" y "/ night" → cuando un servicio
 // estaba configurado como per_unit (fijo por servicio/evento) el cliente
@@ -704,7 +722,7 @@ function pricingUnitLabel(unit, lang) {
 // de las keys del primer objeto y disparado vía link de descarga temporal.
 function downloadCsv(filename, rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
-    alert("No hay datos para exportar.");
+    toast({ type: "info", message: "No hay datos para exportar." });
     return;
   }
   const headers = Object.keys(rows[0]);
@@ -2666,7 +2684,7 @@ function TransferQuickSearch() {
   const doSearch = () => {
     // Validar from != to antes de redirigir (PM 2026-06-11).
     if (from && to && from === to) {
-      alert(lang === "es" ? "El origen y el destino no pueden ser iguales." : "Origin and destination cannot be the same.");
+      toast({ type: "error", message: lang === "es" ? "El origen y el destino no pueden ser iguales." : "Origin and destination cannot be the same." });
       return;
     }
     const qs = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}&pax=${pax}`;
@@ -4962,7 +4980,7 @@ function MyInvoicesPanel() {
                     setRating(null);
                     reload();
                   } catch (e) {
-                    alert(e?.message || String(e));
+                    toast({ type: "error", message: e?.message || String(e) });
                     setRating({ ...rating, saving: false });
                   }
                 }}
@@ -5246,18 +5264,18 @@ function AccountPage() {
                   let bdValid = null;
                   if (bdRaw) {
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(bdRaw)) {
-                      alert(lang === "es"
+                      toast({ type: "error", message: lang === "es"
                         ? "Fecha de nacimiento inválida. Usá el formato AAAA-MM-DD."
-                        : "Invalid birth date. Use the format YYYY-MM-DD.");
+                        : "Invalid birth date. Use the format YYYY-MM-DD." });
                       return;
                     }
                     const d = new Date(bdRaw + "T00:00:00Z");
                     if (Number.isNaN(d.getTime())) {
-                      alert(lang === "es" ? "Fecha de nacimiento inválida." : "Invalid birth date.");
+                      toast({ type: "error", message: lang === "es" ? "Fecha de nacimiento inválida." : "Invalid birth date." });
                       return;
                     }
                     if (d > new Date()) {
-                      alert(lang === "es" ? "La fecha de nacimiento no puede ser futura." : "Birth date cannot be in the future.");
+                      toast({ type: "error", message: lang === "es" ? "La fecha de nacimiento no puede ser futura." : "Birth date cannot be in the future." });
                       return;
                     }
                     bdValid = bdRaw;
@@ -5297,12 +5315,12 @@ function AccountPage() {
                     ({ error } = await sb.from("profiles").update(basePatch).eq("id", authUser.id));
                   }
                   if (error) {
-                    alert((lang === "es" ? "No se pudo guardar en el servidor: " : "Could not save to server: ") + error.message);
+                    toast({ type: "error", message: (lang === "es" ? "No se pudo guardar en el servidor: " : "Could not save to server: ") + error.message });
                     return;
                   }
                 }
               } catch (e) {
-                alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+                toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)) });
                 return;
               }
               setSaved(true); setTimeout(() => setSaved(false), 2000);
@@ -5325,7 +5343,7 @@ function AccountPage() {
                 try {
                   const fd = new FormData(); fd.append("email", user.email);
                   await sbRequestPasswordReset(fd);
-                  alert(lang === "es" ? "Te enviamos un enlace por email para restablecer la contraseña." : "We sent you an email link to reset your password.");
+                  toast({ type: "success", message: lang === "es" ? "Te enviamos un enlace por email para restablecer la contraseña." : "We sent you an email link to reset your password." });
                 } catch { alert(lang === "es" ? "No se pudo enviar el email. Intenta más tarde." : "Could not send email. Try again later."); }
               }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 600, transition: "all .2s", textAlign: "left" }}>
                 <Key style={{ width: 16, height: 16, color: "var(--gold)" }} />{lang === "es" ? "Cambiar contraseña" : "Change Password"}
@@ -7273,6 +7291,17 @@ function AdminPanel({ onClose }) {
     setToasts((arr) => [...arr, t]);
     setTimeout(() => dismissToast(id), t.durationMs);
   };
+  // PM 2026-06-29: exponer showToast como singleton global para que la
+  // función `toast()` (module-level) pueda usarlo desde cualquier
+  // componente del archivo, no solo AdminPanel. Se desregistra al
+  // unmount para evitar leaks.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.__prdiseToast = showToast;
+      return () => { delete window.__prdiseToast; };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Per-user service permissions: { [userId]: { tours: {[serviceId]: 'view'|'edit'|'hidden'}, stays: {...}, transfers: {...}, canCreate: { tours: bool, stays: bool, transfers: bool } } }
   const [userServicePerms, setUserServicePerms] = useState(() => PRDISE.load("userServicePerms", {}));
   useEffect(() => { PRDISE.save("userServicePerms", userServicePerms); }, [userServicePerms]);
@@ -7489,7 +7518,7 @@ function AdminPanel({ onClose }) {
       setCompanySettingsSaved(true);
       setTimeout(() => setCompanySettingsSaved(false), 2500);
     } catch (e) {
-      alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+      toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)) });
     } finally {
       setCompanySettingsSaving(false);
     }
@@ -7519,7 +7548,7 @@ function AdminPanel({ onClose }) {
       Object.assign(SITE_SETTINGS, legalSettings);
       alert(lang === "es" ? "Contenido legal guardado." : "Legal content saved.");
     } catch (e) {
-      alert((lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)));
+      toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (e?.message || String(e)) });
     } finally {
       setLegalSettingsSaving(false);
     }
@@ -8275,7 +8304,7 @@ function AdminPanel({ onClose }) {
     }
     if (!res?.ok) {
       setter(prev);
-      alert("No se pudo cambiar estado: " + (res?.error || "error desconocido"));
+      toast({ type: "error", message: "No se pudo cambiar estado: " + (res?.error || "error desconocido") });
     }
   };
   const deleteItem = async (type, id) => {
@@ -8304,7 +8333,7 @@ function AdminPanel({ onClose }) {
       res = { ok: false, error: e?.message || String(e) };
     }
     if (!res?.ok) {
-      alert("No se pudo eliminar: " + (res?.error || "error desconocido"));
+      toast({ type: "error", message: "No se pudo eliminar: " + (res?.error || "error desconocido") });
       return;
     }
     setter(list.filter((it) => it.id !== id));
@@ -11030,11 +11059,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 ? `Factura ${number} creada.`
                 : `Invoice ${number} created.`;
               if (stripePaymentLinkUrl) {
-                alert(baseMsg + (lang === "es" ? `\n\nLink de pago Stripe:\n${stripePaymentLinkUrl}` : `\n\nStripe payment link:\n${stripePaymentLinkUrl}`));
+                toast({ type: "success", message: baseMsg + (lang === "es" ? ` Link Stripe generado.` : ` Stripe link generated.`), durationMs: 6000 });
               } else if (stripeError) {
-                alert(baseMsg + (lang === "es" ? `\n\nADVERTENCIA: ${stripeError}\nPodés reintentar el link desde la fila.` : `\n\nWARNING: ${stripeError}\nYou can retry the link from the row.`));
+                toast({ type: "error", message: baseMsg + (lang === "es" ? ` Advertencia: ${stripeError}` : ` Warning: ${stripeError}`), durationMs: 6000 });
               } else {
-                alert(baseMsg);
+                toast({ type: "success", message: baseMsg });
               }
             }}
           />
@@ -11227,7 +11256,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, paddingBottom: 20, borderBottom: "2px solid #F5A623" }}>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "#F5A623", marginBottom: 4 }}>Living in PRDISE</div>
-                    <div style={{ fontSize: 11, color: "rgba(15,24,34,.55)", lineHeight: 1.5 }}>House of Tours · Cabo Rojo, PR<br />hello@prdise.com · +1 787-555-0100</div>
+                    {/* PM 2026-06-29: leer email/teléfono de site_settings
+                        en lugar del placeholder "hello@prdise.com" /
+                        "+1 787-555-0100" que no son los reales. */}
+                    <div style={{ fontSize: 11, color: "rgba(15,24,34,.55)", lineHeight: 1.5 }}>{getSetting("tagline") || "House of Tours"} · {getSetting("address") || "Cabo Rojo, PR"}<br />{getSetting("contact_email")} · {getSetting("contact_phone")}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <h2>{lang === "es" ? "FACTURA" : "INVOICE"}</h2>
@@ -11325,8 +11357,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                 </div>
 
+                {/* PM 2026-06-29: footer usa email/WhatsApp reales de
+                    site_settings. Antes hardcoded "hello@prdise.com"
+                    que no es el del cliente. */}
                 <div style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid rgba(15,24,34,.08)", fontSize: 10.5, color: "rgba(15,24,34,.5)", textAlign: "center", lineHeight: 1.6 }}>
-                  {lang === "es" ? "Gracias por tu preferencia. Para preguntas, contáctanos a hello@prdise.com" : "Thank you for your business. For questions, contact us at hello@prdise.com"}
+                  {lang === "es"
+                    ? `Gracias por tu preferencia. Para preguntas, contactanos a ${getSetting("contact_email") || ""}${getSetting("whatsapp_phone") ? ` o por WhatsApp al +${getSetting("whatsapp_phone")}` : ""}.`
+                    : `Thank you for your business. For questions, contact us at ${getSetting("contact_email") || ""}${getSetting("whatsapp_phone") ? ` or via WhatsApp at +${getSetting("whatsapp_phone")}` : ""}.`}
                 </div>
               </div>
 
@@ -11395,10 +11432,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 )}
                 {viewingInvoice.status === "pending" && (
                   <>
+                    {/* PM 2026-06-29: solo permitir copy si hay link real
+                        generado. Antes había un fallback a /pay/<num> que
+                        no existe (404). Si no hay link, indicamos al admin
+                        que primero debe generarlo desde la fila. */}
                     <button className="adm-btn adm-btn-ghost" onClick={() => {
-                      const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl || `${window.location.origin}/pay/${viewingInvoice.num}`;
-                      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert(lang === "es" ? "Enlace de pago copiado" : "Payment link copied"));
-                      else alert(lang === "es" ? "Enlace: " + link : "Link: " + link);
+                      const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl;
+                      if (!link) {
+                        toast({ type: "error", message: lang === "es" ? "Primero generá el link de pago desde la fila (botón refresh)." : "First generate the payment link from the row (refresh button)." });
+                        return;
+                      }
+                      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => toast({ type: "success", message: lang === "es" ? "Enlace de pago copiado" : "Payment link copied" }));
+                      else toast({ type: "info", message: lang === "es" ? "Enlace: " + link : "Link: " + link });
                     }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
                     <button className="adm-btn adm-btn-ghost" style={{ color: "#29ABE2", borderColor: "rgba(41,171,226,.4)" }} onClick={async () => {
                       if (!canEditInvoices()) return;
@@ -11419,9 +11464,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 {(viewingInvoice.status === "sent" || viewingInvoice.status === "overdue") && (
                   <>
                     <button className="adm-btn adm-btn-ghost" onClick={() => {
-                      const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl || `${window.location.origin}/pay/${viewingInvoice.num}`;
-                      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert(lang === "es" ? "Enlace de pago copiado" : "Payment link copied"));
-                      else alert(lang === "es" ? "Enlace: " + link : "Link: " + link);
+                      const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl;
+                      if (!link) {
+                        toast({ type: "error", message: lang === "es" ? "Esta factura no tiene link de pago generado." : "This invoice has no payment link generated." });
+                        return;
+                      }
+                      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => toast({ type: "success", message: lang === "es" ? "Enlace de pago copiado" : "Payment link copied" }));
+                      else toast({ type: "info", message: lang === "es" ? "Enlace: " + link : "Link: " + link });
                     }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
                     <button className="adm-btn adm-btn-ghost" style={{ color: "#8DC63F", borderColor: "rgba(141,198,63,.4)" }} onClick={() => { setMarkPaidInvoice(viewingInvoice); setPaymentRef(""); setViewingInvoice(null); }}>
                       <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como pagada" : "Mark as paid"}
