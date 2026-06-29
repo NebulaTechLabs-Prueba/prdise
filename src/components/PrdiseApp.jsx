@@ -7256,6 +7256,23 @@ function AdminPanel({ onClose }) {
   const askConfirm = (opts) => new Promise((resolve) => {
     setConfirmDialog({ ...opts, resolve });
   });
+  // PM 2026-06-29: toast system (reemplaza window.alert). Stack en
+  // esquina inferior-derecha; cada toast se auto-dismiss tras 4s.
+  // Uso: showToast({ type: "success" | "error" | "info", message, durationMs? }).
+  const toastIdRef = useRef(0);
+  const [toasts, setToasts] = useState([]);
+  const dismissToast = (id) => setToasts((arr) => arr.filter((t) => t.id !== id));
+  const showToast = (opts) => {
+    const id = ++toastIdRef.current;
+    const t = {
+      id,
+      type: opts.type || "info",
+      message: typeof opts === "string" ? opts : opts.message,
+      durationMs: (opts && opts.durationMs) || 4000,
+    };
+    setToasts((arr) => [...arr, t]);
+    setTimeout(() => dismissToast(id), t.durationMs);
+  };
   // Per-user service permissions: { [userId]: { tours: {[serviceId]: 'view'|'edit'|'hidden'}, stays: {...}, transfers: {...}, canCreate: { tours: bool, stays: bool, transfers: bool } } }
   const [userServicePerms, setUserServicePerms] = useState(() => PRDISE.load("userServicePerms", {}));
   useEffect(() => { PRDISE.save("userServicePerms", userServicePerms); }, [userServicePerms]);
@@ -8361,7 +8378,7 @@ html{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)
 .adm-main{flex:1;padding:32px 36px;min-width:0;overflow-x:hidden}
 
 /* Page header */
-.adm-ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:14px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,.06)}
+.adm-ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:14px;padding-bottom:18px;padding-right:56px;border-bottom:1px solid rgba(255,255,255,.06)}
 .adm-ph h1{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.04em;line-height:1}
 .adm-ph h1 em{font-style:normal;color:#F5A623}
 .adm-ph .sub{font-size:13px;color:rgba(255,255,255,.5);margin-top:6px}
@@ -14658,6 +14675,41 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           }
           setEditing(null);
         }} />
+      )}
+
+      {/* PM 2026-06-29: toast container. Stack inferior-derecha. Cada
+          toast se auto-dismiss tras 4s; click cierra. */}
+      {toasts.length > 0 && (
+        <div style={{ position: "fixed", right: 20, bottom: 20, zIndex: 90, display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
+          {toasts.map((t) => {
+            const colors = {
+              success: { bg: "rgba(141,198,63,.12)", border: "rgba(141,198,63,.45)", icon: "#8DC63F", Icon: CheckCircle },
+              error: { bg: "rgba(239,108,43,.12)", border: "rgba(239,108,43,.45)", icon: "#EF6C2B", Icon: AlertTriangle },
+              info: { bg: "rgba(245,166,35,.1)", border: "rgba(245,166,35,.4)", icon: "var(--gold)", Icon: Info },
+            };
+            const c = colors[t.type] || colors.info;
+            const IconCmp = c.Icon;
+            return (
+              <div
+                key={t.id}
+                onClick={() => dismissToast(t.id)}
+                style={{
+                  display: "flex", alignItems: "flex-start", gap: 10,
+                  padding: "11px 14px", borderRadius: 10,
+                  background: "#0c1318",
+                  border: `1px solid ${c.border}`,
+                  boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+                  cursor: "pointer",
+                  animation: "prdiseToastIn .22s ease",
+                }}
+              >
+                <IconCmp style={{ width: 16, height: 16, color: c.icon, flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 12.5, color: "rgba(255,255,255,.88)", lineHeight: 1.45 }}>{t.message}</span>
+              </div>
+            );
+          })}
+          <style>{`@keyframes prdiseToastIn { from { opacity: 0; transform: translateX(20px) } to { opacity: 1; transform: translateX(0) } }`}</style>
+        </div>
       )}
 
       {/* PM 2026-06-29: confirm dialog reusable estilo del proyecto.
