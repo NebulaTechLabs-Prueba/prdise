@@ -299,6 +299,10 @@ export async function createInvoiceManual(
   // queda 'pending' sin link y el admin la marcará como pagada cuando reciba
   // el pago fuera del sistema (efectivo, transferencia, ATH Móvil, etc.).
   // No auto-generamos el Stripe Payment Link al crear la invoice.
+  // PM 2026-06-29: validación temprana del mínimo de Stripe/PayPal antes
+  // de tocar DB. Stripe Checkout rechaza totales < 50 cents. Replicamos
+  // client-side (en el modal) pero acá actuamos como guardia para llamadas
+  // directas a la action o admins con caché viejo.
   const paymentMethodRaw = String(formData.get("paymentMethod") ?? "off_system").trim();
   const paymentMethod: "stripe" | "paypal" | "off_system" =
     paymentMethodRaw === "stripe" || paymentMethodRaw === "paypal"
@@ -336,6 +340,17 @@ export async function createInvoiceManual(
     0
   );
   const totalCents = subtotalCents; // sin tax/discount por ahora
+
+  // PM 2026-06-29: Stripe Checkout rechaza totales < 50 cents. Defense in
+  // depth ante el client-side check del modal — si llega acá un total
+  // chico con method=stripe/paypal, rechazamos antes del INSERT para no
+  // dejar la factura huérfana sin link.
+  if ((paymentMethod === "stripe" || paymentMethod === "paypal") && totalCents < 50) {
+    return {
+      ok: false,
+      error: `${paymentMethod === "stripe" ? "Stripe" : "PayPal"} requiere un total mínimo de $0.50 USD. Total actual: $${(totalCents / 100).toFixed(2)}.`,
+    };
+  }
 
   // user_id: el del cliente (obligatorio post 2026-06-10). El cliente ve sus
   // invoices en /account → Mis Facturas vía RLS.

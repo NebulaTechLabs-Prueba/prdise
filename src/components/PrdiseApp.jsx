@@ -17636,6 +17636,20 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
       const u = Number(it.unitPrice);
       if (!Number.isFinite(u) || u < 0) { setError(T(`Precio inválido en línea ${i + 1}`, `Invalid price on line ${i + 1}`)); return false; }
     }
+    // PM 2026-06-29: Stripe rechaza Checkout Sessions con total < $0.50 USD.
+    // Antes el admin podía crear una factura de $0.12 con method=stripe, y
+    // recién al intentar generar el link Stripe devolvía:
+    //   "The Checkout Session's total amount due must add up to at least $0.50"
+    // Bloqueamos client-side para que el admin lo sepa ANTES de confirmar.
+    // PayPal técnicamente acepta micropagos pero requiere setup adicional —
+    // por ahora exigimos el mismo mínimo para uniformidad.
+    if ((paymentMethod === "stripe" || paymentMethod === "paypal") && subtotal < 0.5) {
+      setError(T(
+        `El método ${paymentMethod === "stripe" ? "Stripe" : "PayPal"} requiere un total mínimo de $0.50 USD. Total actual: $${subtotal.toFixed(2)}. Subí los precios o cambiá a "Fuera del sistema" para cobrar manualmente.`,
+        `${paymentMethod === "stripe" ? "Stripe" : "PayPal"} requires a minimum total of $0.50 USD. Current total: $${subtotal.toFixed(2)}. Increase prices or switch to "Off-system" to charge manually.`
+      ));
+      return false;
+    }
     return true;
   };
 
@@ -18172,6 +18186,19 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
               );
             })}
           </div>
+          {/* PM 2026-06-29: aviso contextual del mínimo de Stripe/PayPal.
+              Stripe Checkout rechaza totales < $0.50 USD. Mostramos el
+              warning cuando el método elegido lo requiere y el subtotal
+              actual no lo cumple — el admin lo ve antes de confirmar. */}
+          {(paymentMethod === "stripe" || paymentMethod === "paypal") && subtotal > 0 && subtotal < 0.5 && (
+            <div style={{ padding: "8px 11px", borderRadius: 8, background: "rgba(239,108,43,.1)", border: "1px solid rgba(239,108,43,.35)", marginTop: 10, fontSize: 11.5, color: "#EF6C2B", display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
+              <span>{T(
+                `${paymentMethod === "stripe" ? "Stripe" : "PayPal"} requiere un total mínimo de $0.50 USD. Tu total actual es $${subtotal.toFixed(2)} — subí los precios o usá "Fuera del sistema".`,
+                `${paymentMethod === "stripe" ? "Stripe" : "PayPal"} requires a $0.50 USD minimum. Your current total is $${subtotal.toFixed(2)} — increase prices or use "Off-system".`
+              )}</span>
+            </div>
+          )}
         </div>
 
         <div className="adm-modal-section">
