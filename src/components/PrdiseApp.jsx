@@ -11797,8 +11797,25 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     {lang === "es" ? "Información de contacto" : "Contact information"}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                    <div className="adm-info-cell"><div className="adm-info-lab">Email</div><div className="adm-info-val" style={{ wordBreak: "break-word" }}>{customerProfileEmail}</div></div>
-                    <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Teléfono" : "Phone"}</div><div className="adm-info-val">{phone}</div></div>
+                    {/* PM 2026-06-29: click en Email/Teléfono copia al clipboard.
+                        Antes el admin tenía que seleccionar texto manualmente. */}
+                    <div className="adm-info-cell" style={{ cursor: "pointer" }} title={lang==="es"?"Click para copiar":"Click to copy"}
+                      onClick={async () => {
+                        try { await navigator.clipboard.writeText(customerProfileEmail); toast({ type: "success", message: lang==="es"?"Email copiado":"Email copied" }); }
+                        catch { toast({ type: "error", message: lang==="es"?"No se pudo copiar":"Could not copy" }); }
+                      }}>
+                      <div className="adm-info-lab" style={{ display: "flex", alignItems: "center", gap: 5 }}>Email <Copy style={{ width: 9, height: 9, opacity: .55 }} /></div>
+                      <div className="adm-info-val" style={{ wordBreak: "break-word" }}>{customerProfileEmail}</div>
+                    </div>
+                    <div className="adm-info-cell" style={{ cursor: phone && phone !== "—" ? "pointer" : "default" }} title={phone && phone !== "—" ? (lang==="es"?"Click para copiar":"Click to copy") : undefined}
+                      onClick={async () => {
+                        if (!phone || phone === "—") return;
+                        try { await navigator.clipboard.writeText(phone); toast({ type: "success", message: lang==="es"?"Teléfono copiado":"Phone copied" }); }
+                        catch { toast({ type: "error", message: lang==="es"?"No se pudo copiar":"Could not copy" }); }
+                      }}>
+                      <div className="adm-info-lab" style={{ display: "flex", alignItems: "center", gap: 5 }}>{lang === "es" ? "Teléfono" : "Phone"} {phone && phone !== "—" && <Copy style={{ width: 9, height: 9, opacity: .55 }} />}</div>
+                      <div className="adm-info-val">{phone}</div>
+                    </div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "País" : "Country"}</div><div className="adm-info-val">{country}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Canal" : "Channel"}</div><div className="adm-info-val">{source}</div></div>
                     <div className="adm-info-cell"><div className="adm-info-lab">{lang === "es" ? "Primer contacto" : "First contact"}</div><div className="adm-info-val">{firstContact}</div></div>
