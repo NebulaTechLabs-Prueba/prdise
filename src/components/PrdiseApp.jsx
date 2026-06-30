@@ -10748,7 +10748,21 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td>{inv.items}</td>
                         <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(inv.total)}</td>
                         <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status):inv.status.toUpperCase()}</span></td>
-                        <td>{inv.link ? <a href="#" onClick={(e) => { e.preventDefault(); alert(lang==="es"?"Enlace de pago copiado":"Payment link copied"); }} style={{ color: "#F5A623", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><Globe style={{ width: 11, height: 11 }} />{lang==="es"?"Ver enlace":"View link"}</a> : <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>}</td>
+                        {/* PM 2026-06-29: antes este link era un placeholder
+                            con href="#" + alert vacío. Ahora abre el link
+                            de pago real (Stripe o PayPal) en una pestaña
+                            nueva, o copia al clipboard si shift-click. */}
+                        <td>{(() => {
+                          const payUrl = inv.stripePaymentLinkUrl || inv.paypalPaymentLinkUrl || "";
+                          if (!payUrl) return <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>;
+                          return (
+                            <a href={payUrl} target="_blank" rel="noopener noreferrer"
+                              title={lang==="es"?"Abrir link de pago en nueva pestaña":"Open payment link in new tab"}
+                              style={{ color: "#F5A623", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <Globe style={{ width: 11, height: 11 }} />{lang==="es"?"Ver enlace":"View link"}
+                            </a>
+                          );
+                        })()}</td>
                         <td>
                           <div className="adm-row-actions">
                             <button className="adm-icon-btn" title={lang==="es"?"Ver":"View"} onClick={() => setViewingInvoice(inv)}><Eye /></button>
