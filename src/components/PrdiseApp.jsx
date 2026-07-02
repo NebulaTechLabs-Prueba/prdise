@@ -10969,15 +10969,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               );
                             })()}
                             {(() => {
-                              // Send sólo si la factura tiene email, items, y
-                              // (cuando es draft) link de pago Stripe listo.
-                              // Un draft sin link es trabajo en curso, no se
-                              // puede mandar al cliente todavía.
                               // PM 2026-07-02: este botón (icono avión Send)
                               // AHORA es "Reenviar por correo". Antes abría
                               // WhatsApp (duplicando la función del botón
                               // verde MessageCircle). Ahora dispara
                               // resendInvoiceEmail vía Resend.
+                              // busy: mismo pattern que el otro IIFE — se
+                              // lee del state invoiceRowBusy por sbId.
+                              const busy = invoiceRowBusy[inv.sbId];
                               const hasItems = (inv.lineItems && inv.lineItems.length > 0) || (inv.items && inv.items > 0);
                               const isDraft = inv.status === "draft";
                               const canSendEmail = canEditInvoices() && !!inv.email && hasItems && !isDraft && inv.status !== "cancelled";
