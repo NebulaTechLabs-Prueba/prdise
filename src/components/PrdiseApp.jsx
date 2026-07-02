@@ -16951,23 +16951,23 @@ function IntegrationsPanel() {
       {/* PM 2026-07-02: diagnóstico del webhook. Cuando no hay acceso al
           Stripe Dashboard del cliente, este panel es la única forma de
           ver si los intentos están llegando y qué respuesta reciben. */}
-      <div className="adm-card" style={{ marginTop: 14 }}>
-        <div className="adm-card-head">
-          <div className="adm-card-title">{lang === "es" ? "Diagnóstico del Webhook" : "Webhook Diagnostics"}</div>
-          <button className="adm-btn adm-btn-ghost" onClick={() => { setWebhookLogs([]); loadWebhookLogs(); }}>
-            <Activity style={{ width: 12, height: 12 }} />{lang === "es" ? "Ver actividad" : "View activity"}
-          </button>
-        </div>
-        <div style={{ padding: "12px 16px", fontSize: 12, color: "rgba(255,255,255,.55)", lineHeight: 1.55 }}>
-          {lang === "es"
-            ? "Cada vez que Stripe (o PayPal) intente notificar un pago, queda registrado aquí. Sin acceso al dashboard del provider, esta es la fuente de verdad para diagnosticar."
-            : "Every attempt from Stripe (or PayPal) is recorded here. Without provider dashboard access, this is the source of truth for diagnostics."}
-          <div style={{ marginTop: 8, fontSize: 11.5, color: "rgba(255,255,255,.4)" }}>
-            {lang === "es" ? "Ping de la URL: " : "URL ping: "}
-            <a href="/api/stripe/webhook" target="_blank" rel="noopener noreferrer" style={{ color: "#F5A623" }}>/api/stripe/webhook</a>
-            {" — "}{lang === "es" ? "un GET devuelve 200 si el endpoint está accesible desde internet." : "GET returns 200 if the endpoint is reachable from the internet."}
+      {/* PM 2026-07-02: colapsable por defecto. La sección es útil solo
+          cuando algo va mal con los pagos — el operador diario no debe
+          verla siempre abierta. Título y copy en lenguaje del negocio
+          (no técnico). */}
+      <div style={{ marginTop: 14 }}>
+        <Collapsible title={lang === "es" ? "Actividad técnica de pagos (avanzado)" : "Payment technical activity (advanced)"} icon={Activity}>
+          <div style={{ padding: "12px 16px 4px 16px", fontSize: 12, color: "rgba(255,255,255,.7)", lineHeight: 1.6 }}>
+            {lang === "es"
+              ? "Cada vez que Stripe o PayPal intente confirmar un pago, queda registrado aquí. Sirve solo para diagnosticar cuando un pago no se refleja en el sistema."
+              : "Every time Stripe or PayPal tries to confirm a payment, it's logged here. Only useful for diagnosing when a payment doesn't reflect in the system."}
           </div>
-        </div>
+          <div style={{ padding: "8px 16px 16px 16px" }}>
+            <button className="adm-btn adm-btn-primary" onClick={() => { setWebhookLogs([]); loadWebhookLogs(); }}>
+              <Activity style={{ width: 12, height: 12 }} />{lang === "es" ? "Ver últimos intentos" : "View recent attempts"}
+            </button>
+          </div>
+        </Collapsible>
       </div>
 
       {webhookLogs !== null && (
