@@ -28,13 +28,55 @@ export const dynamic = "force-dynamic";
  * Para probar local: `stripe listen --forward-to localhost:3000/api/stripe/webhook`
  * y usar el `whsec_...` que imprime el CLI.
  */
+// PM 2026-07-02: helper para persistir cada intento en webhook_event_log.
+// Silencioso: si la migración no está aplicada o la tabla no existe, no
+// bloqueamos la respuesta al webhook.
+async function logWebhookAttempt(args: {
+  eventType: string | null;
+  eventId: string | null;
+  statusCode: number;
+  outcome: string;
+  message: string | null;
+  payloadSnippet: string | null;
+  invoiceId?: string | null;
+}): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    await (admin as unknown as { from: (t: string) => { insert: (row: Record<string, unknown>) => Promise<unknown> } })
+      .from("webhook_event_log")
+      .insert({
+        provider: "stripe",
+        event_type: args.eventType,
+        event_id: args.eventId,
+        status_code: args.statusCode,
+        outcome: args.outcome,
+        message: args.message,
+        payload_snippet: args.payloadSnippet ? args.payloadSnippet.slice(0, 1000) : null,
+        invoice_id: args.invoiceId ?? null,
+      });
+  } catch (e) {
+    // Migración no aplicada aún o tabla ausente — solo warning.
+    console.warn("[stripe-webhook] no se pudo persistir el log:", e);
+  }
+}
+
 export async function POST(req: NextRequest) {
+  const rawBody = await req.text();
+
   // PM 2026-06-29: secret leído desde DB primero (payment_provider_configs),
   // fallback a env. Permite al admin configurar el webhook desde el panel
   // sin re-deploy.
   const secret = await getStripeWebhookSecret();
   if (!secret) {
     console.error("[stripe-webhook] webhook_secret no configurado (ni en DB ni en env)");
+    await logWebhookAttempt({
+      eventType: null,
+      eventId: null,
+      statusCode: 500,
+      outcome: "no_secret",
+      message: "webhook_secret no configurado en DB ni en env",
+      payloadSnippet: rawBody.slice(0, 500),
+    });
     return NextResponse.json(
       { error: "Webhook no configurado. Andá a Admin → Configuración → Integraciones → Stripe y pegá el Webhook Secret." },
       { status: 500 }
@@ -43,28 +85,50 @@ export async function POST(req: NextRequest) {
 
   const signature = req.headers.get("stripe-signature");
   if (!signature) {
+    await logWebhookAttempt({
+      eventType: null,
+      eventId: null,
+      statusCode: 400,
+      outcome: "missing_signature",
+      message: "Header stripe-signature ausente. ¿Llegó del proxy Caddy?",
+      payloadSnippet: rawBody.slice(0, 500),
+    });
     return NextResponse.json({ error: "Falta firma" }, { status: 400 });
   }
-
-  const rawBody = await req.text();
 
   let event: Stripe.Event;
   try {
     const stripe = await getStripe();
     event = stripe.webhooks.constructEvent(rawBody, signature, secret);
   } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
     console.warn("[stripe-webhook] firma inválida:", e);
+    await logWebhookAttempt({
+      eventType: null,
+      eventId: null,
+      statusCode: 400,
+      outcome: "signature_invalid",
+      message: `Firma inválida: ${errMsg}. Verificar que el whsec_ del admin matchee el del Stripe Dashboard.`,
+      payloadSnippet: rawBody.slice(0, 500),
+    });
     return NextResponse.json(
       { error: "Firma inválida" },
       { status: 400 }
     );
   }
 
+  let handlerInvoiceId: string | null = null;
+  let outcome = "ok";
+  let handlerMessage: string | null = null;
+  let statusCode = 200;
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        await markInvoicePaidFromSession(session);
+        handlerInvoiceId = await markInvoicePaidFromSession(session);
+        handlerMessage = handlerInvoiceId
+          ? `Factura ${handlerInvoiceId} marcada como pagada.`
+          : "Sesión sin invoice_id resoluble. Ver metadata.";
         break;
       }
       // PM 2026-06-23: si el cliente tiene este evento configurado en el
@@ -82,17 +146,36 @@ export async function POST(req: NextRequest) {
           body_en: `PaymentIntent ${pi.id} — reason: ${reason}`,
           link: "/admin?section=invoices",
         });
+        handlerMessage = `payment_failed notificado. Motivo: ${reason}`;
         break;
       }
       default:
+        outcome = "unhandled_type";
+        handlerMessage = `Evento ${event.type} recibido pero no tenemos handler para él.`;
         break;
     }
   } catch (e) {
     console.error("[stripe-webhook] handler error:", e);
+    outcome = "handler_error";
+    statusCode = 500;
+    handlerMessage = e instanceof Error ? e.message : String(e);
+  }
+
+  await logWebhookAttempt({
+    eventType: event.type,
+    eventId: event.id,
+    statusCode,
+    outcome,
+    message: handlerMessage,
+    payloadSnippet: JSON.stringify(event).slice(0, 1000),
+    invoiceId: handlerInvoiceId,
+  });
+
+  if (statusCode !== 200) {
     // Devolvemos 500 para que Stripe reintente (tiene backoff exponencial).
     return NextResponse.json(
       { error: "Error procesando evento" },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 
@@ -101,7 +184,7 @@ export async function POST(req: NextRequest) {
 
 async function markInvoicePaidFromSession(
   session: Stripe.Checkout.Session
-): Promise<void> {
+): Promise<string | null> {
   const invoiceId =
     (session.metadata?.invoice_id as string | undefined) ??
     (session.payment_link
@@ -113,7 +196,7 @@ async function markInvoicePaidFromSession(
       "[stripe-webhook] checkout.session.completed sin invoice_id resoluble",
       { sessionId: session.id }
     );
-    return;
+    return null;
   }
 
   const admin = createAdminClient();
@@ -161,6 +244,22 @@ async function markInvoicePaidFromSession(
       link: "/admin?section=invoices",
     });
   }
+  return invoiceId;
+}
+
+// PM 2026-07-02: endpoint GET responde 200 con info básica. Sirve para
+// que el admin (o el propio cliente sin acceso al Stripe Dashboard) haga
+// un ping y confirme que la URL es accesible desde internet:
+//   curl https://livinginprdise.com/api/stripe/webhook
+// Si devuelve 200 con este JSON, la URL está expuesta y Stripe puede
+// alcanzarla. Si devuelve 404, hay un problema con Caddy/routing.
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: "stripe-webhook",
+    note: "URL accesible. Este GET es solo para diagnóstico — Stripe siempre usa POST con firma.",
+    time: new Date().toISOString(),
+  });
 }
 
 async function resolveInvoiceFromPaymentLink(

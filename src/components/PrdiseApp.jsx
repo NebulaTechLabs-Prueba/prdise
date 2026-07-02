@@ -11715,12 +11715,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
               </div>
 
-              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(41,171,226,.06)", border: "1px solid rgba(41,171,226,.2)", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <Info style={{ width: 14, height: 14, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
+              {/* PM 2026-07-02: hint actualizado. El envío ahora sale por
+                  Resend (configurado a nivel server). Ya no hay panel
+                  admin para SMTP — es una env var. Si RESEND_API_KEY no
+                  está seteada, el server action devuelve status="skipped"
+                  y el toast avisa. */}
+              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(141,198,63,.06)", border: "1px solid rgba(141,198,63,.2)", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <Info style={{ width: 14, height: 14, color: "#8DC63F", flexShrink: 0, marginTop: 2 }} />
                 <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>
                   {lang === "es"
-                    ? "Para envío real configura tu servicio de correo en Configuración → Integraciones (SendGrid, Resend, etc.). Por ahora puedes copiar el correo o abrirlo en tu cliente nativo."
-                    : "For real sending, configure your email service in Settings → Integrations (SendGrid, Resend, etc.). For now you can copy the email or open it in your native mail client."}
+                    ? "El correo se envía por Resend (misma cuenta que Supabase Auth). Queda registrado en el Buzón → Enviados."
+                    : "Email is sent via Resend (same account as Supabase Auth). It's recorded in Inbox → Sent."}
                 </div>
               </div>
 
@@ -11753,16 +11758,36 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   const url = `mailto:${composeEmail.to}?subject=${subject}&body=${body}`;
                   window.location.href = url;
                 }}><ExternalLink style={{ width: 12, height: 12 }} />{lang === "es" ? "Abrir en Mail" : "Open in Mail"}</button>
-                <button className="adm-btn adm-btn-primary" onClick={() => {
-                  if (!composeEmail.to || !composeEmail.subject) { toast({ type: "error", message: lang === "es" ? "Completa destinatario y asunto" : "Complete recipient and subject" }); return; }
-                  // Save to sent log for this demo
-                  const sentLog = PRDISE.load("sentEmailsLog", []);
-                  sentLog.unshift({ id: "sent-" + Date.now(), to: composeEmail.to, subject: composeEmail.subject, body: composeEmail.body, sentAt: new Date().toISOString() });
-                  PRDISE.save("sentEmailsLog", sentLog);
-                  toast({ type: "success", message: lang === "es"
-                    ? `Correo registrado para ${composeEmail.to}. Para envío real, conectá SendGrid o Resend en Configuración → Integraciones.`
-                    : `Email logged for ${composeEmail.to}. For real delivery, connect SendGrid or Resend in Settings → Integrations.`, durationMs: 6000 });
-                  setComposeEmail(null);
+                <button className="adm-btn adm-btn-primary" onClick={async () => {
+                  if (!composeEmail.to || !composeEmail.subject || !composeEmail.body) {
+                    toast({ type: "error", message: lang === "es" ? "Completá destinatario, asunto y mensaje" : "Complete recipient, subject and message" });
+                    return;
+                  }
+                  try {
+                    // PM 2026-07-02: envío real vía Resend + persistencia en
+                    // outbound_emails para el Buzón → Enviados.
+                    const { sendComposedEmail } = await import("@/lib/admin/outbound_emails");
+                    const fd = new FormData();
+                    fd.append("to", composeEmail.to);
+                    fd.append("toName", composeEmail.name || "");
+                    fd.append("subject", composeEmail.subject);
+                    fd.append("body", composeEmail.body);
+                    const res = await sendComposedEmail(fd);
+                    if (!res?.ok) {
+                      toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (res?.error || "unknown"), durationMs: 6000 });
+                      return;
+                    }
+                    if (res.data.status === "sent") {
+                      toast({ type: "success", message: (lang === "es" ? "Correo enviado a " : "Email sent to ") + composeEmail.to, durationMs: 5000 });
+                    } else if (res.data.status === "skipped") {
+                      toast({ type: "warning", message: (lang === "es" ? "Email no enviado — Resend no configurado. Motivo: " : "Email not sent — Resend not configured. Reason: ") + (res.data.reason || ""), durationMs: 7000 });
+                    } else {
+                      toast({ type: "error", message: (lang === "es" ? "Falló el envío: " : "Send failed: ") + (res.data.reason || "unknown"), durationMs: 7000 });
+                    }
+                    setComposeEmail(null);
+                  } catch (e) {
+                    toast({ type: "error", message: "Error: " + (e?.message || String(e)) });
+                  }
                 }}><Send style={{ width: 12, height: 12 }} />{lang === "es" ? "Enviar" : "Send"}</button>
               </div>
             </div>
@@ -11783,8 +11808,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           // Pull display name from any source
           const fallbackInv = customerInvs[0];
           const displayName = contact?.name || fallbackInv?.customer || customerProfileEmail;
-          const phone = contact?.phone || "—";
-          const country = contact?.country || "—";
+          // PM 2026-07-02: fallback al teléfono de la factura si el
+          // contact local no lo tiene. Cuando el cliente fue creado
+          // desde el flujo de "Nueva Factura", el phone quedó en
+          // profiles.phone y en invoices.customer_phone, pero el array
+          // local `contacts` puede no reflejarlo hasta el próximo reload.
+          const phone = contact?.phone || fallbackInv?.customerPhone || fallbackInv?.customerWhatsapp || "—";
+          const country = contact?.country || fallbackInv?.customerCountry || "—";
           const source = contact?.source || (lang === "es" ? "Cliente registrado" : "Registered customer");
           const firstContact = contact?.date || (customerInvs.length ? [...customerInvs].sort((a,b) => (a.issued||"").localeCompare(b.issued||""))[0]?.issued : "—");
           const lastSeen = contact?.lastSeen || (customerInvs.length ? [...customerInvs].sort((a,b) => (b.issued||"").localeCompare(a.issued||""))[0]?.issued : "—");
@@ -16763,6 +16793,11 @@ function IntegrationsPanel() {
   // de configuración del admin que las introdujo.
   const [configs, setConfigs] = useState({});
   const [openModal, setOpenModal] = useState(null);
+  // PM 2026-07-02: sin acceso al Stripe Dashboard, el admin necesita ver
+  // los intentos del webhook desde nuestro sistema. logs se cargan al
+  // clickear el botón "Ver actividad del webhook".
+  const [webhookLogs, setWebhookLogs] = useState(null); // null=cerrado, []=abierto vacío
+  const [webhookLogsLoading, setWebhookLogsLoading] = useState(false);
   const reload = async () => {
     try {
       const rows = await sbListPaymentConfigs();
@@ -16770,6 +16805,17 @@ function IntegrationsPanel() {
       (rows || []).forEach((r) => { map[r.provider] = r; });
       setConfigs(map);
     } catch (e) { console.warn("[admin] payment configs:", e); }
+  };
+  const loadWebhookLogs = async () => {
+    setWebhookLogsLoading(true);
+    try {
+      const { listWebhookLogs } = await import("@/lib/admin/webhook_logs");
+      const rows = await listWebhookLogs(50);
+      setWebhookLogs(rows || []);
+    } catch (e) {
+      console.warn("[admin] webhook logs:", e);
+      setWebhookLogs([]);
+    } finally { setWebhookLogsLoading(false); }
   };
   useEffect(() => { reload(); }, []);
 
@@ -16808,6 +16854,75 @@ function IntegrationsPanel() {
           );
         })}
       </div>
+
+      {/* PM 2026-07-02: diagnóstico del webhook. Cuando no hay acceso al
+          Stripe Dashboard del cliente, este panel es la única forma de
+          ver si los intentos están llegando y qué respuesta reciben. */}
+      <div className="adm-card" style={{ marginTop: 14 }}>
+        <div className="adm-card-head">
+          <div className="adm-card-title">{lang === "es" ? "Diagnóstico del Webhook" : "Webhook Diagnostics"}</div>
+          <button className="adm-btn adm-btn-ghost" onClick={() => { setWebhookLogs([]); loadWebhookLogs(); }}>
+            <Activity style={{ width: 12, height: 12 }} />{lang === "es" ? "Ver actividad" : "View activity"}
+          </button>
+        </div>
+        <div style={{ padding: "12px 16px", fontSize: 12, color: "rgba(255,255,255,.55)", lineHeight: 1.55 }}>
+          {lang === "es"
+            ? "Cada vez que Stripe (o PayPal) intente notificar un pago, queda registrado aquí. Sin acceso al dashboard del provider, esta es la fuente de verdad para diagnosticar."
+            : "Every attempt from Stripe (or PayPal) is recorded here. Without provider dashboard access, this is the source of truth for diagnostics."}
+          <div style={{ marginTop: 8, fontSize: 11.5, color: "rgba(255,255,255,.4)" }}>
+            {lang === "es" ? "Ping de la URL: " : "URL ping: "}
+            <a href="/api/stripe/webhook" target="_blank" rel="noopener noreferrer" style={{ color: "#F5A623" }}>/api/stripe/webhook</a>
+            {" — "}{lang === "es" ? "un GET devuelve 200 si el endpoint está accesible desde internet." : "GET returns 200 if the endpoint is reachable from the internet."}
+          </div>
+        </div>
+      </div>
+
+      {webhookLogs !== null && (
+        <div className="adm-modal-bg" onClick={() => setWebhookLogs(null)}>
+          <div className="adm-modal" style={{ maxWidth: 920, maxHeight: "88vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <button className="adm-modal-close" onClick={() => setWebhookLogs(null)}><X /></button>
+            <h3 style={{ marginBottom: 4 }}>{lang === "es" ? "Actividad del Webhook" : "Webhook Activity"}</h3>
+            <p className="adm-modal-sub" style={{ marginBottom: 18 }}>{lang === "es" ? "Últimos 50 intentos ordenados por más reciente." : "Last 50 attempts, most recent first."}</p>
+            {webhookLogsLoading && <div style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,.6)" }}>{lang === "es" ? "Cargando..." : "Loading..."}</div>}
+            {!webhookLogsLoading && webhookLogs.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,.5)", background: "rgba(255,255,255,.03)", borderRadius: 10, border: "1px dashed rgba(255,255,255,.1)" }}>
+                {lang === "es"
+                  ? "Sin intentos registrados. Si esperabas ver actividad tras un pago, verificá: (1) que Stripe tenga el webhook creado apuntando a https://livinginprdise.com/api/stripe/webhook, (2) que esté en el mismo modo (live/test) que las keys, (3) que el evento checkout.session.completed esté suscrito."
+                  : "No attempts recorded. If you expected activity after a payment, check: (1) Stripe has the webhook created pointing to https://livinginprdise.com/api/stripe/webhook, (2) it matches the live/test mode of the keys, (3) checkout.session.completed is subscribed."}
+              </div>
+            )}
+            {!webhookLogsLoading && webhookLogs.length > 0 && (
+              <table className="adm-table" style={{ fontSize: 11.5 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>{lang === "es" ? "Recibido" : "Received"}</th>
+                    <th style={{ textAlign: "left" }}>Provider</th>
+                    <th style={{ textAlign: "left" }}>{lang === "es" ? "Evento" : "Event"}</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: "left" }}>{lang === "es" ? "Resultado" : "Outcome"}</th>
+                    <th style={{ textAlign: "left" }}>{lang === "es" ? "Mensaje" : "Message"}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {webhookLogs.map((l) => {
+                    const okColor = l.status_code >= 200 && l.status_code < 300 ? "#8DC63F" : l.status_code >= 400 ? "#EF6C2B" : "rgba(255,255,255,.5)";
+                    return (
+                      <tr key={l.id}>
+                        <td style={{ whiteSpace: "nowrap", color: "rgba(255,255,255,.55)" }}>{l.received_at.replace("T", " ").slice(0, 19)}</td>
+                        <td style={{ textTransform: "uppercase", fontSize: 10, fontWeight: 700, letterSpacing: ".08em" }}>{l.provider}</td>
+                        <td style={{ fontFamily: "monospace", color: "rgba(255,255,255,.75)" }}>{l.event_type || "—"}</td>
+                        <td style={{ textAlign: "center" }}><span style={{ padding: "2px 8px", borderRadius: 999, background: okColor + "22", color: okColor, fontWeight: 700 }}>{l.status_code}</span></td>
+                        <td style={{ fontFamily: "monospace", fontSize: 10.5, color: okColor }}>{l.outcome}</td>
+                        <td style={{ color: "rgba(255,255,255,.6)", maxWidth: 320, wordBreak: "break-word" }}>{l.message || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {openModal && (
         <IntegrationModal
