@@ -11017,7 +11017,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                       setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
                                     }
                                   }}
-                                >{busy === "email" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <Send />}</button>
+                                >{busy === "email" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <Mail />}</button>
                               );
                             })()}
                             {(() => {
