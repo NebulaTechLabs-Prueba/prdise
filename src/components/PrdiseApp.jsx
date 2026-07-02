@@ -8636,13 +8636,14 @@ html{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)
 .adm-stat-trend svg{width:11px;height:11px}
 
 /* Two-column layouts */
-.adm-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;margin-bottom:18px;min-width:0}
-.adm-grid-2>.adm-card{min-width:0}
+.adm-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;margin-bottom:18px;min-width:0;align-items:stretch}
+.adm-grid-2>.adm-card{min-width:0;display:flex;flex-direction:column}
 .adm-grid-2 .adm-tbl-wrap{overflow-x:auto;max-width:100%}
-/* PM 2026-07-02: cards con tabla vacía no deben tener la scrollbar
-   pegada al header (colapsaban en altura por el tbody chico). Fijamos
-   min-height para que el layout baje y el scrollbar quede al final. */
-.adm-grid-2 .adm-card > .adm-tbl-wrap{min-height:160px}
+/* PM 2026-07-02: para simetría entre las dos cards, el wrap crece
+   flex:1 dentro de la card. Ambas scrollbars quedan al pie de la
+   card, no al pie del contenido (que podría ser más corto si una
+   tabla está vacía). */
+.adm-grid-2 .adm-card > .adm-tbl-wrap{flex:1;min-height:160px}
 .adm-grid-2 .adm-tbl td{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:18px}
 .adm-grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px;align-items:start}
