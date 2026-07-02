@@ -16695,14 +16695,22 @@ function NotifSetting({ label, desc, defaultOn }) {
   );
 }
 
+// PM 2026-07-02: Stripe ahora tiene los grupos test/live separados. El
+// selector "mode" arriba decide cuál está activo. Los campos con
+// group=test|live se muestran en su tab correspondiente en el modal.
+// Los campos sin group son comunes (mode, connected_account_id, currency).
 const INTEGRATIONS_CONFIG = {
   stripe: {
     name: "Stripe", descES: "Procesar pagos con tarjeta de crédito", descEN: "Process credit card payments", color: "#635BFF",
+    hasModes: true,
     fields: [
-      { key: "publishable_key", labelEN: "Publishable Key", labelES: "Clave publicable", placeholder: "pk_live_...", required: true },
-      { key: "secret_key", labelEN: "Secret Key", labelES: "Clave secreta", placeholder: "sk_live_...", required: true, secret: true },
-      { key: "webhook_secret", labelEN: "Webhook Secret", labelES: "Secreto de Webhook", placeholder: "whsec_..." , secret: true },
-      { key: "mode", labelEN: "Mode", labelES: "Modo", type: "select", options: ["test", "live"], required: true },
+      { key: "mode", labelEN: "Active Mode", labelES: "Modo activo", type: "select", options: ["test", "live"], required: true },
+      { key: "publishable_key_test", group: "test", labelEN: "TEST · Publishable Key", labelES: "TEST · Clave publicable", placeholder: "pk_test_..." },
+      { key: "secret_key_test", group: "test", labelEN: "TEST · Secret Key", labelES: "TEST · Clave secreta", placeholder: "sk_test_...", secret: true },
+      { key: "webhook_secret_test", group: "test", labelEN: "TEST · Webhook Secret", labelES: "TEST · Secreto de Webhook", placeholder: "whsec_...", secret: true },
+      { key: "publishable_key_live", group: "live", labelEN: "LIVE · Publishable Key", labelES: "LIVE · Clave publicable", placeholder: "pk_live_..." },
+      { key: "secret_key_live", group: "live", labelEN: "LIVE · Secret Key", labelES: "LIVE · Clave secreta", placeholder: "sk_live_...", secret: true },
+      { key: "webhook_secret_live", group: "live", labelEN: "LIVE · Webhook Secret", labelES: "LIVE · Secreto de Webhook", placeholder: "whsec_...", secret: true },
       { key: "connected_account_id", labelEN: "Connected Account ID (optional)", labelES: "ID de cuenta conectada (opcional)", placeholder: "acct_..." },
       { key: "default_currency", labelEN: "Default Currency", labelES: "Moneda por defecto", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
     ],
@@ -16789,9 +16797,14 @@ function IntegrationsPanel() {
             fd.append("enabled", data.enabled ? "true" : "false");
             fd.append("mode", data.mode || "test");
             if (openModal === "stripe") {
-              fd.append("publishable_key", data.publishable_key || "");
-              fd.append("secret_key", data.secret_key || "");
-              fd.append("webhook_secret", data.webhook_secret || "");
+              // PM 2026-07-02: enviar los dos sets de keys por separado.
+              // El server elige cuál usa en runtime según `mode`.
+              fd.append("publishable_key_test", data.publishable_key_test || "");
+              fd.append("secret_key_test", data.secret_key_test || "");
+              fd.append("webhook_secret_test", data.webhook_secret_test || "");
+              fd.append("publishable_key_live", data.publishable_key_live || "");
+              fd.append("secret_key_live", data.secret_key_live || "");
+              fd.append("webhook_secret_live", data.webhook_secret_live || "");
               fd.append("connected_account_id", data.connected_account_id || "");
             } else {
               fd.append("client_id", data.client_id || "");
@@ -16843,6 +16856,19 @@ function IntegrationModal({ integrationId, config, initialData, isConnected, onC
           return;
         }
       }
+      // PM 2026-07-02: para Stripe (hasModes=true) exigimos que las keys
+      // del MODO ACTIVO estén cargadas. El otro modo puede quedar vacío.
+      if (config.hasModes && integrationId === "stripe") {
+        const activeMode = data.mode === "live" ? "live" : "test";
+        const pk = String(data[`publishable_key_${activeMode}`] || "").trim();
+        const sk = String(data[`secret_key_${activeMode}`] || "").trim();
+        if (!pk || !sk) {
+          setError(lang === "es"
+            ? `Cargá la Publishable Key y la Secret Key del modo ${activeMode.toUpperCase()} antes de activar Stripe.`
+            : `Fill in the Publishable Key and Secret Key for ${activeMode.toUpperCase()} mode before enabling Stripe.`);
+          return;
+        }
+      }
     }
     setSaved(true);
     setTimeout(() => onSave(data), 600);
@@ -16877,36 +16903,88 @@ function IntegrationModal({ integrationId, config, initialData, isConnected, onC
               </div>
             </div>
           </label>
-          {config.fields.map((f) => (
-            <div key={f.key} className="adm-fg">
-              <label className="adm-fl">
-                {labelOf(f)} {f.required && <span style={{ color: "#EF6C2B" }}>*</span>}
-              </label>
-              {f.type === "select" ? (
-                <select className="adm-fi" value={data[f.key] || ""} onChange={(e) => setData({ ...data, [f.key]: e.target.value })}>
-                  <option value="">{lang==="es"?"Seleccionar...":"Select..."}</option>
-                  {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              ) : (
-                <div style={{ position: "relative" }}>
-                  <input
-                    type={f.secret && !showSecret[f.key] ? "password" : "text"}
-                    className="adm-fi"
-                    placeholder={f.placeholder}
-                    value={data[f.key] || ""}
-                    onChange={(e) => setData({ ...data, [f.key]: e.target.value })}
-                    style={f.secret ? { paddingRight: 38 } : {}}
-                  />
-                  {f.secret && (
-                    <button type="button" onClick={() => setShowSecret({ ...showSecret, [f.key]: !showSecret[f.key] })}
-                      style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 6 }}>
-                      {showSecret[f.key] ? <EyeOff style={{ width: 14, height: 14 }} /> : <Eye style={{ width: 14, height: 14 }} />}
-                    </button>
-                  )}
+          {/* PM 2026-07-02: helper para renderizar un input de campo. Se
+              reusa para todos los grupos (comunes, test, live). */}
+          {(() => {
+            const renderField = (f) => (
+              <div key={f.key} className="adm-fg">
+                <label className="adm-fl">
+                  {labelOf(f)} {f.required && <span style={{ color: "#EF6C2B" }}>*</span>}
+                </label>
+                {f.type === "select" ? (
+                  <select className="adm-fi" value={data[f.key] || ""} onChange={(e) => setData({ ...data, [f.key]: e.target.value })}>
+                    <option value="">{lang === "es" ? "Seleccionar..." : "Select..."}</option>
+                    {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={f.secret && !showSecret[f.key] ? "password" : "text"}
+                      className="adm-fi"
+                      placeholder={f.placeholder}
+                      value={data[f.key] || ""}
+                      onChange={(e) => setData({ ...data, [f.key]: e.target.value })}
+                      style={f.secret ? { paddingRight: 38 } : {}}
+                    />
+                    {f.secret && (
+                      <button type="button" onClick={() => setShowSecret({ ...showSecret, [f.key]: !showSecret[f.key] })}
+                        style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 6 }}>
+                        {showSecret[f.key] ? <EyeOff style={{ width: 14, height: 14 }} /> : <Eye style={{ width: 14, height: 14 }} />}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+
+            // Sin modes duales: render lineal como antes.
+            if (!config.hasModes) return config.fields.map(renderField);
+
+            // Con modes: separamos en 3 grupos — comunes (sin group),
+            // test, live. El grupo activo (según data.mode) tiene borde
+            // verde + badge "MODO ACTIVO" para que el admin sepa cuál
+            // se está usando en runtime. El otro grupo queda tenue.
+            const common = config.fields.filter((f) => !f.group);
+            const testFields = config.fields.filter((f) => f.group === "test");
+            const liveFields = config.fields.filter((f) => f.group === "live");
+            const activeMode = data.mode === "live" ? "live" : "test";
+
+            const groupBox = (label, fields, mode) => {
+              const isActive = activeMode === mode;
+              return (
+                <div key={mode} style={{
+                  padding: 14, borderRadius: 11, marginBottom: 12,
+                  background: isActive ? "rgba(141,198,63,.06)" : "rgba(255,255,255,.02)",
+                  border: `1px solid ${isActive ? "rgba(141,198,63,.4)" : "rgba(255,255,255,.06)"}`,
+                  opacity: isActive ? 1 : 0.75,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", color: isActive ? "#8DC63F" : "rgba(255,255,255,.55)" }}>
+                      {label}
+                    </div>
+                    {isActive && (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "rgba(141,198,63,.15)", border: "1px solid rgba(141,198,63,.4)", fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", color: "#8DC63F" }}>
+                        <Check style={{ width: 10, height: 10 }} />
+                        {lang === "es" ? "MODO ACTIVO" : "ACTIVE MODE"}
+                      </div>
+                    )}
+                  </div>
+                  {fields.map(renderField)}
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            };
+
+            return (
+              <>
+                {/* Común arriba: incluye el selector de mode */}
+                {common.filter((f) => f.key === "mode").map(renderField)}
+                {groupBox(lang === "es" ? "CLAVES DE PRUEBA · TEST" : "TEST KEYS", testFields, "test")}
+                {groupBox(lang === "es" ? "CLAVES REALES · LIVE" : "LIVE KEYS", liveFields, "live")}
+                {/* Resto de campos comunes al final (no-mode) */}
+                {common.filter((f) => f.key !== "mode").map(renderField)}
+              </>
+            );
+          })()}
         </div>
 
         {error && (

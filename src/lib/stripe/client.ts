@@ -23,13 +23,41 @@ async function resolveStripeKey(): Promise<string | null> {
   let key: string | null = null;
   try {
     const admin = createAdminClient();
-    const { data } = await admin
+    // PM 2026-07-02: leemos las columnas nuevas (_test/_live) + legacy
+    // (secret_key) como fallback. `mode` decide qué slot usar. Si la
+    // migración 20260702000000 no se aplicó aún, el select va a fallar por
+    // columna faltante y caemos a un segundo intento con el shape viejo.
+    let row:
+      | {
+          enabled: boolean | null;
+          mode: string | null;
+          secret_key: string | null;
+          secret_key_test: string | null;
+          secret_key_live: string | null;
+        }
+      | null = null;
+    const first = await admin
       .from("payment_provider_configs")
-      .select("secret_key, enabled")
+      .select("secret_key, secret_key_test, secret_key_live, enabled, mode")
       .eq("provider", "stripe")
       .maybeSingle();
-    if (data?.enabled && data.secret_key && data.secret_key.trim()) {
-      key = data.secret_key.trim();
+    if (first.error && String(first.error.code) === "42703") {
+      const legacy = await admin
+        .from("payment_provider_configs")
+        .select("secret_key, enabled, mode")
+        .eq("provider", "stripe")
+        .maybeSingle();
+      row = legacy.data
+        ? { ...legacy.data, secret_key_test: null, secret_key_live: null }
+        : null;
+    } else {
+      row = (first.data as typeof row) ?? null;
+    }
+    if (row?.enabled) {
+      const mode = row.mode === "live" ? "live" : "test";
+      const byMode = mode === "live" ? row.secret_key_live : row.secret_key_test;
+      const candidate = (byMode && byMode.trim()) || (row.secret_key && row.secret_key.trim()) || "";
+      if (candidate) key = candidate;
     }
   } catch {
     // best-effort: si la query falla, fallback al env.
@@ -86,13 +114,39 @@ export async function getStripeWebhookSecret(): Promise<string | null> {
   let secret: string | null = null;
   try {
     const admin = createAdminClient();
-    const { data } = await admin
+    // PM 2026-07-02: mismo patrón que resolveStripeKey — leer las columnas
+    // por modo + legacy como fallback. Tolerante a migración no aplicada.
+    let row:
+      | {
+          enabled: boolean | null;
+          mode: string | null;
+          webhook_secret: string | null;
+          webhook_secret_test: string | null;
+          webhook_secret_live: string | null;
+        }
+      | null = null;
+    const first = await admin
       .from("payment_provider_configs")
-      .select("webhook_secret, enabled")
+      .select("webhook_secret, webhook_secret_test, webhook_secret_live, enabled, mode")
       .eq("provider", "stripe")
       .maybeSingle();
-    if (data?.enabled && data.webhook_secret && data.webhook_secret.trim()) {
-      secret = data.webhook_secret.trim();
+    if (first.error && String(first.error.code) === "42703") {
+      const legacy = await admin
+        .from("payment_provider_configs")
+        .select("webhook_secret, enabled, mode")
+        .eq("provider", "stripe")
+        .maybeSingle();
+      row = legacy.data
+        ? { ...legacy.data, webhook_secret_test: null, webhook_secret_live: null }
+        : null;
+    } else {
+      row = (first.data as typeof row) ?? null;
+    }
+    if (row?.enabled) {
+      const mode = row.mode === "live" ? "live" : "test";
+      const byMode = mode === "live" ? row.webhook_secret_live : row.webhook_secret_test;
+      const candidate = (byMode && byMode.trim()) || (row.webhook_secret && row.webhook_secret.trim()) || "";
+      if (candidate) secret = candidate;
     }
   } catch {
     // best-effort: fallback al env.
