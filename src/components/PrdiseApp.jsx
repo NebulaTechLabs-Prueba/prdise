@@ -14,6 +14,7 @@ import {
   Printer, FileText, Copy, Hash, DollarSign, ExternalLink,
   Download, Loader2, RefreshCw,
   Image as ImageIcon, Twitter, Link2,
+  Cake,
 } from "lucide-react";
 import {
   signIn as sbSignIn,
@@ -2471,6 +2472,149 @@ function MaintenanceGate({ children }) {
   // El admin no logueado pero que quiere entrar necesita /login accesible.
   if (path === "/login" || path === "/admin" || path.startsWith("/auth")) return children;
   return <MaintenanceScreen />;
+}
+
+// PM 2026-07-02: timeline horizontal de cumpleaños (1 semana). Colapsable
+// dentro de Contactos. Solo muestra puntos donde hay N cumpleaños; el
+// admin ve nombres al hacer click. Navegación con flechas ← →.
+function BirthdayTimelineCollapsible({ customers, lang }) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDayIdx, setSelectedDayIdx] = useState(null);
+
+  // Construimos los 7 días de la semana visible.
+  const days = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Ancla: lunes de la semana visible.
+    const monday = new Date(today);
+    const dow = (today.getDay() + 6) % 7; // 0=lunes, 6=domingo
+    monday.setDate(today.getDate() - dow + weekOffset * 7);
+    const arr = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      arr.push(d);
+    }
+    return arr;
+  }, [weekOffset]);
+
+  // Índice: clientes agrupados por MM-DD de su birth_date.
+  const bdayIndex = useMemo(() => {
+    const map = {};
+    (customers || []).forEach((c) => {
+      if (!c.birthDate) return;
+      const raw = String(c.birthDate);
+      const match = raw.match(/^\d{4}-(\d{2})-(\d{2})/);
+      if (!match) return;
+      const key = `${match[1]}-${match[2]}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(c);
+    });
+    return map;
+  }, [customers]);
+
+  const dayLabel = (d, mode) => {
+    const nameShort = d.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { weekday: "short" });
+    const day = d.getDate();
+    return mode === "short" ? nameShort : `${nameShort} ${day}`;
+  };
+
+  const isToday = (d) => {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    return d.getTime() === now.getTime();
+  };
+
+  const weekRangeLabel = () => {
+    const first = days[0];
+    const last = days[6];
+    const fmt = (x) => x.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { day: "numeric", month: "short" });
+    return `${fmt(first)} — ${fmt(last)}`;
+  };
+
+  const selectedDay = selectedDayIdx != null ? days[selectedDayIdx] : null;
+  const selectedList = selectedDay
+    ? bdayIndex[`${String(selectedDay.getMonth() + 1).padStart(2, "0")}-${String(selectedDay.getDate()).padStart(2, "0")}`] || []
+    : [];
+
+  return (
+    <Collapsible title={lang === "es" ? "Cumpleaños de la semana" : "Birthdays this week"} icon={Cake}>
+      <div style={{ padding: "12px 16px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 12 }}>
+          <button
+            onClick={() => { setWeekOffset((w) => w - 1); setSelectedDayIdx(null); }}
+            className="adm-btn adm-btn-ghost"
+            style={{ padding: "4px 10px" }}
+            aria-label={lang === "es" ? "Semana anterior" : "Previous week"}
+          ><ChevronLeft style={{ width: 14, height: 14 }} /></button>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.7)", letterSpacing: ".05em" }}>
+            {weekRangeLabel()}
+            {weekOffset === 0 && <span style={{ marginLeft: 8, fontSize: 10, color: "var(--gold)", fontWeight: 700, textTransform: "uppercase" }}>{lang === "es" ? "Actual" : "Current"}</span>}
+          </div>
+          <button
+            onClick={() => { setWeekOffset((w) => w + 1); setSelectedDayIdx(null); }}
+            className="adm-btn adm-btn-ghost"
+            style={{ padding: "4px 10px" }}
+            aria-label={lang === "es" ? "Semana siguiente" : "Next week"}
+          ><ChevronRight style={{ width: 14, height: 14 }} /></button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+          {days.map((d, i) => {
+            const key = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            const count = (bdayIndex[key] || []).length;
+            const hasBday = count > 0;
+            const active = selectedDayIdx === i;
+            return (
+              <button
+                key={i}
+                onClick={() => setSelectedDayIdx(active ? null : (hasBday ? i : null))}
+                title={hasBday
+                  ? (lang === "es" ? `${count} cumpleaños ese día` : `${count} birthday${count > 1 ? "s" : ""} that day`)
+                  : (lang === "es" ? "Sin cumpleaños" : "No birthdays")}
+                disabled={!hasBday}
+                style={{
+                  padding: "10px 4px",
+                  borderRadius: 10,
+                  background: active ? "rgba(245,166,35,.14)" : "rgba(255,255,255,.03)",
+                  border: `1px solid ${active ? "rgba(245,166,35,.5)" : (isToday(d) ? "rgba(245,166,35,.35)" : "rgba(255,255,255,.06)")}`,
+                  color: hasBday ? "#fff" : "rgba(255,255,255,.35)",
+                  fontSize: 11,
+                  cursor: hasBday ? "pointer" : "default",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  position: "relative",
+                }}
+              >
+                <div style={{ fontSize: 10, opacity: .7, textTransform: "uppercase", letterSpacing: ".08em" }}>{dayLabel(d, "short")}</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{d.getDate()}</div>
+                {hasBday && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--gold)", fontWeight: 700 }}>
+                    <Cake style={{ width: 10, height: 10 }} />{count}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedList.length > 0 && (
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "rgba(245,166,35,.06)", border: "1px solid rgba(245,166,35,.2)" }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold)", marginBottom: 8 }}>
+              {lang === "es"
+                ? `Cumpleaños · ${selectedDay.toLocaleDateString("es-PR", { day: "numeric", month: "long" })}`
+                : `Birthdays · ${selectedDay.toLocaleDateString("en-US", { month: "long", day: "numeric" })}`}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {selectedList.map((c) => (
+                <div key={c.id || c.email} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "rgba(255,255,255,.85)", padding: "6px 8px", borderRadius: 6, background: "rgba(255,255,255,.03)" }}>
+                  <span style={{ fontWeight: 600 }}>{c.name || c.email || "—"}</span>
+                  <span style={{ color: "rgba(255,255,255,.5)", fontSize: 11 }}>{c.email || ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Collapsible>
+  );
 }
 
 // PM 2026-06-23: Collapsible = accordion reutilizable para las secciones
@@ -9563,7 +9707,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td style={{ fontWeight: 600 }}>{t.name}</td>
                         <td style={{ color: "rgba(255,255,255,.6)" }}>{t.day}</td>
                         <td>{t.duration}</td>
-                        <td>{t.capacity} pax</td>
+                        <td>{t.capacity} {lang === "es" ? (t.capacity === 1 ? "pasajero" : "pasajeros") : (t.capacity === 1 ? "passenger" : "passengers")}</td>
                         <td style={{ color: "#F5A623", fontWeight: 700 }}>${t.price}</td>
                         <td>{st.bookings}</td>
                         <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(st.revenue)}</td>
@@ -10211,7 +10355,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <tr key={v.id}>
                           <td style={{ fontWeight: 600 }}>{v.name}</td>
                           <td style={{ fontFamily: "monospace", color: "rgba(255,255,255,.6)", fontSize: 12 }}>{v.plate}</td>
-                          <td>{v.seats} pax</td>
+                          <td>{v.seats} {lang === "es" ? (v.seats === 1 ? "pasajero" : "pasajeros") : (v.seats === 1 ? "passenger" : "passengers")}</td>
                           <td>{v.bags ?? 0}</td>
                           <td style={{ color: "rgba(255,255,255,.7)" }}>{v.driver}</td>
                           <td style={{ color: "#F5A623", fontWeight: 700 }}>${v.base}</td>
@@ -10511,7 +10655,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Vehículo" : "Vehicle"}</label>
                       <select className="adm-fi" value={editingDriver.vehicle} onChange={(e) => setEditingDriver({ ...editingDriver, vehicle: e.target.value })}>
                         <option value="">{lang === "es" ? "Seleccionar vehículo..." : "Select vehicle..."}</option>
-                        {vehicles.map(v => <option key={v.id} value={v.name}>{v.name} — {v.plate} ({v.seats} pax)</option>)}
+                        {vehicles.map(v => <option key={v.id} value={v.name}>{v.name} — {v.plate} ({v.seats} {lang === "es" ? "pasajeros" : "passengers"})</option>)}
                         <option value="_custom">{lang === "es" ? "Otro (escribir)" : "Other (type)"}</option>
                       </select>
                     </div>
@@ -10818,6 +10962,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                             de pago real (Stripe o PayPal) en una pestaña
                             nueva, o copia al clipboard si shift-click. */}
                         <td>{(() => {
+                          // PM 2026-07-02: off_system usa cobro manual
+                          // (efectivo/transferencia). No aplica link de pago.
+                          if (inv.paymentMethod === "off_system") {
+                            return <span style={{ color: "rgba(255,255,255,.4)", fontSize: 10.5, fontStyle: "italic" }}>{lang === "es" ? "Fuera del sistema" : "Off-system"}</span>;
+                          }
                           const payUrl = inv.stripePaymentLinkUrl || inv.paypalPaymentLinkUrl || "";
                           if (!payUrl) return <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>;
                           return (
@@ -11541,10 +11690,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 )}
                 {viewingInvoice.status === "pending" && (
                   <>
-                    {/* PM 2026-06-29: solo permitir copy si hay link real
-                        generado. Antes había un fallback a /pay/<num> que
-                        no existe (404). Si no hay link, indicamos al admin
-                        que primero debe generarlo desde la fila. */}
+                    {/* PM 2026-07-02: si la factura es off_system, ocultar
+                        botones de link de pago — el cobro se hace fuera
+                        del sistema (efectivo, transferencia, etc.). */}
+                    {viewingInvoice.paymentMethod !== "off_system" && (
                     <button className="adm-btn adm-btn-ghost" onClick={() => {
                       const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl;
                       if (!link) {
@@ -11554,6 +11703,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => toast({ type: "success", message: lang === "es" ? "Enlace de pago copiado" : "Payment link copied" }));
                       else toast({ type: "info", message: lang === "es" ? "Enlace: " + link : "Link: " + link });
                     }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
+                    )}
                     <button className="adm-btn adm-btn-ghost" style={{ color: "#29ABE2", borderColor: "rgba(41,171,226,.4)" }} onClick={async () => {
                       if (!canEditInvoices()) return;
                       try {
@@ -11572,6 +11722,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 )}
                 {(viewingInvoice.status === "sent" || viewingInvoice.status === "overdue") && (
                   <>
+                    {/* PM 2026-07-02: mismo criterio — off_system no muestra
+                        botón de copy link. */}
+                    {viewingInvoice.paymentMethod !== "off_system" && (
                     <button className="adm-btn adm-btn-ghost" onClick={() => {
                       const link = viewingInvoice.stripePaymentLinkUrl || viewingInvoice.paypalPaymentLinkUrl;
                       if (!link) {
@@ -11581,6 +11734,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => toast({ type: "success", message: lang === "es" ? "Enlace de pago copiado" : "Payment link copied" }));
                       else toast({ type: "info", message: lang === "es" ? "Enlace: " + link : "Link: " + link });
                     }}><Copy style={{ width: 12, height: 12 }} />{lang === "es" ? "Copiar enlace" : "Copy link"}</button>
+                    )}
                     <button className="adm-btn adm-btn-ghost" style={{ color: "#8DC63F", borderColor: "rgba(141,198,63,.4)" }} onClick={() => { setMarkPaidInvoice(viewingInvoice); setPaymentRef(""); setViewingInvoice(null); }}>
                       <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como pagada" : "Mark as paid"}
                     </button>
@@ -12398,11 +12552,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-stat-val">{customers.reduce((s, c) => s + (c.serviceCount || 0), 0)}</div>
                 <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"en facturas":"across invoices"}</div>
               </div>
-              <div className="adm-stat orange">
-                <div className="adm-stat-top"><span className="adm-stat-label">{lang==="es"?"Cumpleaños conocidos":"Birthdays known"}</span><div className="adm-stat-ico"><Calendar /></div></div>
-                <div className="adm-stat-val">{customers.filter(c => c.birthDate).length}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{lang==="es"?"para campañas":"available for campaigns"}</div>
-              </div>
+            </div>
+
+            {/* PM 2026-07-02: timeline de cumpleaños desplegable. Reemplaza
+                a la tarjeta "Cumpleaños conocidos" que era aspiracional.
+                Solo muestra puntos donde hay cumpleaños; no expone data
+                sensible (nombres, fechas) — al hacer hover en un día con
+                cumpleaños, aparece un menú contextual con "N cumpleaños"
+                y podés hacer click para ver los nombres. Navegación por
+                semana con flechas. */}
+            <div style={{ marginBottom: 14 }}>
+              <BirthdayTimelineCollapsible customers={customers} lang={lang} />
             </div>
 
             <div className="adm-card">
