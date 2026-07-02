@@ -8399,11 +8399,24 @@ function AdminPanel({ onClose }) {
     // PM 2026-07-02: buckets sin ingresos deben renderizar 0% (no barra
     // fantasma del 2%). El mínimo visual antes creaba barritas
     // engañosas en semanas que en realidad no tuvieron nada.
-    const chartData = buckets.map((b) => ({
-      day: b.day,
-      revenue: b.revenue,
-      value: b.revenue > 0 ? Math.max(4, Math.round((b.revenue / maxRevenue) * 100)) : 0,
-    }));
+    // Además: agregamos rangeLabel con las fechas concretas del bucket
+    // para que el hover diga "Jun 26 – Jul 2" y desambigüe el label
+    // "W4" (que es ventana móvil, no semana calendario).
+    const fmtDay = (iso) => {
+      const d = new Date(iso + "T00:00:00");
+      return d.toLocaleDateString(lang === "es" ? "es-PR" : "en-US", { day: "numeric", month: "short" });
+    };
+    const chartData = buckets.map((b) => {
+      const rangeLabel = dateRange === "7d"
+        ? fmtDay(b.key)
+        : `${fmtDay(b._start)} – ${fmtDay(b._end)}`;
+      return {
+        day: b.day,
+        revenue: b.revenue,
+        rangeLabel,
+        value: b.revenue > 0 ? Math.max(4, Math.round((b.revenue / maxRevenue) * 100)) : 0,
+      };
+    });
     return {
       revenue: Math.max(serverRevenue, localRevenue),
       revenueDelta: fmtPct(s?.deltas?.revenuePct),
@@ -9225,9 +9238,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   {rangeMetrics.chartData.map((d, i) => (
                     <div key={i} className="adm-bar-col">
                       <div className="adm-bar-wrap">
-                        <div className="adm-bar" style={{ height: `${d.value}%` }} title={fmt(d.revenue)} />
+                        <div className="adm-bar" style={{ height: `${d.value}%` }} title={`${d.rangeLabel} · ${fmt(d.revenue)}`} />
                       </div>
-                      <span className="adm-bar-label">{d.day}</span>
+                      {/* PM 2026-07-02: mostrar el rango de fechas real
+                          debajo del bucket. Antes se veía sólo 'W4', que
+                          es ambiguo (ventana móvil, no semana calendario). */}
+                      <span className="adm-bar-label" title={d.rangeLabel}>{d.day}</span>
+                      <span style={{ fontSize: 9.5, color: "rgba(255,255,255,.35)", marginTop: 2, letterSpacing: ".02em" }}>{d.rangeLabel}</span>
                     </div>
                   ))}
                 </div>
