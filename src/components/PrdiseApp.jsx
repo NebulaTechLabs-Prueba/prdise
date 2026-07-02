@@ -16951,6 +16951,18 @@ function IntegrationModal({ integrationId, config, initialData, isConnected, onC
 
             const groupBox = (label, fields, mode) => {
               const isActive = activeMode === mode;
+              // PM 2026-07-02: has = al menos 1 de los 3 campos del grupo
+              // tiene valor. Se usa para habilitar el botón "Vaciar" solo
+              // cuando hay algo que vaciar.
+              const has = fields.some((f) => String(data[f.key] || "").trim() !== "");
+              const clearGroup = () => {
+                const next = { ...data };
+                fields.forEach((f) => { next[f.key] = ""; });
+                setData(next);
+              };
+              const urlHint = mode === "test"
+                ? (lang === "es" ? "Genera links tipo buy.stripe.com/test_..." : "Generates links like buy.stripe.com/test_...")
+                : (lang === "es" ? "Genera links tipo buy.stripe.com/..." : "Generates links like buy.stripe.com/...");
               return (
                 <div key={mode} style={{
                   padding: 14, borderRadius: 11, marginBottom: 12,
@@ -16958,17 +16970,33 @@ function IntegrationModal({ integrationId, config, initialData, isConnected, onC
                   border: `1px solid ${isActive ? "rgba(141,198,63,.4)" : "rgba(255,255,255,.06)"}`,
                   opacity: isActive ? 1 : 0.75,
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
                     <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", color: isActive ? "#8DC63F" : "rgba(255,255,255,.55)" }}>
                       {label}
                     </div>
-                    {isActive && (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "rgba(141,198,63,.15)", border: "1px solid rgba(141,198,63,.4)", fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", color: "#8DC63F" }}>
-                        <Check style={{ width: 10, height: 10 }} />
-                        {lang === "es" ? "MODO ACTIVO" : "ACTIVE MODE"}
-                      </div>
-                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isActive && (
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "rgba(141,198,63,.15)", border: "1px solid rgba(141,198,63,.4)", fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", color: "#8DC63F" }}>
+                          <Check style={{ width: 10, height: 10 }} />
+                          {lang === "es" ? "MODO ACTIVO" : "ACTIVE MODE"}
+                        </div>
+                      )}
+                      <button type="button" onClick={clearGroup} disabled={!has}
+                        title={has ? (lang === "es" ? `Vaciar los 3 campos ${mode.toUpperCase()}` : `Clear all 3 ${mode.toUpperCase()} fields`) : undefined}
+                        style={{
+                          padding: "3px 9px", borderRadius: 999, fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase",
+                          background: has ? "rgba(239,108,43,.1)" : "rgba(255,255,255,.03)",
+                          border: `1px solid ${has ? "rgba(239,108,43,.35)" : "rgba(255,255,255,.08)"}`,
+                          color: has ? "#EF6C2B" : "rgba(255,255,255,.3)",
+                          cursor: has ? "pointer" : "not-allowed",
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                        }}>
+                        <Trash2 style={{ width: 10, height: 10 }} />
+                        {lang === "es" ? "Vaciar" : "Clear"}
+                      </button>
+                    </div>
                   </div>
+                  <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.45)", marginBottom: 10, fontStyle: "italic" }}>{urlHint}</div>
                   {fields.map(renderField)}
                 </div>
               );
