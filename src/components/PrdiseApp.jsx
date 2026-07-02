@@ -8374,11 +8374,20 @@ function AdminPanel({ onClose }) {
       }
     } else {
       // 30d, agrupado por 4 semanas (S1..S4) anclado al día actual.
+      // PM 2026-07-02: buckets alineados a SEMANA CALENDARIO (lun–dom)
+      // en lugar de ventana móvil de 7 días. Motivo: consistencia con
+      // el widget "Cumpleaños de la semana" en Contactos, que usa el
+      // mismo modelo. Antes W4 iba de 'hoy-6' a 'hoy'; ahora W4 = lunes
+      // de esta semana calendario a domingo (inclusive), aunque hoy sea
+      // jueves. La factura pagada hoy cae igual en W4.
+      const monday = new Date(today);
+      const dow = (today.getDay() + 6) % 7; // 0=lunes, 6=domingo
+      monday.setDate(today.getDate() - dow);
       for (let i = 3; i >= 0; i--) {
-        const end = new Date(today);
-        end.setDate(end.getDate() - i * 7);
-        const start = new Date(end);
-        start.setDate(start.getDate() - 6);
+        const start = new Date(monday);
+        start.setDate(monday.getDate() - i * 7);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
         const startKey = start.toISOString().slice(0, 10);
         const endKey = end.toISOString().slice(0, 10);
         buckets.push({ key: `${startKey}_${endKey}`, day: lang === "es" ? `S${4 - i}` : `W${4 - i}`, revenue: 0, _start: startKey, _end: endKey });
