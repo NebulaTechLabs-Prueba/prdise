@@ -8639,9 +8639,14 @@ html{scrollbar-width:thin;scrollbar-color:rgba(245,166,35,.45) rgba(15,24,34,.5)
 .adm-grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;margin-bottom:18px;min-width:0}
 .adm-grid-2>.adm-card{min-width:0}
 .adm-grid-2 .adm-tbl-wrap{overflow-x:auto;max-width:100%}
+/* PM 2026-07-02: cards con tabla vacía no deben tener la scrollbar
+   pegada al header (colapsaban en altura por el tbody chico). Fijamos
+   min-height para que el layout baje y el scrollbar quede al final. */
+.adm-grid-2 .adm-card > .adm-tbl-wrap{min-height:160px}
 .adm-grid-2 .adm-tbl td{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .adm-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:18px}
-.adm-grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px}
+.adm-grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px;align-items:start}
+.adm-grid-2-1 > .adm-card:first-child{align-self:flex-start;height:auto}
 @media(max-width:1100px){.adm-grid-2,.adm-grid-3,.adm-grid-2-1{grid-template-columns:1fr}}
 
 /* Card */
@@ -9181,7 +9186,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-stat-ico"><CreditCard /></div>
                 </div>
                 <div className="adm-stat-val">{fmt(rangeMetrics.revenue)}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.revenueDelta} {dateRange === "7d" ? (lang === "es" ? "esta semana" : "this week") : (lang === "es" ? "este mes" : "this month")}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.revenueDelta} {dateRange === "7d" ? (lang === "es" ? "vs. semana anterior" : "vs. previous week") : (lang === "es" ? "vs. mes anterior" : "vs. previous month")}</div>
               </div>
               <div className="adm-stat green">
                 <div className="adm-stat-top">
@@ -9189,7 +9194,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <div className="adm-stat-ico"><Calendar /></div>
                 </div>
                 <div className="adm-stat-val">{allBookings.length + rangeMetrics.bookings}</div>
-                <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.bookingsDelta} {dateRange === "7d" ? (lang === "es" ? "esta semana" : "this week") : (lang === "es" ? "este mes" : "this month")}</div>
+                <div className="adm-stat-trend up"><TrendingUp />{rangeMetrics.bookingsDelta} {dateRange === "7d" ? (lang === "es" ? "vs. semana anterior" : "vs. previous week") : (lang === "es" ? "vs. mes anterior" : "vs. previous month")}</div>
               </div>
               <div className="adm-stat sky">
                 <div className="adm-stat-top">
