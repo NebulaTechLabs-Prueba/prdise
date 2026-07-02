@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminOrError } from "./_shared";
 import type { ActionResult } from "./types";
 import { sendEmail } from "@/lib/email/transactional";
+import { buildGenericEmailHtml } from "@/lib/email/templates/generic";
 import { z } from "zod";
 
 const composeSchema = z.object({
@@ -39,23 +40,31 @@ export async function sendComposedEmail(
   }
   const d = parsed.data;
 
-  // Convertimos el body plain-text a HTML simple (linebreaks) para
-  // clientes que muestren HTML. Los que no, muestran text plano.
-  const htmlBody = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;color:#0F1822;line-height:1.55;white-space:pre-wrap;">${d.body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</div>`;
-
-  // PM 2026-07-02: reply-to = contact_email de site_settings. El sender
-  // técnico (noreply@livinginprdise.com) no recibe, pero si el destinatario
-  // responde, la respuesta se enruta al buzón real (livinginprdise@gmail).
+  // PM 2026-07-02: template HTML con branding + contacto en el footer.
+  // Antes el compose enviaba solo un <div> plano; el destinatario recibía
+  // texto blanco sin identidad. Reusamos el mismo template que las
+  // facturas (header dorado con "Living in PRDISE", subject, body con
+  // line-breaks preservados, footer con contact_email + whatsapp).
   const supabase = await createClient();
-  const { data: settingsRow } = await supabase
+  const { data: settingsRows } = await supabase
     .from("site_settings")
-    .select("value")
-    .eq("key", "contact_email")
-    .maybeSingle();
-  const replyToAddr = (settingsRow?.value as string | undefined) || undefined;
+    .select("key, value")
+    .in("key", ["contact_email", "whatsapp_phone"]);
+  const settings: Record<string, string> = {};
+  for (const r of (settingsRows as { key: string; value: string }[] | null) ?? []) {
+    settings[r.key] = r.value;
+  }
+  const htmlBody = buildGenericEmailHtml({
+    toName: d.toName || null,
+    subject: d.subject,
+    body: d.body,
+    brandContactEmail: settings.contact_email || null,
+    brandWhatsapp: settings.whatsapp_phone || null,
+  });
+  // reply-to = contact_email de settings. El sender técnico
+  // (noreply@livinginprdise.com) no recibe, pero si el destinatario
+  // responde, la respuesta se enruta al buzón real.
+  const replyToAddr = settings.contact_email || undefined;
 
   const emailRes = await sendEmail({
     to: d.to,
