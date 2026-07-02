@@ -11715,17 +11715,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
               </div>
 
-              {/* PM 2026-07-02: hint actualizado. El envío ahora sale por
-                  Resend (configurado a nivel server). Ya no hay panel
-                  admin para SMTP — es una env var. Si RESEND_API_KEY no
-                  está seteada, el server action devuelve status="skipped"
-                  y el toast avisa. */}
+              {/* PM 2026-07-02: hint solo con lo útil para el operador —
+                  detalle técnico del provider omitido. */}
               <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(141,198,63,.06)", border: "1px solid rgba(141,198,63,.2)", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 8 }}>
                 <Info style={{ width: 14, height: 14, color: "#8DC63F", flexShrink: 0, marginTop: 2 }} />
                 <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.7)", lineHeight: 1.5 }}>
                   {lang === "es"
-                    ? "El correo se envía por Resend (misma cuenta que Supabase Auth). Queda registrado en el Buzón → Enviados."
-                    : "Email is sent via Resend (same account as Supabase Auth). It's recorded in Inbox → Sent."}
+                    ? "Cada correo enviado queda registrado en el Buzón → Enviados."
+                    : "Every email sent is recorded in Inbox → Sent."}
                 </div>
               </div>
 
@@ -11780,9 +11777,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     if (res.data.status === "sent") {
                       toast({ type: "success", message: (lang === "es" ? "Correo enviado a " : "Email sent to ") + composeEmail.to, durationMs: 5000 });
                     } else if (res.data.status === "skipped") {
-                      toast({ type: "warning", message: (lang === "es" ? "Email no enviado — Resend no configurado. Motivo: " : "Email not sent — Resend not configured. Reason: ") + (res.data.reason || ""), durationMs: 7000 });
+                      toast({ type: "warning", message: lang === "es" ? "Servicio de correo aún no configurado. Contactá al equipo técnico." : "Email service not configured yet. Contact the technical team.", durationMs: 7000 });
                     } else {
-                      toast({ type: "error", message: (lang === "es" ? "Falló el envío: " : "Send failed: ") + (res.data.reason || "unknown"), durationMs: 7000 });
+                      toast({ type: "error", message: (lang === "es" ? "No se pudo enviar: " : "Could not send: ") + (res.data.reason || "unknown"), durationMs: 7000 });
                     }
                     setComposeEmail(null);
                   } catch (e) {
