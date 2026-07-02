@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { invoice_id?: string; invoice_number?: string };
+  let body: { invoice_id?: string; invoice_number?: string; payment_ref?: string };
   try {
     body = await req.json();
   } catch {
@@ -83,7 +83,10 @@ export async function POST(req: NextRequest) {
   let notified = false;
 
   if (!alreadyPaid) {
-    const paymentRef = `simulated-${Date.now()}`;
+    // PM 2026-07-02: si el operador pasa payment_ref (ej. pi_... real de
+    // Stripe, o "manual-pm-payment"), se usa esa. Si no, fallback a
+    // simulated-<ts> para marcar claramente que fue una simulación.
+    const paymentRef = body.payment_ref?.trim() || `simulated-${Date.now()}`;
     const { error: updErr } = await admin
       .from("invoices")
       .update({
