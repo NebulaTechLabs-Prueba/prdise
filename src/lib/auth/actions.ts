@@ -220,6 +220,29 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     return { ok: false, needsReactivation: true, userId };
   }
 
+  const resolvedRole = (profile?.role ?? "user") as "admin" | "user";
+
+  // PM 2026-06-29: si el sitio está en modo mantenimiento, solo el admin
+  // puede entrar. Cualquier otro rol es rechazado en el punto de login
+  // (sesión cerrada) — antes se dejaba entrar y el MaintenanceGate del
+  // frontend mostraba la pantalla de mantenimiento, pero técnicamente el
+  // usuario quedaba autenticado. Ahora ni siquiera crea sesión.
+  if (resolvedRole !== "admin") {
+    const { data: mset } = await supabase
+      .from("site_settings")
+      .select("value")
+      .eq("key", "site_maintenance_mode")
+      .maybeSingle();
+    const maintenance = String(mset?.value ?? "false").toLowerCase() === "true";
+    if (maintenance) {
+      await supabase.auth.signOut();
+      return {
+        ok: false,
+        error: "El sitio está en modo mantenimiento. Solo el administrador puede acceder por ahora.",
+      };
+    }
+  }
+
   // NO usamos redirect() del Server Action porque cuando el caller viene
   // de un hash route (/#/login) y el target Next path es el mismo
   // (también "/"), router.replace no navega y la página queda colgada en
@@ -227,7 +250,7 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
   // explícita con window.location.assign al destino correcto.
   return {
     ok: true,
-    role: (profile?.role ?? "user") as "admin" | "user",
+    role: resolvedRole,
   };
 }
 

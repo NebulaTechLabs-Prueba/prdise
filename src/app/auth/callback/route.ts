@@ -28,8 +28,34 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data: exchangeData, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      // PM 2026-06-29: gate de mantenimiento — si el sitio está en modo
+      // mantenimiento y el usuario no es admin, cerramos la sesión recién
+      // creada y volvemos al home con un flag para que la UI muestre por
+      // qué. Evita que un no-admin pueda entrar vía OAuth (Google) o
+      // magic-link mientras el sitio está pausado.
+      const uid = exchangeData?.user?.id;
+      if (uid && type !== "recovery") {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", uid)
+          .maybeSingle();
+        const role = (profile?.role ?? "user") as "admin" | "user";
+        if (role !== "admin") {
+          const { data: mset } = await supabase
+            .from("site_settings")
+            .select("value")
+            .eq("key", "site_maintenance_mode")
+            .maybeSingle();
+          const maintenance = String(mset?.value ?? "false").toLowerCase() === "true";
+          if (maintenance) {
+            await supabase.auth.signOut();
+            return NextResponse.redirect(`${publicOrigin}/?maintenance=1`);
+          }
+        }
+      }
       const dest = type === "recovery" ? "/auth/reset-password" : next;
       return NextResponse.redirect(`${publicOrigin}${dest}`);
     }
