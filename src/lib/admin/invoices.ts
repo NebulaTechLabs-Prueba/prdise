@@ -1243,27 +1243,75 @@ export async function resendInvoiceEmail(
     brandWhatsapp: settings.whatsapp_phone || null,
   };
 
+  const subject = buildInvoiceEmailSubject(emailData);
+  const htmlBody = buildInvoiceEmailHtml(emailData);
+  const textBody = buildInvoiceEmailText(emailData);
+
   const emailRes = await sendEmail({
     to: inv.customer_email,
-    subject: buildInvoiceEmailSubject(emailData),
-    html: buildInvoiceEmailHtml(emailData),
-    text: buildInvoiceEmailText(emailData),
+    subject,
+    html: htmlBody,
+    text: textBody,
     replyTo: settings.contact_email || undefined,
   });
 
+  // PM 2026-07-02: persistir en outbound_emails para que aparezca en el
+  // Buzón → Enviados y para poder diagnosticar sin depender del Resend
+  // Dashboard. Best-effort: si la tabla no existe (migración pendiente),
+  // no bloqueamos.
+  let outboundStatus: "sent" | "skipped" | "failed";
+  let outboundReason: string | null = null;
+  let providerMessageId: string | null = null;
   if (emailRes.ok && "skipped" in emailRes && emailRes.skipped) {
+    outboundStatus = "skipped";
+    outboundReason = emailRes.reason;
+  } else if (emailRes.ok && "id" in emailRes) {
+    outboundStatus = "sent";
+    providerMessageId = emailRes.id || null;
+  } else if (!emailRes.ok) {
+    outboundStatus = "failed";
+    outboundReason = emailRes.error;
+  } else {
+    outboundStatus = "failed";
+    outboundReason = "estado desconocido";
+  }
+  try {
+    await (supabase as unknown as {
+      from: (t: string) => { insert: (row: Record<string, unknown>) => Promise<unknown> };
+    })
+      .from("outbound_emails")
+      .insert({
+        to_address: inv.customer_email,
+        to_name: inv.customer_name || null,
+        subject,
+        body_text: textBody,
+        body_html: htmlBody,
+        provider: "resend",
+        provider_message_id: providerMessageId,
+        status: outboundStatus,
+        status_reason: outboundReason,
+        sent_by: actorId,
+        kind: "invoice_resend",
+        invoice_id: inv.id,
+      });
+  } catch (e) {
+    console.warn("[resendInvoiceEmail] outbound persist:", e);
+  }
+
+  if (outboundStatus === "skipped") {
     return {
       ok: false,
-      error: `Email no configurado (${emailRes.reason}). Agregá RESEND_API_KEY al server.`,
+      error: `Servicio de correo no configurado (${outboundReason}). Agregá RESEND_API_KEY al server.`,
     };
   }
-  if (!emailRes.ok) {
-    return { ok: false, error: emailRes.error };
+  if (outboundStatus === "failed") {
+    return { ok: false, error: outboundReason || "envío falló" };
   }
 
   await writeAuditLog(actorId, "invoice.resend_email", "invoice", inv.id, {
     number: inv.number,
     to: inv.customer_email,
+    provider_message_id: providerMessageId,
   });
 
   return { ok: true, data: { emailStatus: "sent", recipient: inv.customer_email } };

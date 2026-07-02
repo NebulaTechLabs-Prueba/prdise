@@ -10973,60 +10973,52 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               // (cuando es draft) link de pago Stripe listo.
                               // Un draft sin link es trabajo en curso, no se
                               // puede mandar al cliente todavía.
+                              // PM 2026-07-02: este botón (icono avión Send)
+                              // AHORA es "Reenviar por correo". Antes abría
+                              // WhatsApp (duplicando la función del botón
+                              // verde MessageCircle). Ahora dispara
+                              // resendInvoiceEmail vía Resend.
                               const hasItems = (inv.lineItems && inv.lineItems.length > 0) || (inv.items && inv.items > 0);
                               const isDraft = inv.status === "draft";
-                              const draftReady = !isDraft || !!inv.stripePaymentLinkUrl;
-                              const canSend = canEditInvoices() && !!inv.email && hasItems && draftReady && inv.status !== "cancelled";
-                              const tooltip = !canEditInvoices()
+                              const canSendEmail = canEditInvoices() && !!inv.email && hasItems && !isDraft && inv.status !== "cancelled";
+                              const emailTooltip = !canEditInvoices()
                                 ? (lang === "es" ? "Sin permiso" : "No permission")
                                 : !inv.email
                                   ? (lang === "es" ? "Sin correo del cliente" : "No client email")
                                   : !hasItems
                                     ? (lang === "es" ? "Agregá al menos un servicio" : "Add at least one service")
-                                    : isDraft && !inv.stripePaymentLinkUrl
-                                      ? (lang === "es" ? "Generá el link de pago Stripe primero" : "Generate the Stripe payment link first")
+                                    : isDraft
+                                      ? (lang === "es" ? "Consolidá el borrador como Pendiente primero" : "Consolidate the draft to Pending first")
                                       : inv.status === "cancelled"
                                         ? (lang === "es" ? "Factura cancelada" : "Cancelled invoice")
-                                        : isDraft ? (lang === "es" ? "Enviar" : "Send") : (lang === "es" ? "Reenviar" : "Resend");
+                                        : (lang === "es" ? "Enviar por correo" : "Send by email");
                               return (
                                 <button
                                   className="adm-icon-btn"
-                                  title={tooltip}
-                                  disabled={!canSend}
-                                  style={{ opacity: canSend ? 1 : 0.3, cursor: canSend ? "pointer" : "not-allowed" }}
+                                  title={emailTooltip}
+                                  disabled={!canSendEmail || busy === "email"}
+                                  style={{ opacity: canSendEmail ? 1 : 0.3, cursor: canSendEmail ? "pointer" : "not-allowed", color: canSendEmail ? "#F5A623" : undefined }}
                                   onClick={async () => {
-                                    if (!canSend) return;
-                                    if (inv.source === "supabase" && inv.sbId) {
-                                      // Abrimos WhatsApp con el link de pago
-                                      // — es el canal real de envío hoy
-                                      // (Brevo bloqueado a nivel cuenta).
+                                    if (!canSendEmail) return;
+                                    if (inv.source !== "supabase" || !inv.sbId) {
+                                      toast({ type: "info", message: lang === "es" ? "Factura legacy sin link Supabase" : "Legacy invoice without Supabase link" });
+                                      return;
+                                    }
+                                    setInvoiceRowBusy(prev => ({ ...prev, [inv.sbId]: "email" }));
+                                    try {
                                       const fd = new FormData();
                                       fd.append("id", inv.sbId);
-                                      const res = await sbGetInvoiceWhatsAppLink(fd);
-                                      if (res?.ok && res.data?.url) {
-                                        window.open(res.data.url, "_blank");
-                                        if (isDraft) {
-                                          // PM 2026-06-12: persistir el cambio en DB.
-                                          // Antes solo se actualizaba estado local y
-                                          // al refrescar volvía a BORRADOR.
-                                          const fdSt = new FormData();
-                                          fdSt.append("id", inv.sbId);
-                                          fdSt.append("status", "sent");
-                                          const stRes = await sbUpdateInvoiceStatus(fdSt);
-                                          if (stRes?.ok) {
-                                            setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent" } : i));
-                                          } else {
-                                            toast({ type: "error", message: (lang==="es"?"WhatsApp abierto, pero no se pudo marcar como enviada: ":"WhatsApp opened, but could not mark as sent: ") + (stRes?.error || "unknown") });
-                                          }
-                                        }
+                                      const res = await sbResendInvoiceEmail(fd);
+                                      if (res?.ok) {
+                                        toast({ type: "success", message: (lang === "es" ? "Correo enviado a " : "Email sent to ") + res.data.recipient, durationMs: 5000 });
                                       } else {
-                                        toast({ type: "error", message: (lang==="es"?"No se pudo abrir WhatsApp: ":"Could not open WhatsApp: ") + (res?.error || "unknown") });
+                                        toast({ type: "error", message: (lang === "es" ? "No se pudo enviar: " : "Could not send: ") + (res?.error || "unknown"), durationMs: 6000 });
                                       }
-                                    } else {
-                                      toast({ type: "info", message: lang === "es" ? "Factura legacy sin link Supabase" : "Legacy invoice without Supabase link" });
+                                    } finally {
+                                      setInvoiceRowBusy(prev => { const n = { ...prev }; delete n[inv.sbId]; return n; });
                                     }
                                   }}
-                                ><Send /></button>
+                                >{busy === "email" ? <Loader2 style={{ animation: "spin 1s linear infinite" }} /> : <Send />}</button>
                               );
                             })()}
                             {(() => {
