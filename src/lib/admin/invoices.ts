@@ -123,15 +123,36 @@ export async function listInvoices(): Promise<InvoiceRow[]> {
   //   * draft y paid JAMÁS vencen.
   //   * pending y sent pueden vencer si due_at < hoy.
   //   * cancelled y refunded ya son terminales, no tocar.
-  // Se hace un UPDATE ... IN (pending, sent) filtrado por fecha para
-  // evitar leer + comparar client-side. Es idempotente (si ya está
-  // overdue, no cambia nada).
+  // Se hace un UPDATE ... IN (pending, sent) filtrado por fecha,
+  // devolviendo las que efectivamente cambiaron para notificar solo
+  // esas (no las que ya estaban overdue).
   const today = new Date().toISOString().slice(0, 10);
-  await supabase
+  const { data: justOverdue } = await supabase
     .from("invoices")
     .update({ status: "overdue" })
     .in("status", ["pending", "sent"])
-    .lt("due_at", today);
+    .lt("due_at", today)
+    .select("id, number, customer_name, total_cents");
+
+  // Notificar a los admins por cada factura que acaba de vencer.
+  if (justOverdue && justOverdue.length > 0) {
+    try {
+      const { notifyAllAdmins } = await import("./notifications");
+      for (const inv of justOverdue) {
+        const amount = (inv.total_cents / 100).toFixed(2);
+        await notifyAllAdmins({
+          kind: "invoice_overdue",
+          title_es: "Factura vencida",
+          title_en: "Invoice overdue",
+          body_es: `Factura ${inv.number} de ${inv.customer_name || "cliente"} — $${amount} vencida.`,
+          body_en: `Invoice ${inv.number} from ${inv.customer_name || "customer"} — $${amount} overdue.`,
+          link: "/admin?section=invoices",
+        });
+      }
+    } catch (e) {
+      console.warn("[listInvoices] notify overdue:", e);
+    }
+  }
 
   const { data, error } = await supabase
     .from("invoices")
@@ -184,6 +205,32 @@ export async function updateInvoiceStatus(
     .eq("id", id);
   if (error) {
     return { ok: false, error: `No se pudo cambiar status: ${error.message}` };
+  }
+
+  // PM 2026-07-02: al cancelar una factura, notificar a los admins.
+  // Best-effort: si notifyAllAdmins falla, el status igual se cambió.
+  if (newStatus === "cancelled") {
+    try {
+      const { data: inv } = await supabase
+        .from("invoices")
+        .select("number, customer_name, total_cents")
+        .eq("id", id)
+        .maybeSingle();
+      if (inv) {
+        const amount = (inv.total_cents / 100).toFixed(2);
+        const { notifyAllAdmins } = await import("./notifications");
+        await notifyAllAdmins({
+          kind: "invoice_cancelled",
+          title_es: "Factura cancelada",
+          title_en: "Invoice cancelled",
+          body_es: `Factura ${inv.number} de ${inv.customer_name || "cliente"} — $${amount} cancelada.`,
+          body_en: `Invoice ${inv.number} from ${inv.customer_name || "customer"} — $${amount} cancelled.`,
+          link: "/admin?section=invoices",
+        });
+      }
+    } catch (e) {
+      console.warn("[updateInvoiceStatus] notify cancelled:", e);
+    }
   }
 
   await writeAuditLog(actorId, "invoice.status", "invoice", id, { status: newStatus });

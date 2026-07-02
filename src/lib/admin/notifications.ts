@@ -30,6 +30,9 @@ const KINDS = [
   "new_review",
   "new_invoice",
   "new_contact_message",
+  // PM 2026-07-02: eventos del ciclo de vida de facturas.
+  "invoice_overdue",
+  "invoice_cancelled",
   "test",
 ] as const;
 

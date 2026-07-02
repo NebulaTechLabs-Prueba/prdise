@@ -16890,6 +16890,11 @@ function NotifMatrixCard({ prefs, onChange, onSave, saving, savedFlag, onTest })
     { id: "failed_payment", label: lang==="es"?"Pago fallido":"Failed payment" },
     { id: "new_review", label: lang==="es"?"Nueva reseña":"New review" },
     { id: "new_invoice", label: lang==="es"?"Nueva factura":"New invoice" },
+    // PM 2026-07-02: eventos del ciclo de vida de facturas — se disparan
+    // desde el server cuando pending/sent pasa a overdue (listInvoices)
+    // o cuando se cancela desde el UI.
+    { id: "invoice_overdue", label: lang==="es"?"Factura vencida":"Invoice overdue" },
+    { id: "invoice_cancelled", label: lang==="es"?"Factura cancelada":"Invoice cancelled" },
   ];
   // Default: todos activos si la key no está en prefs.
   const isOn = (id) => prefs?.[id] !== false;
