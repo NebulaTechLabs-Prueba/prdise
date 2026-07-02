@@ -10895,6 +10895,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                         const res = await sbGetInvoiceWhatsAppLink(fd);
                                         if (res?.ok && res.data?.url) {
                                           window.open(res.data.url, "_blank");
+                                          // PM 2026-07-02: al abrir WhatsApp con éxito,
+                                          // si la factura estaba en pending, la
+                                          // pasamos a "sent" (cliente notificado).
+                                          // Reglas de negocio: draft y paid no cambian.
+                                          // sent/overdue tampoco (ya fue notificado).
+                                          if (inv.status === "pending") {
+                                            const fdSt = new FormData();
+                                            fdSt.append("id", inv.sbId);
+                                            fdSt.append("status", "sent");
+                                            const stRes = await sbUpdateInvoiceStatus(fdSt);
+                                            if (stRes?.ok) {
+                                              setInvoices(invoices.map(i => i.id === inv.id ? { ...i, status: "sent" } : i));
+                                            }
+                                          }
                                         } else {
                                           showToast({ type: "error", message: (lang==="es"?"Error: ":"Error: ") + (res?.error || "unknown") });
                                         }

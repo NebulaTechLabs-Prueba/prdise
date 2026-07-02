@@ -118,6 +118,21 @@ export async function listInvoices(): Promise<InvoiceRow[]> {
   if (!guard.ok) return [];
 
   const supabase = await createClient();
+
+  // PM 2026-07-02: auto-vencimiento antes de listar. Reglas de negocio:
+  //   * draft y paid JAMÁS vencen.
+  //   * pending y sent pueden vencer si due_at < hoy.
+  //   * cancelled y refunded ya son terminales, no tocar.
+  // Se hace un UPDATE ... IN (pending, sent) filtrado por fecha para
+  // evitar leer + comparar client-side. Es idempotente (si ya está
+  // overdue, no cambia nada).
+  const today = new Date().toISOString().slice(0, 10);
+  await supabase
+    .from("invoices")
+    .update({ status: "overdue" })
+    .in("status", ["pending", "sent"])
+    .lt("due_at", today);
+
   const { data, error } = await supabase
     .from("invoices")
     .select("*, items:invoice_items(*)")
@@ -578,6 +593,17 @@ export async function createInvoiceManual(
       emailStatus = "failed";
       emailError = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  // PM 2026-07-02: si el email salió con éxito, la factura pasa
+  // automáticamente de 'pending' a 'sent' (cliente ya notificado).
+  // Si el email quedó skipped/failed, se queda en 'pending' para que
+  // el admin la reenvíe manualmente.
+  if (!saveAsDraft && emailStatus === "sent") {
+    await supabase
+      .from("invoices")
+      .update({ status: "sent" })
+      .eq("id", invoice.id);
   }
 
   await writeAuditLog(actorId, "invoice.create_manual", "invoice", invoice.id, {
@@ -1362,10 +1388,22 @@ export async function resendInvoiceEmail(
     return { ok: false, error: outboundReason || "envío falló" };
   }
 
+  // PM 2026-07-02: si la factura estaba en pending y el envío fue
+  // exitoso, la pasamos a 'sent' (cliente notificado). Reglas de
+  // negocio: draft/paid/cancelled no cambian; sent/overdue ya fueron
+  // notificados y no queremos revertir un overdue por reenvío.
+  if (inv.status === "pending") {
+    await supabase
+      .from("invoices")
+      .update({ status: "sent" })
+      .eq("id", inv.id);
+  }
+
   await writeAuditLog(actorId, "invoice.resend_email", "invoice", inv.id, {
     number: inv.number,
     to: inv.customer_email,
     provider_message_id: providerMessageId,
+    status_after: inv.status === "pending" ? "sent" : inv.status,
   });
 
   return { ok: true, data: { emailStatus: "sent", recipient: inv.customer_email } };
