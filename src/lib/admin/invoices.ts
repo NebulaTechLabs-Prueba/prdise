@@ -478,6 +478,13 @@ export async function createInvoiceManual(
       const link = await stripe.paymentLinks.create({
         line_items: [{ price: price.id, quantity: 1 }],
         metadata: { invoice_id: invoice.id, invoice_number: number },
+        // PM 2026-07-02: cerrar el link tras el PRIMER pago exitoso para
+        // evitar pagos duplicados. Un cliente que vuelva a abrir el link
+        // (WhatsApp/email/browser history) va a ver un mensaje de Stripe
+        // 'This payment link is no longer accepting payments' en lugar
+        // de poder pagar de nuevo. Los intentos fallidos NO consumen el
+        // contador — solo cuenta sesiones completadas exitosamente.
+        restrictions: { completed_sessions: { limit: 1 } },
       });
       await supabase
         .from("invoices")
@@ -684,6 +691,8 @@ export async function regenerateStripePaymentLink(
     const link = await stripe.paymentLinks.create({
       line_items: [{ price: price.id, quantity: 1 }],
       metadata: { invoice_id: inv.id, invoice_number: inv.number },
+      // PM 2026-07-02: single-use — se cierra tras el primer pago exitoso.
+      restrictions: { completed_sessions: { limit: 1 } },
     });
     await supabase
       .from("invoices")
