@@ -7593,6 +7593,24 @@ function AdminPanel({ onClose }) {
   // cuando se entra desde el modal de notification. Se resuelve por email
   // match contra el body de la notif. Auto-clear tras 4s.
   const [inboxHighlightId, setInboxHighlightId] = useState(null);
+  // PM 2026-07-02: tabs del Buzón — recibidos (contacts) / enviados
+  // (outbound_emails). El listado de enviados se carga on-demand al
+  // clickear el tab; se refresca a demanda con el botón.
+  const [inboxTab, setInboxTab] = useState("received");
+  const [outboundEmails, setOutboundEmails] = useState([]);
+  const [outboundLoading, setOutboundLoading] = useState(false);
+  const [outboundLoaded, setOutboundLoaded] = useState(false);
+  const loadOutbound = async () => {
+    setOutboundLoading(true);
+    try {
+      const { listOutboundEmails } = await import("@/lib/admin/outbound_emails");
+      const rows = await listOutboundEmails(100);
+      setOutboundEmails(rows || []);
+      setOutboundLoaded(true);
+    } catch (e) {
+      console.warn("[admin] outbound:", e);
+    } finally { setOutboundLoading(false); }
+  };
   const [notifPrefs, setNotifPrefs] = useState({});
   const [notifPrefsSaved, setNotifPrefsSaved] = useState(false);
   const soundPlayedRef = useRef(false);
@@ -12107,17 +12125,29 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           }
           return (
           <>
-            {/* PM 2026-06-23: Inbox del formulario público. Antes los mensajes
-                quedaban invisibles (sólo en DB). Ahora hay tabla + acciones
-                rápidas: marcar leído/respondido/spam, abrir WhatsApp, abrir
-                email. El trigger DB notifica al admin al recibir cada uno. */}
+            {/* PM 2026-06-23: Inbox del formulario público + Enviados
+                desde el sistema (Redactar correo, reenvíos de factura).
+                Tabs añaden separación clara sin duplicar sidebar. */}
             <div className="adm-ph">
               <div>
                 <h1>{lang==="es"?"":""}<em>{lang==="es"?"BUZÓN":"INBOX"}</em></h1>
-                <p className="sub">{lang==="es"?"Mensajes recibidos desde el formulario de contacto público.":"Messages received from the public contact form."}</p>
+                <p className="sub">{lang==="es"?"Mensajes recibidos del formulario público y correos enviados desde el sistema.":"Messages received from the public form and emails sent from the system."}</p>
               </div>
             </div>
 
+            {/* Tabs Recibidos / Enviados */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <button className={`adm-fchip ${inboxTab === "received" ? "active" : ""}`} onClick={() => setInboxTab("received")}>
+                {lang === "es" ? "Recibidos" : "Received"}
+                <span className="adm-fchip-num">{contacts.length}</span>
+              </button>
+              <button className={`adm-fchip ${inboxTab === "sent" ? "active" : ""}`} onClick={() => { setInboxTab("sent"); if (!outboundLoaded) loadOutbound(); }}>
+                {lang === "es" ? "Enviados" : "Sent"}
+                <span className="adm-fchip-num">{outboundEmails.length}</span>
+              </button>
+            </div>
+
+            {inboxTab === "received" && (
             <div className="adm-card">
               <div className="adm-card-head">
                 <div className="adm-card-title">
@@ -12228,6 +12258,67 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
               )}
             </div>
+            )}
+
+            {inboxTab === "sent" && (
+              <div className="adm-card">
+                <div className="adm-card-head">
+                  <div className="adm-card-title">
+                    <Send />{lang === "es" ? "CORREOS ENVIADOS" : "SENT EMAILS"}
+                    <span className="adm-pill">{outboundEmails.length}</span>
+                  </div>
+                  <button className="adm-btn adm-btn-ghost" onClick={loadOutbound} disabled={outboundLoading}>
+                    <RefreshCw style={{ width: 12, height: 12 }} />
+                    {outboundLoading ? (lang === "es" ? "Cargando..." : "Loading...") : (lang === "es" ? "Actualizar" : "Refresh")}
+                  </button>
+                </div>
+                {outboundEmails.length === 0 && !outboundLoading ? (
+                  <AdminEmptyState icon={Send} mode="empty"
+                    titleEs="Aún no hay correos enviados" titleEn="No sent emails yet"
+                    copyEs="Los correos que envíes desde el sistema (Redactar correo, reenvíos de factura) van a listarse acá con su estado."
+                    copyEn="Emails sent from the system (Compose email, invoice resends) will be listed here with their status." />
+                ) : (
+                  <div className="adm-tbl-wrap">
+                    <table className="adm-tbl">
+                      <thead><tr>
+                        <th>{lang === "es" ? "Para" : "To"}</th>
+                        <th>{lang === "es" ? "Asunto" : "Subject"}</th>
+                        <th>{lang === "es" ? "Tipo" : "Kind"}</th>
+                        <th>{lang === "es" ? "Fecha" : "Date"}</th>
+                        <th>{lang === "es" ? "Estado" : "Status"}</th>
+                      </tr></thead>
+                      <tbody>
+                        {outboundEmails.map((e) => {
+                          const okColor = e.status === "sent" ? "#22C55E" : e.status === "failed" ? "#EF6C2B" : "rgba(255,255,255,.5)";
+                          const bg = e.status === "sent" ? "rgba(34,197,94,.15)" : e.status === "failed" ? "rgba(239,108,43,.15)" : "rgba(255,255,255,.08)";
+                          const statusLabel = e.status === "sent" ? (lang === "es" ? "Enviado" : "Sent") : e.status === "failed" ? (lang === "es" ? "Falló" : "Failed") : (lang === "es" ? "Omitido" : "Skipped");
+                          const kindLabel = e.kind === "invoice_resend" ? (lang === "es" ? "Factura" : "Invoice") : e.kind === "compose" ? (lang === "es" ? "Redactado" : "Composed") : (e.kind || "—");
+                          return (
+                            <tr key={e.id}>
+                              <td>
+                                <div style={{ fontWeight: 600, color: "#fff" }}>{e.to_name || e.to_address}</div>
+                                {e.to_name && <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{e.to_address}</div>}
+                              </td>
+                              <td style={{ fontSize: 12.5, color: "rgba(255,255,255,.85)" }}>{e.subject}</td>
+                              <td style={{ fontSize: 11, color: "rgba(255,255,255,.6)", textTransform: "uppercase", letterSpacing: ".08em" }}>{kindLabel}</td>
+                              <td style={{ fontSize: 12, color: "rgba(255,255,255,.55)", whiteSpace: "nowrap" }}>{e.sent_at.replace("T", " ").slice(0, 16)}</td>
+                              <td>
+                                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 99, background: bg, color: okColor }}>
+                                  {statusLabel}
+                                </span>
+                                {e.status === "failed" && e.status_reason && (
+                                  <div style={{ fontSize: 10.5, color: "#EF6C2B", marginTop: 4, maxWidth: 260 }}>{e.status_reason}</div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </>
           );
         })()}
