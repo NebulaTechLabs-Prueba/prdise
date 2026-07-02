@@ -30,6 +30,15 @@ export async function sendEmail(args: {
   text?: string;
   from?: string;
   replyTo?: string;
+  // PM 2026-07-02: attachments para adjuntar el PDF de la factura al
+  // correo del cliente. `content` es base64 (Resend acepta string
+  // base64 directo en el JSON body). `filename` es el nombre visible
+  // que el cliente ve al descargar.
+  attachments?: Array<{
+    filename: string;
+    content: string; // base64
+    contentType?: string;
+  }>;
 }): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -54,6 +63,13 @@ export async function sendEmail(args: {
         html: args.html,
         text: args.text,
         reply_to: args.replyTo,
+        attachments: args.attachments && args.attachments.length
+          ? args.attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content,
+              content_type: a.contentType,
+            }))
+          : undefined,
       }),
       cache: "no-store",
     });

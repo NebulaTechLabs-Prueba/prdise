@@ -22,6 +22,22 @@ import {
   buildInvoiceEmailText,
 } from "@/lib/email/templates/invoice";
 
+/**
+ * PM 2026-07-02: descarga el PDF de una signed URL y lo devuelve como
+ * base64 listo para adjuntar al email. Silencioso: si falla, devuelve
+ * null y el email igual se envía sin attachment.
+ */
+async function fetchPdfAsBase64(pdfUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(pdfUrl, { cache: "no-store" });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.toString("base64");
+  } catch {
+    return null;
+  }
+}
+
 const PDF_BUCKET = "invoice-pdfs";
 const PDF_SIGNED_URL_TTL_SEC = 60 * 60 * 24 * 7; // 7 días
 
@@ -530,12 +546,24 @@ export async function createInvoiceManual(
         brandContactEmail: settings.contact_email || null,
         brandWhatsapp: settings.whatsapp_phone || null,
       };
+      // PM 2026-07-02: adjuntar el PDF al email. Si la descarga falla,
+      // el email igual se envía (best-effort) — el link al PDF sigue en
+      // el body como backup.
+      const pdfBase64 = pdfUrl ? await fetchPdfAsBase64(pdfUrl) : null;
+      const attachments = pdfBase64
+        ? [{
+            filename: `factura-${number}.pdf`,
+            content: pdfBase64,
+            contentType: "application/pdf",
+          }]
+        : undefined;
       const emailRes = await sendEmail({
         to: d.customerEmail,
         subject: buildInvoiceEmailSubject(emailData),
         html: buildInvoiceEmailHtml(emailData),
         text: buildInvoiceEmailText(emailData),
         replyTo: settings.contact_email || undefined,
+        attachments,
       });
       if (emailRes.ok && "skipped" in emailRes && emailRes.skipped) {
         emailStatus = "skipped";
@@ -1231,12 +1259,26 @@ export async function resendInvoiceEmail(
     settings[r.key] = r.value;
   }
 
+  // PM 2026-07-02: regenerar el PDF antes del reenvío. Garantiza:
+  //   - Signed URL fresca (el TTL es 7 días → puede haber expirado).
+  //   - Refleja cualquier edición al invoice entre el envío original
+  //     y el reenvío.
+  let freshPdfUrl: string | null = inv.pdf_url;
+  try {
+    const pdfFd = new FormData();
+    pdfFd.append("id", inv.id);
+    const pdfRes = await generateInvoicePdf(pdfFd);
+    if (pdfRes.ok) freshPdfUrl = pdfRes.data.pdfUrl;
+  } catch {
+    // Silencioso; usamos el pdf_url viejo si existe.
+  }
+
   const emailData = {
     invoiceNumber: inv.number,
     customerName: inv.customer_name || "",
     totalUsd: (inv.total_cents / 100).toFixed(2),
     paymentLinkUrl: inv.stripe_payment_link_url || inv.paypal_payment_link_url || null,
-    pdfUrl: inv.pdf_url,
+    pdfUrl: freshPdfUrl,
     dueDate: inv.due_at,
     notes: inv.notes,
     brandContactEmail: settings.contact_email || null,
@@ -1247,12 +1289,24 @@ export async function resendInvoiceEmail(
   const htmlBody = buildInvoiceEmailHtml(emailData);
   const textBody = buildInvoiceEmailText(emailData);
 
+  // Adjuntar el PDF si podemos descargarlo. Si falla, el link en el
+  // HTML sigue funcionando como fallback.
+  const pdfBase64 = freshPdfUrl ? await fetchPdfAsBase64(freshPdfUrl) : null;
+  const attachments = pdfBase64
+    ? [{
+        filename: `factura-${inv.number}.pdf`,
+        content: pdfBase64,
+        contentType: "application/pdf",
+      }]
+    : undefined;
+
   const emailRes = await sendEmail({
     to: inv.customer_email,
     subject,
     html: htmlBody,
     text: textBody,
     replyTo: settings.contact_email || undefined,
+    attachments,
   });
 
   // PM 2026-07-02: persistir en outbound_emails para que aparezca en el
