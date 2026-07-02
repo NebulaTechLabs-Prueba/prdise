@@ -8031,6 +8031,11 @@ function AdminPanel({ onClose }) {
   const [serviceTrackFilter, setServiceTrackFilter] = useState(null); // { type: 'stay'|'tour'|'transfer', id, name }
   const [selectedContact, setSelectedContact] = useState(null);
   const [dateRange, setDateRange] = useState("30d");
+  // PM 2026-07-02: Estadías Top y Tours Más Populares tenían 4 columnas
+  // que rompían el layout con scroll horizontal. Convertimos la 3ra
+  // columna en un toggle (Ingresos ↔ Calificación) para mantener 3.
+  const [staysTopMetric, setStaysTopMetric] = useState("revenue"); // "revenue" | "rating"
+  const [toursTopMetric, setToursTopMetric] = useState("revenue");
 
   // Pagination states
   const [usersPage, setUsersPage] = useState(1);
@@ -8182,7 +8187,11 @@ function AdminPanel({ onClose }) {
 
   const rangeMetrics = useMemo(() => {
     const s = dashboardSummary;
-    const fmtPct = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`;
+    // PM 2026-07-02: `0%` era engañoso — daba la impresión de que se
+    // había medido y salió cero. Cuando no hay base de comparación
+    // (mes/semana previa sin data) mostramos "—" para dejar claro que
+    // no hay dato, no que sea nulo.
+    const fmtPct = (v) => (v == null || v === 0) ? "—" : `${v > 0 ? "+" : ""}${v}%`;
     // PM 2026-06-12: si dashboardSummary aún no llegó, computamos desde
     // invoices + customers locales para no mostrar "—" todo el tiempo.
     const paidInvs = (invoices || []).filter((i) => i.status === "paid");
@@ -8243,10 +8252,13 @@ function AdminPanel({ onClose }) {
       }
     }
     const maxRevenue = Math.max(1, ...buckets.map((b) => b.revenue));
+    // PM 2026-07-02: buckets sin ingresos deben renderizar 0% (no barra
+    // fantasma del 2%). El mínimo visual antes creaba barritas
+    // engañosas en semanas que en realidad no tuvieron nada.
     const chartData = buckets.map((b) => ({
       day: b.day,
       revenue: b.revenue,
-      value: Math.max(2, Math.round((b.revenue / maxRevenue) * 100)),
+      value: b.revenue > 0 ? Math.max(4, Math.round((b.revenue / maxRevenue) * 100)) : 0,
     }));
     return {
       revenue: Math.max(serverRevenue, localRevenue),
@@ -9196,7 +9208,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-card-head"><div className="adm-card-title"><Home />{lang === "es" ? "Estadías Top" : "Top Stays"}</div></div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang === "es" ? "Estadía" : "Stay"}</th><th>{lang === "es" ? "Reservas" : "Bookings"}</th><th>{lang === "es" ? "Ingresos" : "Revenue"}</th><th>{lang === "es" ? "Calificación" : "Rating"}</th></tr></thead>
+                    <thead><tr>
+                      <th>{lang === "es" ? "Estadía" : "Stay"}</th>
+                      <th>{lang === "es" ? "Reservas" : "Bookings"}</th>
+                      {/* PM 2026-07-02: 3ra columna toggleable. Click en el
+                          header alterna entre Ingresos y Calificación. */}
+                      <th
+                        onClick={() => setStaysTopMetric(staysTopMetric === "revenue" ? "rating" : "revenue")}
+                        title={lang === "es" ? "Click para alternar métrica" : "Click to toggle metric"}
+                        style={{ cursor: "pointer", userSelect: "none" }}
+                      >
+                        {staysTopMetric === "revenue" ? (lang === "es" ? "Ingresos" : "Revenue") : (lang === "es" ? "Calificación" : "Rating")}
+                        <span style={{ marginLeft: 6, fontSize: 9, opacity: .55 }}>⇄</span>
+                      </th>
+                    </tr></thead>
                     <tbody>
                       {[...hotels].map(h => {
                         const st = serviceStats.stays[h.dbId] || { bookings: 0, revenue: 0 };
@@ -9205,12 +9230,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <tr key={h.id}>
                           <td style={{ fontWeight: 600 }}>{h.name}</td>
                           <td>{h._bookings}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(h._revenue)}</td>
-                          <td>{h.rating > 0 ? (<><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{h.rating}</>) : "—"}</td>
+                          <td>
+                            {staysTopMetric === "revenue"
+                              ? <span style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(h._revenue)}</span>
+                              : (h.rating > 0
+                                ? <span><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{h.rating}</span>
+                                : <span style={{ color: "rgba(255,255,255,.4)" }}>—</span>)}
+                          </td>
                         </tr>
                       ))}
                       {hotels.length === 0 && (
-                        <tr><td colSpan={4} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 24 }}>{lang === "es" ? "Sin estadías cargadas" : "No stays yet"}</td></tr>
+                        <tr><td colSpan={3} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 24 }}>{lang === "es" ? "Sin estadías cargadas" : "No stays yet"}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -9220,7 +9250,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-card-head"><div className="adm-card-title"><BarChart3 />{lang === "es" ? "Tours Más Populares" : "Top Performing Tours"}</div></div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>Tour</th><th>{lang === "es" ? "Reservas" : "Bookings"}</th><th>{lang === "es" ? "Ingresos" : "Revenue"}</th><th>{lang === "es" ? "Calificación" : "Rating"}</th></tr></thead>
+                    <thead><tr>
+                      <th>Tour</th>
+                      <th>{lang === "es" ? "Reservas" : "Bookings"}</th>
+                      <th
+                        onClick={() => setToursTopMetric(toursTopMetric === "revenue" ? "rating" : "revenue")}
+                        title={lang === "es" ? "Click para alternar métrica" : "Click to toggle metric"}
+                        style={{ cursor: "pointer", userSelect: "none" }}
+                      >
+                        {toursTopMetric === "revenue" ? (lang === "es" ? "Ingresos" : "Revenue") : (lang === "es" ? "Calificación" : "Rating")}
+                        <span style={{ marginLeft: 6, fontSize: 9, opacity: .55 }}>⇄</span>
+                      </th>
+                    </tr></thead>
                     <tbody>
                       {[...tours].map(t => {
                         const st = serviceStats.tours[t.dbId] || { bookings: 0, revenue: 0 };
@@ -9229,12 +9270,17 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <tr key={t.id}>
                           <td style={{ fontWeight: 600 }}>{t.name}</td>
                           <td>{t._bookings}</td>
-                          <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t._revenue)}</td>
-                          <td>{t.rating > 0 ? (<><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</>) : "—"}</td>
+                          <td>
+                            {toursTopMetric === "revenue"
+                              ? <span style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(t._revenue)}</span>
+                              : (t.rating > 0
+                                ? <span><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623", display: "inline", verticalAlign: "-1px", marginRight: 3 }} />{t.rating}</span>
+                                : <span style={{ color: "rgba(255,255,255,.4)" }}>—</span>)}
+                          </td>
                         </tr>
                       ))}
                       {tours.length === 0 && (
-                        <tr><td colSpan={4} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 24 }}>{lang === "es" ? "Sin tours cargados" : "No tours yet"}</td></tr>
+                        <tr><td colSpan={3} style={{ textAlign: "center", color: "rgba(255,255,255,.4)", padding: 24 }}>{lang === "es" ? "Sin tours cargados" : "No tours yet"}</td></tr>
                       )}
                     </tbody>
                   </table>
