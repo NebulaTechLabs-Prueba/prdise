@@ -44,27 +44,31 @@ jobs:
       - name: SSH + pull + build + reload
         uses: appleboy/ssh-action@v1.2.0
         env:
-          # PM 2026-06-26: claves de Stripe inyectadas al .env del server
-          # en cada deploy. Si los secrets están vacíos, se omiten — no se
-          # borran valores previos. Permite agregar/rotar keys desde
+          # PM 2026-06-26: claves inyectadas al .env del server en cada
+          # deploy. Si los secrets están vacíos, se omiten — no se borran
+          # valores previos. Permite agregar/rotar keys desde
           # GitHub → Settings → Secrets sin tocar SSH.
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          # PM 2026-07-02: mismo patrón para Resend (email transaccional).
+          # Sender debe ser un dominio verificado en Resend Dashboard.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
-          envs: STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET
+          envs: STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,RESEND_API_KEY,RESEND_FROM_EMAIL
           script: |
             set -euo pipefail
             cd "${{ secrets.DEPLOY_PATH }}"
             git fetch --all
             git reset --hard origin/main
 
-            # PM 2026-06-26: sync de las claves de Stripe al .env.local
-            # del server. Solo escribe si el secret está definido en
-            # GitHub. Si está vacío, mantiene el valor actual.
+            # PM 2026-06-26: sync de las claves al .env.local del server.
+            # Solo escribe si el secret está definido en GitHub. Si está
+            # vacío, mantiene el valor actual.
             touch .env.local
             if [ -n "${STRIPE_SECRET_KEY:-}" ]; then
               sed -i '/^STRIPE_SECRET_KEY=/d' .env.local
@@ -74,12 +78,20 @@ jobs:
               sed -i '/^STRIPE_WEBHOOK_SECRET=/d' .env.local
               echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" >> .env.local
             fi
+            if [ -n "${RESEND_API_KEY:-}" ]; then
+              sed -i '/^RESEND_API_KEY=/d' .env.local
+              echo "RESEND_API_KEY=${RESEND_API_KEY}" >> .env.local
+            fi
+            if [ -n "${RESEND_FROM_EMAIL:-}" ]; then
+              sed -i '/^RESEND_FROM_EMAIL=/d' .env.local
+              echo "RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}" >> .env.local
+            fi
 
-            # Diagnóstico: imprime qué variables de Stripe quedaron en
+            # Diagnóstico: imprime qué variables sensibles quedaron en
             # .env.local SIN exponer los valores. Util para confirmar que
-            # el secret llegó al server.
-            echo "[deploy] Stripe envs presentes en .env.local:"
-            grep -E '^STRIPE_' .env.local | sed -E 's/=.*/=***SET***/' || echo "(ninguna)"
+            # los secrets llegaron al server.
+            echo "[deploy] Envs presentes en .env.local:"
+            grep -E '^(STRIPE_|RESEND_)' .env.local | sed -E 's/=.*/=***SET***/' || echo "(ninguna)"
 
             npm ci --no-audit --no-fund
             npm run build
