@@ -46,11 +46,23 @@ export async function sendComposedEmail(
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")}</div>`;
 
+  // PM 2026-07-02: reply-to = contact_email de site_settings. El sender
+  // técnico (noreply@livinginprdise.com) no recibe, pero si el destinatario
+  // responde, la respuesta se enruta al buzón real (livinginprdise@gmail).
+  const supabase = await createClient();
+  const { data: settingsRow } = await supabase
+    .from("site_settings")
+    .select("value")
+    .eq("key", "contact_email")
+    .maybeSingle();
+  const replyToAddr = (settingsRow?.value as string | undefined) || undefined;
+
   const emailRes = await sendEmail({
     to: d.to,
     subject: d.subject,
     html: htmlBody,
     text: d.body,
+    replyTo: replyToAddr,
   });
 
   let status: "sent" | "skipped" | "failed";
@@ -71,7 +83,6 @@ export async function sendComposedEmail(
     reason = "estado desconocido";
   }
 
-  const supabase = await createClient();
   const { data: inserted, error } = await (supabase as unknown as {
     from: (t: string) => {
       insert: (row: Record<string, unknown>) => {
