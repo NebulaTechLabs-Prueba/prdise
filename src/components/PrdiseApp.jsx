@@ -129,6 +129,7 @@ import {
   regeneratePaypalPaymentLink as sbRegeneratePaypalLink,
   generateInvoicePdf as sbGenerateInvoicePdf,
   getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
+  resendInvoiceEmail as sbResendInvoiceEmail,
   searchProfiles as sbSearchProfiles,
   createCustomerForInvoice as sbCreateCustomerForInvoice,
   findRecentDuplicates as sbFindRecentDuplicates,
@@ -11070,7 +11071,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
           <InvoiceCreateModal
             lang={lang}
             onClose={() => setInvoiceCreateOpen(false)}
-            onCreated={async ({ number, stripePaymentLinkUrl, stripeError }) => {
+            onCreated={async ({ number, stripePaymentLinkUrl, stripeError, emailStatus, emailError }) => {
               // Refrescamos invoices Y usuarios — cuando el admin creó un
               // cliente nuevo desde el modal, este debe aparecer en la lista
               // de Usuarios inmediatamente sin tener que refrescar la página.
@@ -11079,12 +11080,19 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               const baseMsg = lang === "es"
                 ? `Factura ${number} creada.`
                 : `Invoice ${number} created.`;
+              // PM 2026-07-02: agregar sufijo con el estado del email.
+              // sent → mensaje verde; skipped → gris/info; failed → naranja.
+              const emailSuffix = emailStatus === "sent"
+                ? (lang === "es" ? " Email enviado al cliente." : " Email sent to customer.")
+                : emailStatus === "failed"
+                  ? (lang === "es" ? ` Email no enviado: ${emailError || "error"}.` : ` Email not sent: ${emailError || "error"}.`)
+                  : "";
               if (stripePaymentLinkUrl) {
-                toast({ type: "success", message: baseMsg + (lang === "es" ? ` Link Stripe generado.` : ` Stripe link generated.`), durationMs: 6000 });
+                toast({ type: emailStatus === "failed" ? "warning" : "success", message: baseMsg + (lang === "es" ? ` Link Stripe generado.` : ` Stripe link generated.`) + emailSuffix, durationMs: 7000 });
               } else if (stripeError) {
-                toast({ type: "error", message: baseMsg + (lang === "es" ? ` Advertencia: ${stripeError}` : ` Warning: ${stripeError}`), durationMs: 6000 });
+                toast({ type: "error", message: baseMsg + (lang === "es" ? ` Advertencia: ${stripeError}` : ` Warning: ${stripeError}`) + emailSuffix, durationMs: 7000 });
               } else {
-                toast({ type: "success", message: baseMsg });
+                toast({ type: emailStatus === "failed" ? "warning" : "success", message: baseMsg + emailSuffix });
               }
             }}
           />
@@ -11508,6 +11516,23 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       <CheckCircle style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como pagada" : "Mark as paid"}
                     </button>
                   </>
+                )}
+                {/* PM 2026-07-02: reenviar el email transaccional. Solo
+                    disponible en facturas pending/sent/overdue (no draft,
+                    no cancelled, no paid porque ya no aplica). */}
+                {(viewingInvoice.status === "pending" || viewingInvoice.status === "sent" || viewingInvoice.status === "overdue") && viewingInvoice.email && (
+                  <button className="adm-btn adm-btn-ghost" style={{ color: "#F5A623", borderColor: "rgba(245,166,35,.4)" }} onClick={async () => {
+                    if (!canEditInvoices()) return;
+                    try {
+                      const fd = new FormData();
+                      fd.append("id", viewingInvoice.sbId || viewingInvoice.id);
+                      const res = await sbResendInvoiceEmail(fd);
+                      if (!res?.ok) { toast({ type: "error", message: (lang === "es" ? "No se pudo enviar: " : "Could not send: ") + (res?.error || "error"), durationMs: 6000 }); return; }
+                      toast({ type: "success", message: (lang === "es" ? "Email enviado a " : "Email sent to ") + res.data.recipient, durationMs: 5000 });
+                    } catch (e) { toast({ type: "error", message: "Error: " + e.message }); }
+                  }}>
+                    <Mail style={{ width: 12, height: 12 }} />{lang === "es" ? "Enviar por email" : "Send by email"}
+                  </button>
                 )}
                 <button className="adm-btn adm-btn-primary" onClick={() => window.print()}><Printer style={{ width: 12, height: 12 }} />{lang === "es" ? "Imprimir / PDF" : "Print / PDF"}</button>
               </div>

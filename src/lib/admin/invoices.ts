@@ -15,6 +15,12 @@ import {
   createCheckoutOrder as createPayPalOrder,
 } from "@/lib/paypal/client";
 import { renderInvoicePdf, type InvoiceForPdf } from "@/lib/invoices/pdf";
+import { sendEmail } from "@/lib/email/transactional";
+import {
+  buildInvoiceEmailHtml,
+  buildInvoiceEmailSubject,
+  buildInvoiceEmailText,
+} from "@/lib/email/templates/invoice";
 
 const PDF_BUCKET = "invoice-pdfs";
 const PDF_SIGNED_URL_TTL_SEC = 60 * 60 * 24 * 7; // 7 días
@@ -262,6 +268,8 @@ export async function createInvoiceManual(
     number: string;
     stripePaymentLinkUrl: string | null;
     stripeError: string | null;
+    emailStatus: "sent" | "skipped" | "failed";
+    emailError: string | null;
   }>
 > {
   const guard = await getStaffWithPermissionOrError("invoices:write");
@@ -482,12 +490,75 @@ export async function createInvoiceManual(
     }
   }
 
+  // PM 2026-07-02: enviar email transaccional al cliente si la factura
+  // nace pending (no draft). Best-effort: si Resend falla o no está
+  // configurado, no bloqueamos la creación. El admin se entera del
+  // resultado por `emailStatus` en la respuesta.
+  let emailStatus: "sent" | "skipped" | "failed" = "skipped";
+  let emailError: string | null = null;
+  let pdfUrl: string | null = null;
+  if (!saveAsDraft) {
+    // Generar el PDF antes del email para incluir el link en el body.
+    // Best-effort: si falla, el email igual sale sin el PDF adjunto.
+    try {
+      const pdfFd = new FormData();
+      pdfFd.append("id", invoice.id);
+      const pdfRes = await generateInvoicePdf(pdfFd);
+      if (pdfRes.ok) pdfUrl = pdfRes.data.pdfUrl;
+    } catch {
+      // silencioso; pdfUrl queda null
+    }
+    try {
+      // Datos de contacto del sitio para el footer del email
+      const { data: settingsRows } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", ["contact_email", "whatsapp_phone"]);
+      const settings: Record<string, string> = {};
+      for (const r of (settingsRows as { key: string; value: string }[] | null) ?? []) {
+        settings[r.key] = r.value;
+      }
+
+      const emailData = {
+        invoiceNumber: number,
+        customerName: d.customerName,
+        totalUsd: (totalCents / 100).toFixed(2),
+        paymentLinkUrl: stripePaymentLinkUrl,
+        pdfUrl,
+        dueDate: d.dueAt || null,
+        notes: d.notes || null,
+        brandContactEmail: settings.contact_email || null,
+        brandWhatsapp: settings.whatsapp_phone || null,
+      };
+      const emailRes = await sendEmail({
+        to: d.customerEmail,
+        subject: buildInvoiceEmailSubject(emailData),
+        html: buildInvoiceEmailHtml(emailData),
+        text: buildInvoiceEmailText(emailData),
+        replyTo: settings.contact_email || undefined,
+      });
+      if (emailRes.ok && "skipped" in emailRes && emailRes.skipped) {
+        emailStatus = "skipped";
+        emailError = emailRes.reason;
+      } else if (emailRes.ok) {
+        emailStatus = "sent";
+      } else {
+        emailStatus = "failed";
+        emailError = emailRes.error;
+      }
+    } catch (e) {
+      emailStatus = "failed";
+      emailError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   await writeAuditLog(actorId, "invoice.create_manual", "invoice", invoice.id, {
     number,
     total_cents: totalCents,
     items: d.items.length,
     payment_method: paymentMethod,
     link_generated: !!stripePaymentLinkUrl,
+    email_status: emailStatus,
   });
 
   return {
@@ -496,6 +567,8 @@ export async function createInvoiceManual(
       invoiceId: invoice.id,
       number: invoice.number,
       stripePaymentLinkUrl,
+      emailStatus,
+      emailError,
       stripeError,
     },
   };
@@ -1107,4 +1180,91 @@ export async function findRecentDuplicates(
   }
 
   return { ok: true, data: { matches } };
+}
+
+// ===========================================================================
+// RESEND INVOICE EMAIL
+// ===========================================================================
+
+/**
+ * PM 2026-07-02: reenvía el email transaccional de una factura existente.
+ * Usa los datos actuales de la factura (link de pago actualizado si se
+ * regeneró después de la creación, PDF si ya existe). Solo permitido para
+ * facturas no borrador y no canceladas.
+ */
+export async function resendInvoiceEmail(
+  formData: FormData
+): Promise<ActionResult<{ emailStatus: "sent"; recipient: string }>> {
+  const guard = await getStaffWithPermissionOrError("invoices:write");
+  if (!guard.ok) return guard;
+  const actorId = guard.current.user.id;
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { ok: false, error: "ID requerido" };
+
+  const supabase = await createClient();
+  const { data: inv, error } = await supabase
+    .from("invoices")
+    .select(
+      "id, number, status, customer_name, customer_email, total_cents, due_at, notes, stripe_payment_link_url, paypal_payment_link_url, pdf_url"
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !inv) return { ok: false, error: "Factura no encontrada" };
+  if (inv.status === "draft") {
+    return { ok: false, error: "Los borradores no se envían por email. Consolidá como Pendiente primero." };
+  }
+  if (inv.status === "cancelled") {
+    return { ok: false, error: "La factura está cancelada — no se puede reenviar." };
+  }
+  if (!inv.customer_email) {
+    return { ok: false, error: "La factura no tiene email de destinatario." };
+  }
+
+  const { data: settingsRows } = await supabase
+    .from("site_settings")
+    .select("key, value")
+    .in("key", ["contact_email", "whatsapp_phone"]);
+  const settings: Record<string, string> = {};
+  for (const r of (settingsRows as { key: string; value: string }[] | null) ?? []) {
+    settings[r.key] = r.value;
+  }
+
+  const emailData = {
+    invoiceNumber: inv.number,
+    customerName: inv.customer_name || "",
+    totalUsd: (inv.total_cents / 100).toFixed(2),
+    paymentLinkUrl: inv.stripe_payment_link_url || inv.paypal_payment_link_url || null,
+    pdfUrl: inv.pdf_url,
+    dueDate: inv.due_at,
+    notes: inv.notes,
+    brandContactEmail: settings.contact_email || null,
+    brandWhatsapp: settings.whatsapp_phone || null,
+  };
+
+  const emailRes = await sendEmail({
+    to: inv.customer_email,
+    subject: buildInvoiceEmailSubject(emailData),
+    html: buildInvoiceEmailHtml(emailData),
+    text: buildInvoiceEmailText(emailData),
+    replyTo: settings.contact_email || undefined,
+  });
+
+  if (emailRes.ok && "skipped" in emailRes && emailRes.skipped) {
+    return {
+      ok: false,
+      error: `Email no configurado (${emailRes.reason}). Agregá RESEND_API_KEY al server.`,
+    };
+  }
+  if (!emailRes.ok) {
+    return { ok: false, error: emailRes.error };
+  }
+
+  await writeAuditLog(actorId, "invoice.resend_email", "invoice", inv.id, {
+    number: inv.number,
+    to: inv.customer_email,
+  });
+
+  return { ok: true, data: { emailStatus: "sent", recipient: inv.customer_email } };
 }
