@@ -102,13 +102,17 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(rawBody, signature, secret);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
+    // PM 2026-07-02: incluir los últimos 6 chars del whsec_ usado para
+    // que el operador compare visualmente contra el del Stripe Dashboard
+    // sin exponer el secret completo.
+    const secretTail = secret.length >= 6 ? secret.slice(-6) : "?";
     console.warn("[stripe-webhook] firma inválida:", e);
     await logWebhookAttempt({
       eventType: null,
       eventId: null,
       statusCode: 400,
       outcome: "signature_invalid",
-      message: `Firma inválida: ${errMsg}. Verificar que el whsec_ del admin matchee el del Stripe Dashboard.`,
+      message: `Firma inválida. whsec_ usado termina en ...${secretTail}. Compará contra el del Stripe Dashboard → Webhooks → Signing secret. (${errMsg.slice(0, 150)})`,
       payloadSnippet: rawBody.slice(0, 500),
     });
     return NextResponse.json(
