@@ -131,6 +131,7 @@ import {
   generateInvoicePdf as sbGenerateInvoicePdf,
   getInvoiceWhatsAppLink as sbGetInvoiceWhatsAppLink,
   resendInvoiceEmail as sbResendInvoiceEmail,
+  markInvoiceRefunded as sbMarkInvoiceRefunded,
   searchProfiles as sbSearchProfiles,
   createCustomerForInvoice as sbCreateCustomerForInvoice,
   findRecentDuplicates as sbFindRecentDuplicates,
@@ -7499,6 +7500,13 @@ function AdminPanel({ onClose }) {
   const [invoicesSort, setInvoicesSort] = useState({ key: "issued", dir: "desc" });
   const [markPaidInvoice, setMarkPaidInvoice] = useState(null);
   const [paymentRef, setPaymentRef] = useState("");
+  // PM 2026-07-09: modal para marcar factura como devuelta.
+  const [refundInvoice, setRefundInvoice] = useState(null);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundFull, setRefundFull] = useState(true);
+  const [refundRef, setRefundRef] = useState("");
+  const [refundNotes, setRefundNotes] = useState("");
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [customerProfileEmail, setCustomerProfileEmail] = useState(null); // email to open profile for
   const [composeEmail, setComposeEmail] = useState(null); // { to, name, subject, body }
   const [partnersList, setPartnersList] = useState(() => Array.isArray(PARTNERS) ? [...PARTNERS] : []);
@@ -9346,7 +9354,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           <td style={{ fontFamily: "monospace", color: "#F5A623", fontSize: 12 }}>{inv.num}</td>
                           <td>{inv.customer || inv.email || "—"}</td>
                           <td style={{ fontWeight: 700 }}>{fmt(inv.total || 0)}</td>
-                          <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status):(inv.status||"").toUpperCase()}</span></td>
+                          <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status==="refunded"?"DEVUELTA":inv.status):(inv.status||"").toUpperCase()}</span></td>
                           <td style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>{inv.issued || "—"}</td>
                         </tr>
                       ))}
@@ -11061,7 +11069,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td style={{ fontSize: 12, color: inv.status === "overdue" ? "#EF6C2B" : "rgba(255,255,255,.6)", fontWeight: inv.status === "overdue" ? 700 : 400 }}>{inv.due || "—"}</td>
                         <td>{inv.items}</td>
                         <td style={{ color: "#F5A623", fontWeight: 700 }}>{fmt(inv.total)}</td>
-                        <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status):inv.status.toUpperCase()}</span></td>
+                        <td><span className={`adm-pill ${inv.status}`}>{lang==="es"?(inv.status==="paid"?"PAGADA":inv.status==="sent"?"ENVIADA":inv.status==="pending"?"PENDIENTE":inv.status==="overdue"?"VENCIDA":inv.status==="draft"?"BORRADOR":inv.status==="cancelled"?"CANCELADA":inv.status==="refunded"?"DEVUELTA":inv.status):inv.status.toUpperCase()}</span></td>
                         {/* PM 2026-06-29: antes este link era un placeholder
                             con href="#" + alert vacío. Ahora abre el link
                             de pago real (Stripe o PayPal) en una pestaña
@@ -11862,6 +11870,23 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <Mail style={{ width: 12, height: 12 }} />{lang === "es" ? "Enviar por email" : "Send by email"}
                   </button>
                 )}
+                {/* PM 2026-07-09: opción de marcar una factura pagada
+                    como devuelta. La devolución sucede FUERA del sistema
+                    (Stripe Dashboard, transferencia, efectivo). Acá solo
+                    registramos el hecho + monto + referencia opcional. */}
+                {viewingInvoice.status === "paid" && (
+                  <button className="adm-btn adm-btn-ghost" style={{ color: "#EF6C2B", borderColor: "rgba(239,108,43,.4)" }} onClick={() => {
+                    if (!canEditInvoices()) return;
+                    setRefundInvoice(viewingInvoice);
+                    setRefundAmount(String(viewingInvoice.total || ""));
+                    setRefundFull(true);
+                    setRefundRef("");
+                    setRefundNotes("");
+                    setViewingInvoice(null);
+                  }}>
+                    <RefreshCw style={{ width: 12, height: 12 }} />{lang === "es" ? "Marcar como devuelta" : "Mark as refunded"}
+                  </button>
+                )}
                 <button className="adm-btn adm-btn-primary" onClick={() => window.print()}><Printer style={{ width: 12, height: 12 }} />{lang === "es" ? "Imprimir / PDF" : "Print / PDF"}</button>
               </div>
             </div>
@@ -12020,6 +12045,141 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 }}>
                   <CheckCircle style={{ width: 13, height: 13 }} />
                   {lang === "es" ? "Pagada" : "Paid"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PM 2026-07-09: modal 'Marcar como devuelta' — solo para
+            facturas ya pagadas. La devolución sucede FUERA del sistema. */}
+        {refundInvoice && (
+          <div className="adm-modal-bg" onClick={() => setRefundInvoice(null)}>
+            <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+              <button className="adm-modal-close" onClick={() => setRefundInvoice(null)}><X /></button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: "50%", background: "rgba(239,108,43,.15)", margin: "0 auto 16px" }}>
+                <RefreshCw style={{ width: 28, height: 28, color: "#EF6C2B" }} />
+              </div>
+              <h3 style={{ textAlign: "center", color: "#fff", marginBottom: 8 }}>
+                {lang === "es" ? "MARCAR COMO DEVUELTA" : "MARK AS REFUNDED"}
+              </h3>
+              <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,.65)", marginBottom: 4, lineHeight: 1.5 }}>
+                {lang === "es" ? "Registrar la devolución de la factura" : "Register the refund of invoice"}{" "}
+                <strong style={{ fontFamily: "monospace", color: "#F5A623" }}>{refundInvoice.num}</strong>
+              </p>
+              <div style={{ background: "rgba(239,108,43,.06)", border: "1px solid rgba(239,108,43,.2)", borderRadius: 10, padding: "12px 14px", margin: "14px 0 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,.65)", marginBottom: 2 }}>{refundInvoice.customer}</div>
+                  <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.4)" }}>
+                    {lang === "es" ? "Total pagado: " : "Total paid: "}
+                    <span style={{ color: "#8DC63F", fontWeight: 700 }}>{fmt(refundInvoice.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: refundFull ? "rgba(239,108,43,.08)" : "rgba(255,255,255,.03)", border: refundFull ? "1px solid rgba(239,108,43,.3)" : "1px solid rgba(255,255,255,.08)", cursor: "pointer", marginBottom: 12 }}>
+                <input type="checkbox" checked={refundFull} onChange={(e) => {
+                  setRefundFull(e.target.checked);
+                  if (e.target.checked) setRefundAmount(String(refundInvoice.total || ""));
+                }} />
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff" }}>
+                    {lang === "es" ? "Devolución total del monto" : "Full refund of total amount"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)", marginTop: 2 }}>
+                    {lang === "es"
+                      ? `Se registra la devolución completa de ${fmt(refundInvoice.total)}.`
+                      : `Records a complete refund of ${fmt(refundInvoice.total)}.`}
+                  </div>
+                </div>
+              </label>
+
+              <div className="adm-fg" style={{ marginBottom: 12 }}>
+                <label className="adm-fl">{lang === "es" ? "Monto devuelto (USD)" : "Refunded amount (USD)"} *</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  className="adm-fi"
+                  value={refundAmount}
+                  onChange={(e) => {
+                    setRefundAmount(e.target.value);
+                    // Si edita el monto, marcamos como parcial si difiere del total.
+                    const val = parseFloat(e.target.value);
+                    if (Number.isFinite(val) && Math.abs(val - refundInvoice.total) < 0.005) setRefundFull(true);
+                    else setRefundFull(false);
+                  }}
+                  disabled={refundFull}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="adm-fg" style={{ marginBottom: 12 }}>
+                <label className="adm-fl">
+                  {lang === "es" ? "Referencia externa" : "External reference"}
+                  <span style={{ marginLeft: 6, fontSize: 10, color: "rgba(255,255,255,.4)", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>
+                    ({lang === "es" ? "opcional" : "optional"})
+                  </span>
+                </label>
+                <input
+                  className="adm-fi"
+                  value={refundRef}
+                  onChange={(e) => setRefundRef(e.target.value)}
+                  placeholder={lang === "es" ? "Ej. re_3O4..., ATH-MOV-58291" : "e.g. re_3O4..., ATH-MOV-58291"}
+                />
+              </div>
+
+              <div className="adm-fg" style={{ marginBottom: 6 }}>
+                <label className="adm-fl">
+                  {lang === "es" ? "Notas" : "Notes"}
+                  <span style={{ marginLeft: 6, fontSize: 10, color: "rgba(255,255,255,.4)", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>
+                    ({lang === "es" ? "opcional" : "optional"})
+                  </span>
+                </label>
+                <textarea
+                  className="adm-fi" rows={2}
+                  value={refundNotes}
+                  onChange={(e) => setRefundNotes(e.target.value)}
+                  placeholder={lang === "es" ? "Motivo, canal, cualquier detalle interno" : "Reason, channel, any internal detail"}
+                />
+              </div>
+
+              <div className="adm-modal-actions" style={{ justifyContent: "center" }}>
+                <button className="adm-btn adm-btn-ghost" onClick={() => setRefundInvoice(null)} disabled={refundSubmitting}>
+                  {lang === "es" ? "Cancelar" : "Cancel"}
+                </button>
+                <button className="adm-btn adm-btn-primary" style={{ background: "#EF6C2B", borderColor: "#EF6C2B" }} disabled={refundSubmitting} onClick={async () => {
+                  const amtUsd = parseFloat(refundAmount);
+                  if (!Number.isFinite(amtUsd) || amtUsd <= 0) {
+                    toast({ type: "error", message: lang === "es" ? "Ingresá un monto válido mayor a cero." : "Enter a valid amount greater than zero." });
+                    return;
+                  }
+                  if (refundInvoice.source !== "supabase" || !refundInvoice.sbId) {
+                    toast({ type: "info", message: lang === "es" ? "Factura legacy — no aplica devolución en el sistema." : "Legacy invoice — refund not applicable." });
+                    setRefundInvoice(null);
+                    return;
+                  }
+                  setRefundSubmitting(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append("id", refundInvoice.sbId);
+                    fd.append("amount_cents", String(Math.round(amtUsd * 100)));
+                    if (refundRef.trim()) fd.append("refund_ref", refundRef.trim());
+                    if (refundNotes.trim()) fd.append("refund_notes", refundNotes.trim());
+                    const res = await sbMarkInvoiceRefunded(fd);
+                    if (!res?.ok) {
+                      toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (res?.error || "unknown"), durationMs: 6000 });
+                      return;
+                    }
+                    await reloadInvoices();
+                    toast({ type: "success", message: lang === "es" ? "Factura marcada como devuelta." : "Invoice marked as refunded." });
+                    setRefundInvoice(null);
+                  } catch (e) {
+                    toast({ type: "error", message: "Error: " + (e?.message || String(e)) });
+                  } finally {
+                    setRefundSubmitting(false);
+                  }
+                }}>
+                  <RefreshCw style={{ width: 13, height: 13 }} />
+                  {refundSubmitting ? (lang === "es" ? "Guardando..." : "Saving...") : (lang === "es" ? "Confirmar devolución" : "Confirm refund")}
                 </button>
               </div>
             </div>

@@ -271,6 +271,108 @@ export async function markInvoicePaid(
   return { ok: true };
 }
 
+// ===========================================================================
+// MARK INVOICE REFUNDED
+// ===========================================================================
+
+/**
+ * PM 2026-07-09: el admin marca una factura ya pagada como devuelta.
+ * La devolución ocurre FUERA del sistema (Stripe Dashboard, transferencia,
+ * efectivo). El sistema solo registra el hecho + monto + referencia opcional.
+ *
+ * Reglas:
+ *   - Solo aplica a facturas en status='paid'.
+ *   - amount_cents puede ser < total_cents (parcial) o = total_cents (total).
+ *   - No se resetea paid_at ni payment_ref — se conservan por auditoría.
+ */
+export async function markInvoiceRefunded(
+  formData: FormData
+): Promise<ActionResult> {
+  const guard = await getStaffWithPermissionOrError("invoices:write");
+  if (!guard.ok) return guard;
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { ok: false, error: "ID requerido" };
+
+  const amountRaw = String(formData.get("amount_cents") ?? "").trim();
+  const amountCents = Number.parseInt(amountRaw, 10);
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    return { ok: false, error: "El monto devuelto debe ser un número mayor a cero." };
+  }
+  const refundRef = String(formData.get("refund_ref") ?? "").trim() || null;
+  const refundNotes = String(formData.get("refund_notes") ?? "").trim() || null;
+
+  const supabase = await createClient();
+  const actorId = guard.current.user.id;
+
+  // Verificar status actual + monto total antes de aplicar.
+  const { data: inv, error: fetchErr } = await supabase
+    .from("invoices")
+    .select("id, number, status, total_cents, customer_name")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (fetchErr || !inv) return { ok: false, error: "Factura no encontrada" };
+  if (inv.status !== "paid") {
+    return {
+      ok: false,
+      error: `Solo facturas 'pagadas' pueden marcarse como devueltas. Estado actual: ${inv.status}.`,
+    };
+  }
+  if (amountCents > inv.total_cents) {
+    return {
+      ok: false,
+      error: `El monto devuelto ($${(amountCents / 100).toFixed(2)}) no puede superar el total de la factura ($${(inv.total_cents / 100).toFixed(2)}).`,
+    };
+  }
+
+  const { error: updErr } = await (supabase as unknown as {
+    from: (t: string) => { update: (row: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: { message: string } | null }> } };
+  })
+    .from("invoices")
+    .update({
+      status: "refunded",
+      refunded_at: new Date().toISOString(),
+      refunded_amount_cents: amountCents,
+      refund_ref: refundRef,
+      refund_notes: refundNotes,
+    })
+    .eq("id", id);
+
+  if (updErr) {
+    return { ok: false, error: `No se pudo marcar como devuelta: ${updErr.message}` };
+  }
+
+  const amountUsd = (amountCents / 100).toFixed(2);
+  const totalUsd = (inv.total_cents / 100).toFixed(2);
+  const isFullRefund = amountCents === inv.total_cents;
+
+  await writeAuditLog(actorId, "invoice.refunded", "invoice", id, {
+    number: inv.number,
+    amount_cents: amountCents,
+    total_cents: inv.total_cents,
+    full_refund: isFullRefund,
+    refund_ref: refundRef,
+  });
+
+  // Notificar al resto de admins.
+  try {
+    const { notifyAllAdmins } = await import("./notifications");
+    await notifyAllAdmins({
+      kind: "invoice_cancelled", // Reusamos el kind existente hasta agregar 'invoice_refunded' al enum.
+      title_es: "Factura devuelta",
+      title_en: "Invoice refunded",
+      body_es: `Factura ${inv.number} de ${inv.customer_name || "cliente"} — ${isFullRefund ? `devolución total de $${amountUsd}` : `devolución parcial de $${amountUsd} de $${totalUsd}`}.`,
+      body_en: `Invoice ${inv.number} from ${inv.customer_name || "customer"} — ${isFullRefund ? `full refund of $${amountUsd}` : `partial refund of $${amountUsd} of $${totalUsd}`}.`,
+      link: "/admin?section=invoices",
+    });
+  } catch (e) {
+    console.warn("[markInvoiceRefunded] notify:", e);
+  }
+
+  return { ok: true };
+}
+
 /**
  * Marca como pagadas las facturas que tienen items relacionados al booking_id
  * dado. Usado desde confirmPayment para mantener Service→Payment→Invoice
