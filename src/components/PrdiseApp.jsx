@@ -410,6 +410,8 @@ function mapVehicleToVehicle(v) {
     seats: v.max_pax || 4,
     bags: v.max_luggage || 2,
     base: Math.round((v.price_cents || 0) / 100),
+    // PM 2026-07-09: foto opcional del vehículo (bucket service-images).
+    image: v.image || "",
     // PM 2026-06-17: perKm desde DB (antes hardcoded 2.5 para todos los
     // vehículos). NULL = 0 (no se cobra por km, solo flat base).
     perKm: v.price_per_km_cents == null ? 0 : Number(v.price_per_km_cents) / 100,
@@ -1119,6 +1121,19 @@ function buildSmsHref({ user, lang, service }) {
 // cliente la opción de elegir su medio preferido sin obligar a WhatsApp.
 function ContactSplitButton({ user, lang, service, color = "gold", className = "", style = {} }) {
   const [open, setOpen] = useState(false);
+  // PM 2026-07-09: fix del hover — antes el submenu se cerraba al mover
+  // el mouse del botón hacia las opciones porque había un gap visual
+  // (6px) donde el mouse no estaba sobre nada. Con un delay corto en el
+  // close, si el mouse vuelve al menú dentro de 200ms se cancela el
+  // cierre. Además el menu tiene padding-top invisible para cubrir el gap.
+  const closeTimerRef = useRef(null);
+  const scheduleClose = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => setOpen(false), 200);
+  };
+  const cancelClose = () => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
+  };
   const waHref = buildWhatsAppHref({ user, lang, service });
   const smsHref = buildSmsHref({ user, lang, service });
   const labelMain = lang === "es" ? "Consultar" : "Ask us";
@@ -1181,8 +1196,8 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
     <div
       className={`csb-wrap ${className}`}
       style={{ position: "relative", display: "inline-block", ...style }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseEnter={() => { cancelClose(); setOpen(true); }}
+      onMouseLeave={scheduleClose}
     >
       <button
         type="button"
@@ -1201,15 +1216,24 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
       {open && (
         <div
           role="menu"
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
           style={{
-            position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
-            background: "var(--ink)", border: "1px solid rgba(255,255,255,.1)",
-            borderRadius: 12, padding: 4, zIndex: 50,
-            boxShadow: "0 12px 32px rgba(0,0,0,.45)",
-            display: "flex", flexDirection: "column", gap: 2,
+            position: "absolute", bottom: "100%", left: 0, right: 0,
+            // Padding-top invisible cubre el gap de 6px hasta el botón
+            // — permite mover el mouse hacia el menú sin perder hover.
+            paddingBottom: 6,
+            zIndex: 50,
+            display: "flex", flexDirection: "column",
           }}
           onClick={(e) => e.stopPropagation()}
         >
+        <div style={{
+          background: "var(--ink)", border: "1px solid rgba(255,255,255,.1)",
+          borderRadius: 12, padding: 4,
+          boxShadow: "0 12px 32px rgba(0,0,0,.45)",
+          display: "flex", flexDirection: "column", gap: 2,
+        }}>
           {/* PM 2026-06-23: onClick → recordAndOpen para que cada referral
               quede registrado en contact_messages (trigger DB notifica al
               admin). preventDefault evita que el browser navegue antes de
@@ -1236,6 +1260,7 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
             <Mail style={{ width: 15, height: 15, color: "#F5A623" }} />
             {lang === "es" ? "Mensaje (SMS)" : "Text (SMS)"}
           </a>
+        </div>
         </div>
       )}
     </div>
@@ -4836,18 +4861,22 @@ function TransferResultsPage() {
                         ★ {lang === "es" ? "Vehículo de esta ruta" : "Route's vehicle"}
                       </span>
                     )}
-                    <div className="veh-pic">{VEHICLE_ICONS[v.id]}</div>
+                    {/* PM 2026-07-09: si el vehículo tiene foto cargada,
+                        se usa como thumbnail. Fallback al ícono SVG por
+                        tipo. */}
+                    <div className="veh-pic" style={v.image ? { backgroundImage: `url(${v.image})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>
+                      {!v.image && VEHICLE_ICONS[v.id]}
+                    </div>
                     <div className="veh-info">
                       <h3>{v.name}</h3>
                       {v.desc && <p className="desc">{v.desc}</p>}
+                      {/* PM 2026-07-09: removido el meta-item de
+                          recorridos/km — se mostraba con datos residuales
+                          de la búsqueda que confundían al cliente. La
+                          capacidad y maletas siguen visibles. */}
                       <div className="veh-meta">
                         <div className="veh-meta-item"><Users />{lang === "es" ? `Hasta ${v.seats} pasajeros` : `Up to ${v.seats} seats`}</div>
                         <div className="veh-meta-item"><Briefcase />{v.bags} {lang === "es" ? "maletas" : "bags"}</div>
-                        {tripCount > 1 ? (
-                          <div className="veh-meta-item"><Clock />{tripCount} {lang === "es" ? "recorridos" : "trips"} · ~{totalKm}km</div>
-                        ) : (
-                          search.time_est && <div className="veh-meta-item"><Clock />~{search.time_est}</div>
-                        )}
                       </div>
                       {(v.features || []).length > 0 && (
                         <div className="veh-features">{v.features.map((f) => <span key={f}>{f}</span>)}</div>
@@ -10502,6 +10531,48 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <label className="adm-fl">{lang === "es" ? "Descripción corta" : "Short description"}</label>
                     <input className="adm-fi" value={editingVehicle.desc || ""} onChange={(e) => setEditingVehicle({ ...editingVehicle, desc: e.target.value })} placeholder={lang === "es" ? "Ej: Van amplia, ideal grupos familiares" : "E.g. Spacious van, family-friendly"} />
                   </div>
+                  {/* PM 2026-07-09: upload de foto del vehículo. Reusa el
+                      bucket 'service-images' (mismo que fotos de tour/stay).
+                      URL pública se persiste en vehicles.image. */}
+                  <div className="adm-fg">
+                    <label className="adm-fl">{lang === "es" ? "Foto del vehículo" : "Vehicle photo"}</label>
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      {editingVehicle.image && (
+                        <div style={{ width: 96, height: 72, borderRadius: 8, overflow: "hidden", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", flexShrink: 0 }}>
+                          <img src={editingVehicle.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        </div>
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const sb = createClient();
+                              const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+                              const path = `vehicle/${editingVehicle.id === "new" ? "tmp-" + Date.now() : editingVehicle.id}/photo-${Date.now()}.${ext}`;
+                              const { error: upErr } = await sb.storage.from("service-images").upload(path, file, { upsert: true, contentType: file.type });
+                              if (upErr) { toast({ type: "error", message: (lang === "es" ? "Subida falló: " : "Upload failed: ") + upErr.message }); return; }
+                              const { data } = sb.storage.from("service-images").getPublicUrl(path);
+                              setEditingVehicle({ ...editingVehicle, image: data.publicUrl });
+                              toast({ type: "success", message: lang === "es" ? "Foto cargada" : "Photo uploaded" });
+                            } catch (err) {
+                              toast({ type: "error", message: (lang === "es" ? "Error: " : "Error: ") + (err.message || String(err)) });
+                            }
+                          }}
+                          className="adm-fi"
+                          style={{ padding: "6px 8px" }}
+                        />
+                        {editingVehicle.image && (
+                          <button type="button" className="adm-btn adm-btn-ghost" onClick={() => setEditingVehicle({ ...editingVehicle, image: "" })} style={{ alignSelf: "flex-start", fontSize: 10.5 }}>
+                            <Trash2 style={{ width: 10, height: 10 }} />{lang === "es" ? "Quitar foto" : "Remove photo"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   <div className="adm-fg">
                     <label className="adm-fl">{lang === "es" ? "Características (chips)" : "Features (chips)"}</label>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -10553,6 +10624,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         fd.append("max_luggage", String(editingVehicle.bags || 2));
                         fd.append("price_cents", String(Math.round((editingVehicle.base || 0) * 100)));
                         fd.append("active", "true");
+                        // PM 2026-07-09: persistir la foto del vehículo.
+                        fd.append("image", editingVehicle.image || "");
                         // PM 2026-06-17: persistir features + description + perKm.
                         fd.append("features", JSON.stringify(Array.isArray(editingVehicle.features) ? editingVehicle.features : []));
                         fd.append("description", editingVehicle.desc || "");
@@ -12807,13 +12880,36 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   <h3>{editingPartner.id === "new" ? (lang==="es"?"NUEVA ALIANZA":"NEW PARTNER") : (lang==="es"?"EDITAR ALIANZA":"EDIT PARTNER")}</h3>
                   <p className="adm-modal-sub">{lang==="es"?"Configura los datos de la página aliada y el tracking que se aplicará al redirigir.":"Configure the partner page details and tracking applied on redirect."}</p>
                   <div className="adm-form-grid">
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre":"Name"} *</label><input className="adm-fi" value={editingPartner.name} onChange={(e) => setEditingPartner({ ...editingPartner, name: e.target.value })} placeholder={lang==="es"?"Ej: Cabo Rojo Villas":"e.g.: Cabo Rojo Villas"} /></div>
-                    <div className="adm-fg"><label className="adm-fl">Slug (URL-safe) *</label><input className="adm-fi" value={editingPartner.slug} onChange={(e) => setEditingPartner({ ...editingPartner, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder="cabo-rojo-villas" /></div>
+                    {/* PM 2026-07-09: al tipear el nombre, el slug se
+                        rellena automáticamente (si el admin no lo tocó
+                        manualmente todavía). El admin puede seguir
+                        editándolo después si necesita cambiarlo. */}
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre":"Name"} *</label><input className="adm-fi" value={editingPartner.name} onChange={(e) => {
+                      const newName = e.target.value;
+                      const autoSlug = newName.toLowerCase()
+                        .normalize("NFD").replace(/[̀-ͯ]/g, "") // strip acentos
+                        .replace(/[^a-z0-9]+/g, "-")
+                        .replace(/^-+|-+$/g, "");
+                      // Slug se auto-rellena si estaba vacío, o si coincide
+                      // con el auto-slug previo del nombre (el admin no lo tocó).
+                      const prevAutoSlug = (editingPartner.name || "").toLowerCase()
+                        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                      const shouldAutoSlug = !editingPartner.slug || editingPartner.slug === prevAutoSlug;
+                      setEditingPartner({
+                        ...editingPartner,
+                        name: newName,
+                        ...(shouldAutoSlug ? { slug: autoSlug } : {}),
+                      });
+                    }} placeholder={lang==="es"?"Ej: Cabo Rojo Villas":"e.g.: Cabo Rojo Villas"} /></div>
+                    <div className="adm-fg"><label className="adm-fl">Slug (URL-safe) *</label><input className="adm-fi" value={editingPartner.slug} onChange={(e) => setEditingPartner({ ...editingPartner, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder={lang === "es" ? "Se auto-completa desde el nombre" : "Auto-fills from name"} /></div>
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}><label className="adm-fl">URL base *</label><input className="adm-fi" type="url" value={editingPartner.base_url} onChange={(e) => setEditingPartner({ ...editingPartner, base_url: e.target.value })} placeholder="https://partner.com" /></div>
                     <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Email de contacto":"Contact email"}</label><input className="adm-fi" type="email" value={editingPartner.contact_email || ""} onChange={(e) => setEditingPartner({ ...editingPartner, contact_email: e.target.value })} /></div>
                     <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono":"Phone"}</label><input className="adm-fi" value={editingPartner.contact_phone || ""} onChange={(e) => setEditingPartner({ ...editingPartner, contact_phone: e.target.value })} /></div>
                     <div className="adm-fg"><label className="adm-fl">UTM source</label><input className="adm-fi" value={editingPartner.utm_source || "prdise"} onChange={(e) => setEditingPartner({ ...editingPartner, utm_source: e.target.value })} placeholder="prdise" /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Código afiliado (opcional)":"Affiliate code (optional)"}</label><input className="adm-fi" value={editingPartner.affiliate_code || ""} onChange={(e) => setEditingPartner({ ...editingPartner, affiliate_code: e.target.value })} placeholder="REF123" /></div>
+                    {/* PM 2026-07-09: campo 'Código afiliado' ocultado
+                        por pedido del cliente — no se usa. La columna en
+                        DB sigue existiendo por si se rehabilita. */}
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}><label className="adm-fl">{lang==="es"?"Notas (ES)":"Notes (ES)"}</label><textarea className="adm-fi" rows={2} value={editingPartner.notes_es || ""} onChange={(e) => setEditingPartner({ ...editingPartner, notes_es: e.target.value })} /></div>
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}><label className="adm-fl">{lang==="es"?"Notas (EN)":"Notes (EN)"}</label><textarea className="adm-fi" rows={2} value={editingPartner.notes_en || ""} onChange={(e) => setEditingPartner({ ...editingPartner, notes_en: e.target.value })} /></div>
                     <div className="adm-fg" style={{ gridColumn: "1/-1" }}>
@@ -15437,24 +15533,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           🇵🇷 Español <span style={{ fontSize: 9, color: "rgba(255,255,255,.3)" }}>{t("optional")}</span>
         </button>
       </div>
-      {/* PM 2026-06-17: ocultado para posts a pedido del cliente — el botón
-          queda disponible para hotel/tour donde sigue siendo útil. */}
-      {contentLang === "es" && type !== "post" && (nameEN || descEN || storyEN || excerptEN || bodyEN) && (
-        <button type="button" onClick={autoTranslate} disabled={translating} style={{
-          width: "100%", marginTop: 8, padding: "10px 16px", borderRadius: 10, cursor: translating ? "wait" : "pointer",
-          background: translating ? "rgba(141,198,63,.08)" : "linear-gradient(135deg,rgba(141,198,63,.12),rgba(41,171,226,.12))",
-          border: `1.5px solid ${translating ? "rgba(141,198,63,.3)" : "rgba(141,198,63,.25)"}`,
-          color: translating ? "rgba(141,198,63,.7)" : "#8DC63F",
-          fontSize: 11, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .25s",
-        }}>
-          {translating ? (
-            <><span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(141,198,63,.3)", borderTopColor: "#8DC63F", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> Traduciendo con IA...</>
-          ) : (
-            <><Zap style={{ width: 14, height: 14 }} /> Auto-traducir desde inglés</>
-          )}
-        </button>
-      )}
+      {/* PM 2026-07-09: botón 'Auto-traducir desde inglés' eliminado por
+          pedido del cliente — no funcionaba de forma confiable y tiraba
+          error. Traducción manual queda como único flujo. */}
     </div>
   ) : null;
 
@@ -17106,7 +17187,10 @@ const INTEGRATIONS_CONFIG = {
       { key: "default_currency", labelEN: "Default Currency", labelES: "Moneda por defecto", type: "select", options: ["USD", "EUR", "GBP", "MXN"] },
     ],
   },
-  paypal: {
+  // PM 2026-07-09: PayPal ocultado del panel de integraciones a pedido
+  // del cliente — el backend sigue disponible; sólo se remueve de la UI
+  // para no confundir al operador. Restaurar quitando el prefix `_`.
+  _paypal: {
     name: "PayPal", descES: "Aceptar pagos por PayPal", descEN: "Accept PayPal payments", color: "#0070BA",
     fields: [
       { key: "client_id", labelEN: "Client ID", labelES: "ID de Cliente", placeholder: "A...", required: true },
