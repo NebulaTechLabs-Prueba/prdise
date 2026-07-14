@@ -3974,6 +3974,16 @@ function TourDetail({ params }) {
   const [date, setDate] = useState("");
   const [travelers, setTravelers] = useState(2);
   const [user, setUser] = useState(null);
+  // PM 2026-07-09: extras opcionales toggleables — mismo patrón que
+  // HotelDetail. Default: todos ON al cargar el tour.
+  const [selectedExtras, setSelectedExtras] = useState({});
+  useEffect(() => {
+    if (tour && Array.isArray(tour.pricingExtras)) {
+      const initial = {};
+      tour.pricingExtras.forEach((_, i) => { initial[i] = true; });
+      setSelectedExtras(initial);
+    }
+  }, [tour?.id]);
   useEffect(() => {
     if (tour) document.title = `${tour.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
@@ -3982,11 +3992,29 @@ function TourDetail({ params }) {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = toISO(tomorrow);
   const pricing = useMemo(() => {
-    if (!tour) return { subtotal: 0, service: 0, total: 0 };
+    if (!tour) return { subtotal: 0, extras: [], extrasTotal: 0, service: 0, total: 0 };
     const subtotal = travelers * tour.price;
+    // Extras del tour. Cantidad según unit: per_person → travelers;
+    // per_hour → 1 (el admin ya lo modela como precio por hora); resto → 1.
+    const extrasList = Array.isArray(tour.pricingExtras) ? tour.pricingExtras : [];
+    const selectedExtrasDetail = extrasList
+      .map((ex, i) => {
+        if (!selectedExtras[i]) return null;
+        const priceUsd = (ex.price_cents ?? Number(ex.price) * 100 ?? 0) / 100;
+        const qty = ex.unit === "per_person" ? travelers : 1;
+        return { idx: i, label_en: ex.label_en, label_es: ex.label_es, priceUsd, unit: ex.unit, qty, amount: priceUsd * qty };
+      })
+      .filter(Boolean);
+    const extrasTotal = selectedExtrasDetail.reduce((s, x) => s + x.amount, 0);
     const service = subtotal * 0.05;
-    return { subtotal, service, total: subtotal + service };
-  }, [travelers, tour?.price, tour]);
+    return {
+      subtotal,
+      extras: selectedExtrasDetail,
+      extrasTotal,
+      service,
+      total: subtotal + extrasTotal + service,
+    };
+  }, [travelers, tour?.price, tour, selectedExtras]);
   if (!tour) {
     const emptyDb = TOURS.length === 0;
     return (
@@ -4226,7 +4254,38 @@ function TourDetail({ params }) {
                 {tour.price > 0 ? (
                   <div style={{ margin: "16px 0", padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)" }}>
                     <div className="summary-row"><span>{travelers} × ${tour.price}</span><span>{fmt(pricing.subtotal)}</span></div>
-                    <div className="summary-row"><span>Service fee (5%)</span><span>{fmt(pricing.service)}</span></div>
+                    {/* PM 2026-07-09: extras opcionales toggleables. Click
+                        alterna incluir/descartar; total y mensaje WhatsApp
+                        se recalculan. Mismo patrón que HotelDetail. */}
+                    {(tour.pricingExtras || []).map((ex, i) => {
+                      const priceUsd = (ex.price_cents ?? Number(ex.price) * 100 ?? 0) / 100;
+                      const qty = ex.unit === "per_person" ? travelers : 1;
+                      const amount = priceUsd * qty;
+                      const isOn = !!selectedExtras[i];
+                      const unitLabel = ex.unit === "per_person"
+                        ? (lang === "es" ? `× ${travelers} persona${travelers > 1 ? "s" : ""}` : `× ${travelers} person${travelers > 1 ? "s" : ""}`)
+                        : ex.unit === "per_hour"
+                          ? (lang === "es" ? "/ hora" : "/ hour")
+                          : "";
+                      const label = (lang === "es" ? ex.label_es : ex.label_en) || ex.label_en || ex.label_es || "Extra";
+                      return (
+                        <div key={i} className="summary-row" style={{ opacity: isOn ? 1 : .45, cursor: "pointer", userSelect: "none" }}
+                          onClick={() => setSelectedExtras((prev) => ({ ...prev, [i]: !prev[i] }))}
+                          title={isOn ? (lang === "es" ? "Click para descartar" : "Click to remove") : (lang === "es" ? "Click para incluir" : "Click to add")}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${isOn ? "var(--gold)" : "rgba(255,255,255,.3)"}`, background: isOn ? "var(--gold)" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              {isOn && <Check style={{ width: 10, height: 10, color: "#0F1822" }} />}
+                            </span>
+                            <span style={{ textDecoration: isOn ? "none" : "line-through" }}>
+                              {label}
+                              {unitLabel && <span style={{ marginLeft: 4, fontSize: 10.5, color: "rgba(255,255,255,.5)" }}>{unitLabel}</span>}
+                            </span>
+                          </span>
+                          <span style={{ textDecoration: isOn ? "none" : "line-through" }}>{fmt(amount)}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="summary-row"><span>{lang === "es" ? "Cargo por servicio (5%)" : "Service fee (5%)"}</span><span>{fmt(pricing.service)}</span></div>
                     <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
                   </div>
                 ) : (
@@ -4250,9 +4309,18 @@ function TourDetail({ params }) {
                       kind: "tour",
                       name: tour.name,
                       priceUsd: pricing.total || tour.price,
+                      // PM 2026-07-09: URL deep link + extras seleccionados
+                      // + total — mismo patrón que HotelDetail para que el
+                      // operador reciba todo el contexto por WhatsApp/SMS.
+                      url: typeof window !== "undefined" ? `${window.location.origin}/#/tour?id=${encodeURIComponent(tour.id)}` : undefined,
                       details: date
                         ? `${date} · ${travelers} ${lang === "es" ? "viajero(s)" : "traveler(s)"}`
                         : undefined,
+                      extras: (pricing.extras || []).map((x) => ({
+                        label: (lang === "es" ? x.label_es : x.label_en) || x.label_en || x.label_es || "Extra",
+                        amount: x.amount,
+                      })),
+                      totalUsd: pricing.total,
                     }}
                   />
                 </div>
