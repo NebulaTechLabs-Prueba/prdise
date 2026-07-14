@@ -1060,17 +1060,21 @@ const nav = (p) => { window.location.hash = p.startsWith("#") ? p : "#" + p; };
 // inicial es por WhatsApp y luego admin emite invoice con Payment Link Stripe.
 // El número viene de site_settings.whatsapp_phone (editable desde admin),
 // con fallback al default si la tabla está vacía.
-function buildWhatsAppHref({ user, lang, service }) {
+// PM 2026-07-09: template unificado para WhatsApp y SMS. Incluye:
+//   - Saludo + nombre (si logueado)
+//   - Tipo y nombre del servicio + precio referencia
+//   - URL directa al servicio (para que el operador abra el mismo detalle)
+//   - Fechas / huéspedes (si el visitante los cargó)
+//   - Extras opcionales seleccionados con precio y monto (si aplica)
+//   - Total
+//   - Pregunta clara al cierre
+function buildInquiryText({ user, lang, service }) {
   const isEs = lang === "es";
   const greeting = isEs ? "Hola, soy" : "Hi, I'm";
   const name = (user?.firstName || user?.name || "").trim();
   const kindLabel = isEs
     ? ({ stay: "una estadía", tour: "un tour", transfer: "un traslado" }[service?.kind] || "un servicio")
     : ({ stay: "a stay", tour: "a tour", transfer: "a transfer" }[service?.kind] || "a service");
-  // Precio en el mensaje:
-  //   > 0       → "(referencia $X USD)"
-  //   = 0/null  → no incluye precio en el intro; pide info en la ask line.
-  //               Esto es para servicios marcados "A consultar" (TBD).
   const priceVal = Number(service?.priceUsd);
   const hasPrice = Number.isFinite(priceVal) && priceVal > 0;
   const priceStr = hasPrice
@@ -1079,20 +1083,45 @@ function buildWhatsAppHref({ user, lang, service }) {
   const intro = isEs
     ? `${greeting}${name ? " " + name : ""}. Me interesa ${kindLabel}: ${service?.name || ""}${priceStr}.`
     : `${greeting}${name ? " " + name : ""}. I'm interested in ${kindLabel}: ${service?.name || ""}${priceStr}.`;
-  const details = service?.details
-    ? (isEs ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
-    : "";
-  // Si el precio es "a consultar" (hasPrice=false), pedimos también
-  // el costo en el ask line — así el responsable PRDISE responde con
-  // disponibilidad + precio en un solo mensaje.
+
+  const parts = [intro];
+  if (service?.url) {
+    parts.push(isEs ? `Enlace: ${service.url}` : `Link: ${service.url}`);
+  }
+  if (service?.details) {
+    parts.push(isEs ? `Detalles: ${service.details}` : `Details: ${service.details}`);
+  }
+  if (Array.isArray(service?.extras) && service.extras.length > 0) {
+    parts.push("");
+    parts.push(isEs ? "Extras seleccionados:" : "Selected add-ons:");
+    for (const ex of service.extras) {
+      const label = ex.label || "";
+      const amt = Number(ex.amount);
+      const amtStr = Number.isFinite(amt) ? `$${amt.toFixed(2)}` : "";
+      parts.push(`  - ${label}${amtStr ? ` — ${amtStr}` : ""}`);
+    }
+  }
+  if (service?.totalUsd != null) {
+    const t = Number(service.totalUsd);
+    if (Number.isFinite(t) && t > 0) {
+      parts.push("");
+      parts.push(isEs ? `Total estimado: $${t.toFixed(2)} USD` : `Estimated total: $${t.toFixed(2)} USD`);
+    }
+  }
   const ask = hasPrice
     ? (isEs
-        ? "\n¿Me puedes ayudar con la disponibilidad y el siguiente paso?"
-        : "\nCould you help me with availability and next steps?")
+        ? "¿Me puedes ayudar con la disponibilidad y el siguiente paso?"
+        : "Could you help me with availability and next steps?")
     : (isEs
-        ? "\n¿Me puedes confirmar el precio, la disponibilidad y el siguiente paso?"
-        : "\nCould you confirm the price, availability and next steps?");
-  const text = `${intro}${details}${ask}`;
+        ? "¿Me puedes confirmar el precio, la disponibilidad y el siguiente paso?"
+        : "Could you confirm the price, availability and next steps?");
+  parts.push("");
+  parts.push(ask);
+  return parts.join("\n");
+}
+
+function buildWhatsAppHref({ user, lang, service }) {
+  const text = buildInquiryText({ user, lang, service });
   return `https://wa.me/${getSetting("whatsapp_phone")}?text=${encodeURIComponent(text)}`;
 }
 
@@ -1100,27 +1129,7 @@ function buildWhatsAppHref({ user, lang, service }) {
 // mismo texto que armó buildWhatsAppHref para mantener consistencia entre
 // canales. El número de SMS sale de site_settings.contact_phone_tel.
 function buildSmsHref({ user, lang, service }) {
-  const isEs = lang === "es";
-  const greeting = isEs ? "Hola, soy" : "Hi, I'm";
-  const name = (user?.firstName || user?.name || "").trim();
-  const kindLabel = isEs
-    ? ({ stay: "una estadía", tour: "un tour", transfer: "un traslado" }[service?.kind] || "un servicio")
-    : ({ stay: "a stay", tour: "a tour", transfer: "a transfer" }[service?.kind] || "a service");
-  const priceVal = Number(service?.priceUsd);
-  const hasPrice = Number.isFinite(priceVal) && priceVal > 0;
-  const priceStr = hasPrice
-    ? (isEs ? ` (referencia $${priceVal.toFixed(0)} USD)` : ` (reference $${priceVal.toFixed(0)} USD)`)
-    : "";
-  const intro = isEs
-    ? `${greeting}${name ? " " + name : ""}. Me interesa ${kindLabel}: ${service?.name || ""}${priceStr}.`
-    : `${greeting}${name ? " " + name : ""}. I'm interested in ${kindLabel}: ${service?.name || ""}${priceStr}.`;
-  const details = service?.details
-    ? (isEs ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
-    : "";
-  const ask = hasPrice
-    ? (isEs ? "\n¿Disponibilidad y siguiente paso?" : "\nAvailability and next steps?")
-    : (isEs ? "\n¿Precio, disponibilidad y siguiente paso?" : "\nPrice, availability and next steps?");
-  const text = `${intro}${details}${ask}`;
+  const text = buildInquiryText({ user, lang, service });
   const phone = getSetting("contact_phone_tel") || `+${getSetting("whatsapp_phone")}`;
   return `sms:${phone}?body=${encodeURIComponent(text)}`;
 }
@@ -1174,10 +1183,21 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
       const detailsLine = service?.details
         ? (lang === "es" ? `\nDetalles: ${service.details}` : `\nDetails: ${service.details}`)
         : "";
+      // PM 2026-07-09: URL + extras + total al registro del Buzón para que
+      // el admin vea todo el contexto sin abrir la ficha aparte.
+      const urlLine = service?.url
+        ? (lang === "es" ? `\nEnlace: ${service.url}` : `\nLink: ${service.url}`)
+        : "";
+      const extrasLine = Array.isArray(service?.extras) && service.extras.length
+        ? "\n" + (lang === "es" ? "Extras: " : "Add-ons: ") + service.extras.map((ex) => `${ex.label}${Number.isFinite(Number(ex.amount)) ? ` ($${Number(ex.amount).toFixed(2)})` : ""}`).join(", ")
+        : "";
+      const totalLine = (service?.totalUsd != null && Number(service.totalUsd) > 0)
+        ? (lang === "es" ? `\nTotal estimado: $${Number(service.totalUsd).toFixed(2)} USD` : `\nEstimated total: $${Number(service.totalUsd).toFixed(2)} USD`)
+        : "";
       const intro = lang === "es"
         ? `[${KIND_TAG}] [${channelLab}] El visitante inició contacto por ${channelLab} para: ${service?.name || "(servicio sin nombre)"}.`
         : `[${KIND_TAG}] [${channelLab}] Visitor started contact via ${channelLab} for: ${service?.name || "(unnamed service)"}.`;
-      const message = intro + priceLine + detailsLine;
+      const message = intro + priceLine + detailsLine + urlLine + extrasLine + totalLine;
       const fd = new FormData();
       fd.append("name", name);
       fd.append("email", email);
@@ -3570,6 +3590,18 @@ function HotelDetail({ params }) {
   // Default a 2, pero cap a la capacidad real del stay si es menor.
   const [guests, setGuests] = useState(() => Math.min(2, Math.max(1, hotel?.sleeps || 2)));
   const [user, setUser] = useState(null);
+  // PM 2026-07-09: los extras opcionales del stay (pricingExtras) son
+  // toggleables por el visitante. Default: TODOS incluidos. El visitante
+  // puede clickear cada uno para descartarlo del total y de la consulta
+  // a WhatsApp.
+  const [selectedExtras, setSelectedExtras] = useState({});
+  useEffect(() => {
+    if (hotel && Array.isArray(hotel.pricingExtras)) {
+      const initial = {};
+      hotel.pricingExtras.forEach((_, i) => { initial[i] = true; });
+      setSelectedExtras(initial);
+    }
+  }, [hotel?.id]);
   useEffect(() => {
     if (hotel) document.title = `${hotel.name} — Living in PRDISE`;
     const u = PRDISE.load("user", null);
@@ -3587,10 +3619,33 @@ function HotelDetail({ params }) {
     const nights = Math.round((new Date(checkout + "T12:00") - new Date(checkin + "T12:00")) / 86400000);
     if (nights < 1) return null;
     const subtotal = nights * hotel.price;
-    const cleaning = 45;
+    // PM 2026-07-09: extras opcionales dinámicos según selectedExtras.
+    // Cada extra tiene { label_en, label_es, price_cents, unit }. Se
+    // suma al total solo si está marcado. La unidad afecta el cálculo:
+    // per_night → price × nights; per_person → price × guests; otros →
+    // price × 1.
+    const extrasList = Array.isArray(hotel.pricingExtras) ? hotel.pricingExtras : [];
+    const selectedExtrasDetail = extrasList
+      .map((ex, i) => {
+        if (!selectedExtras[i]) return null;
+        const priceUsd = (ex.price_cents ?? Number(ex.price) * 100 ?? 0) / 100;
+        let qty = 1;
+        if (ex.unit === "per_night") qty = nights;
+        else if (ex.unit === "per_person") qty = guests;
+        return { idx: i, label_en: ex.label_en, label_es: ex.label_es, priceUsd, unit: ex.unit, qty, amount: priceUsd * qty };
+      })
+      .filter(Boolean);
+    const extrasTotal = selectedExtrasDetail.reduce((s, x) => s + x.amount, 0);
     const service = subtotal * 0.1;
-    return { nights, subtotal, cleaning, service, total: subtotal + cleaning + service };
-  }, [checkin, checkout, hotel?.price, hotel]);
+    return {
+      nights,
+      subtotal,
+      extras: selectedExtrasDetail,
+      extrasTotal,
+      service,
+      total: subtotal + extrasTotal + service,
+    };
+  }, [checkin, checkout, hotel?.price, hotel, selectedExtras, guests]);
   if (!hotel) {
     const emptyDb = HOTELS.length === 0;
     return (
@@ -3825,9 +3880,40 @@ function HotelDetail({ params }) {
                 </div>
                 {pricing && (
                   <div style={{ margin: "16px 0", padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)" }}>
-                    <div className="summary-row"><span>{pricing.nights} night{pricing.nights > 1 ? "s" : ""} × ${hotel.price}</span><span>{fmt(pricing.subtotal)}</span></div>
-                    <div className="summary-row"><span>Cleaning fee</span><span>$45.00</span></div>
-                    <div className="summary-row"><span>Service fee (10%)</span><span>{fmt(pricing.service)}</span></div>
+                    <div className="summary-row"><span>{pricing.nights} {lang === "es" ? (pricing.nights > 1 ? "noches" : "noche") : `night${pricing.nights > 1 ? "s" : ""}`} × ${hotel.price}</span><span>{fmt(pricing.subtotal)}</span></div>
+                    {/* PM 2026-07-09: extras opcionales del stay — cada
+                        uno es un toggle. Click descarta del total y del
+                        mensaje. Los descartados se muestran tachados. */}
+                    {(hotel.pricingExtras || []).map((ex, i) => {
+                      const priceUsd = (ex.price_cents ?? Number(ex.price) * 100 ?? 0) / 100;
+                      const nights = pricing.nights;
+                      const qty = ex.unit === "per_night" ? nights : ex.unit === "per_person" ? guests : 1;
+                      const amount = priceUsd * qty;
+                      const isOn = !!selectedExtras[i];
+                      const unitLabel = ex.unit === "per_night"
+                        ? (lang === "es" ? `× ${nights} noche${nights > 1 ? "s" : ""}` : `× ${nights} night${nights > 1 ? "s" : ""}`)
+                        : ex.unit === "per_person"
+                          ? (lang === "es" ? `× ${guests} persona${guests > 1 ? "s" : ""}` : `× ${guests} person${guests > 1 ? "s" : ""}`)
+                          : "";
+                      const label = (lang === "es" ? ex.label_es : ex.label_en) || ex.label_en || ex.label_es || "Extra";
+                      return (
+                        <div key={i} className="summary-row" style={{ opacity: isOn ? 1 : .45, cursor: "pointer", userSelect: "none" }}
+                          onClick={() => setSelectedExtras((prev) => ({ ...prev, [i]: !prev[i] }))}
+                          title={isOn ? (lang === "es" ? "Click para descartar" : "Click to remove") : (lang === "es" ? "Click para incluir" : "Click to add")}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${isOn ? "var(--gold)" : "rgba(255,255,255,.3)"}`, background: isOn ? "var(--gold)" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              {isOn && <Check style={{ width: 10, height: 10, color: "#0F1822" }} />}
+                            </span>
+                            <span style={{ textDecoration: isOn ? "none" : "line-through" }}>
+                              {label}
+                              {unitLabel && <span style={{ marginLeft: 4, fontSize: 10.5, color: "rgba(255,255,255,.5)" }}>{unitLabel}</span>}
+                            </span>
+                          </span>
+                          <span style={{ textDecoration: isOn ? "none" : "line-through" }}>{fmt(amount)}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="summary-row"><span>{lang === "es" ? "Cargo por servicio (10%)" : "Service fee (10%)"}</span><span>{fmt(pricing.service)}</span></div>
                     <div className="summary-total"><span style={{ fontWeight: 800 }}>Total</span><span className="amount">{fmt(pricing.total)}</span></div>
                   </div>
                 )}
@@ -3849,9 +3935,19 @@ function HotelDetail({ params }) {
                       kind: "stay",
                       name: hotel.name,
                       priceUsd: pricing?.total ?? hotel.price,
+                      // PM 2026-07-09: URL directa al detalle del stay + extras
+                      // seleccionados + total. Le da al operador el contexto
+                      // completo (link para abrir la misma ficha, y qué
+                      // opcionales confirmó el visitante).
+                      url: typeof window !== "undefined" ? `${window.location.origin}/#/stay?id=${encodeURIComponent(hotel.id)}` : undefined,
                       details: checkin
                         ? `${checkin}${checkout ? ` → ${checkout}` : ""} · ${guests} ${lang === "es" ? "huésped(es)" : "guest(s)"}`
                         : undefined,
+                      extras: (pricing?.extras || []).map((x) => ({
+                        label: (lang === "es" ? x.label_es : x.label_en) || x.label_en || x.label_es || "Extra",
+                        amount: x.amount,
+                      })),
+                      totalUsd: pricing?.total,
                     }}
                   />
                 </div>
