@@ -269,6 +269,17 @@ const stayBaseSchema = z.object({
   check_out_time: optionalText(40, "Hora de salida"),
   cancellation_policy: optionalText(2000, "Política de cancelación"),
   house_rules: optionalText(2000, "Normas de la casa"),
+  // PM 2026-07-09: type libre + stars 1-5 (autopublicado por el admin,
+  // distinto de rating_avg que viene de reseñas).
+  stay_type: optionalText(80, "Tipo"),
+  stars: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 1 && n <= 5 ? Math.round(n) : null;
+    }),
   // PM 2026-06-25: experiencia dinámica (FK a public.experiences). Mismo
   // patrón que en tours.
   experience_id: z

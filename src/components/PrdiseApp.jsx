@@ -275,7 +275,11 @@ function mapStayToHotel(s) {
     nameEN: s.title_en || "",
     nameES: s.title_es || "",
     zone: s.location || "",
-    type: "Villa",
+    // PM 2026-07-09: type y rating (stars manual) desde DB. Fallback a
+    // "Villa" para stays legacy sin el campo. Rating manual (stars)
+    // separado de rating_avg (calculado desde reseñas): si stars está
+    // seteado, se prefiere para el UI del editor.
+    type: s.stay_type || "Villa",
     // `price` = precio efectivo en USD (con markup aplicado). El público y
     // el invoice usan este valor. `basePrice` conserva el original para
     // que el admin pueda editar el markup sin perder la referencia.
@@ -283,7 +287,7 @@ function mapStayToHotel(s) {
     basePrice: Math.round((s.price_cents || 0) / 100),
     markupType: s.markup_type || null,
     markupValue: s.markup_value == null ? null : Number(s.markup_value),
-    rating: Number(s.rating_avg) || 0,
+    rating: s.stars != null ? Number(s.stars) : (Number(s.rating_avg) || 0),
     reviews: s.rating_count || 0,
     sleeps: s.max_guests || 1,
     bedrooms: s.bedrooms || 0,
@@ -15187,6 +15191,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("house_rules", ownedUpdate.houseRules || "");
               // PM 2026-06-25: experiencia dinámica.
               fd.append("experience_id", ownedUpdate.experienceId || "");
+              // PM 2026-07-09: type libre + stars 1-5 autopublicados.
+              fd.append("stay_type", ownedUpdate.type || "");
+              fd.append("stars", ownedUpdate.rating != null ? String(ownedUpdate.rating) : "");
               // Amenities + galería: el Server Action readListField acepta
               // JSON string, CSV, o múltiples entries. Usamos JSON por
               // simplicidad y para preservar espacios/comas en valores.
@@ -15531,6 +15538,17 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [newImgUrl, setNewImgUrl] = useState("");
   const [scheduleDate, setScheduleDate] = useState(it.scheduleDate || "");
   const [scheduleTime, setScheduleTime] = useState(it.scheduleTime || "09:00");
+  // PM 2026-07-09: type + stars controlados. type es input libre con
+  // datalist de sugerencias (custom tipos permitidos).
+  const [stayType, setStayType] = useState(it.type || "");
+  const [stayStars, setStayStars] = useState(it.rating ? String(Math.round(it.rating)) : "");
+  const stayTypeSuggestions = useMemo(() => {
+    const defaults = ["Villa", "Apartment", "Beach House", "Penthouse", "Cabin", "Loft", "Studio", "Guesthouse"];
+    const existing = (typeof HOTELS !== "undefined" && Array.isArray(HOTELS))
+      ? HOTELS.map((h) => h?.type).filter(Boolean)
+      : [];
+    return Array.from(new Set([...defaults, ...existing]));
+  }, []);
   // Bilingual content (ES overrides EN when visitor views in Spanish)
   // PM 2026-06-12: estados ES/EN inicializados DESDE LOS CAMPOS PROPIOS.
   // Antes nameEN partía de `it.name` que en realidad es ES||EN resuelto, lo
@@ -15942,6 +15960,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // Acá ya no asignamos `updated.price`.
       if (vals.rooms) updated.bedrooms = vals.rooms;
       if (vals.sleeps) updated.sleeps = vals.sleeps;
+      // PM 2026-07-09: type + rating desde los inputs controlados.
+      if (stayType.trim()) updated.type = stayType.trim();
+      updated.rating = stayStars ? Number(stayStars) : 0;
       // PM 2026-06-15: baños — el label ES "baños" se normaliza a "ba_os",
       // el EN "bathrooms" a "bathrooms". Leemos ambas keys según idioma activo.
       const bathVal = vals.ba_os ?? vals.bathrooms;
@@ -16216,9 +16237,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 categoría" junto a la unidad (por noche / por persona / etc.).
                 Antes este input solo "por noche" duplicaba la pregunta y
                 hacía pensar que se cobraba siempre por noche. */}
+            {/* PM 2026-07-09: type + stars son inputs CONTROLADOS ahora.
+                Antes usaban defaultValue sin onChange y NO se persistían al
+                guardar. Además el type ahora es input libre con datalist
+                de sugerencias, para que el admin pueda crear tipos custom
+                (no solo Villa/Apartment/Beach House/Penthouse). */}
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Stars</label>
-                <select className="adm-fi" defaultValue={it.rating ? Math.round(it.rating) : ""}>
+                <select className="adm-fi" value={stayStars} onChange={(e) => setStayStars(e.target.value)}>
                   <option value="">Select...</option>
                   <option value="1">1 Star</option><option value="2">2 Stars</option><option value="3">3 Stars</option><option value="4">4 Stars</option><option value="5">5 Stars</option>
                 </select>
@@ -16227,9 +16253,16 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             </div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Type</label>
-                <select className="adm-fi" defaultValue={it.type || "Villa"}>
-                  <option>Villa</option><option>Apartment</option><option>Beach House</option><option>Penthouse</option>
-                </select>
+                <input
+                  className="adm-fi"
+                  list="stay-type-suggestions"
+                  value={stayType}
+                  onChange={(e) => setStayType(e.target.value)}
+                  placeholder={lang === "es" ? "Ej. Villa, Apartamento, Cabin, Loft…" : "e.g. Villa, Apartment, Cabin, Loft…"}
+                />
+                <datalist id="stay-type-suggestions">
+                  {stayTypeSuggestions.map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
               <div className="adm-fg"><label className="adm-fl">Sleeps</label><input type="number" className="adm-fi" defaultValue={it.sleeps || ""} placeholder="Max guests" /></div>
               {/* PM 2026-06-15: el detail page muestra "{bedrooms} BR · {bathrooms} BA".

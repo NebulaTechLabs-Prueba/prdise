@@ -129,6 +129,9 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
     experience_id: formData.get("experience_id") ?? "",
+    // PM 2026-07-09: type libre + stars 1-5.
+    stay_type: formData.get("stay_type") ?? "",
+    stars: formData.get("stars") ?? "",
     ...readMarkup(formData),
   });
   if (!parsed.success) {
@@ -142,6 +145,10 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
   const { data, error } = await supabase
     .from("stays")
     .insert({
+      // PM 2026-07-09: stay_type + stars. Cast as never porque los types
+      // generados aún no incluyen estas columnas (nueva migración).
+      stay_type: (d.stay_type || null) as never,
+      stars: (d.stars ?? null) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
@@ -229,6 +236,8 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
     experience_id: formData.get("experience_id") ?? "",
+    stay_type: formData.get("stay_type") ?? "",
+    stars: formData.get("stars") ?? "",
     ...readMarkup(formData),
   });
   if (!parsed.success) {
@@ -242,6 +251,8 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
   const { error } = await supabase
     .from("stays")
     .update({
+      stay_type: (d.stay_type || null) as never,
+      stars: (d.stars ?? null) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
