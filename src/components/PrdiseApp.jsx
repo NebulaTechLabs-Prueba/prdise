@@ -271,7 +271,12 @@ function mapStayToHotel(s) {
     // resuelto (preferencia ES → EN). Antes solo había `name` y el form de
     // edición tomaba ese valor para AMBOS tabs ES y EN, "perdiendo" lo que
     // se había guardado en cada idioma. Mismo tratamiento para descripción.
-    name: s.title_es || s.title_en || s.slug,
+    // PM 2026-07-09: name = EN preferente. L(en, es) cuando lang=en usa
+    // `name` directo; si `name` estaba resuelto a ES por preferencia
+    // inversa, el toggle se rompía (mostraba ES aunque el usuario
+    // pidiera EN). Ahora L devuelve EN cuando corresponde y ES cuando
+    // se selecciona ES + hay ES cargado.
+    name: s.title_en || s.title_es || s.slug,
     nameEN: s.title_en || "",
     nameES: s.title_es || "",
     zone: s.location || "",
@@ -300,13 +305,13 @@ function mapStayToHotel(s) {
     img: imgs[0] ? resolveImg(imgs[0]) : "",
     gallery: resolveImgs(imgs),
     amenities: Array.isArray(s.amenities) ? s.amenities : [],
-    desc: s.short_desc_es || s.short_desc_en || "",
+    desc: s.short_desc_en || s.short_desc_es || "",
     descEN: s.short_desc_en || "",
     descES: s.short_desc_es || "",
     // PM 2026-06-15: description_es/_en es el cuerpo largo (historia completa
     // del stay). Antes este contenido se guardaba solo en memoria (STAY_ABOUT)
     // → al recargar el detail page aparecía vacío. Ahora viene de DB.
-    body: s.description_es || s.description_en || "",
+    body: s.description_en || s.description_es || "",
     bodyES: s.description_es || "",
     bodyEN: s.description_en || "",
     color: s.featured ? "gold" : "sky",
@@ -342,7 +347,7 @@ function mapTourToTour(t) {
   return {
     id: t.slug,
     dbId: t.id,
-    name: t.title_es || t.title_en || t.slug,
+    name: t.title_en || t.title_es || t.slug,
     nameEN: t.title_en || "",
     nameES: t.title_es || "",
     day: "",
@@ -363,12 +368,12 @@ function mapTourToTour(t) {
     includes: Array.isArray(t.includes) ? t.includes : [],
     bring: [],
     itinerary: [],
-    desc: t.short_desc_es || t.short_desc_en || "",
+    desc: t.short_desc_en || t.short_desc_es || "",
     descEN: t.short_desc_en || "",
     descES: t.short_desc_es || "",
     // PM 2026-06-15: ver mapStayToHotel — description_es/_en es el cuerpo
     // largo del tour, ahora se persiste/lee desde DB.
-    body: t.description_es || t.description_en || "",
+    body: t.description_en || t.description_es || "",
     bodyES: t.description_es || "",
     bodyEN: t.description_en || "",
     // PM 2026-06-15: meeting_point del DB. Antes no se exponía y la
@@ -3744,7 +3749,7 @@ function HotelDetail({ params }) {
                           {(lang === "es" ? ex.label_es : ex.label_en) || ex.label_en || ex.label_es}
                         </div>
                         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 18 }}>+${ex.price}</span>
+                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 18 }}>+${((ex.price_cents ?? Number(ex.price) * 100 ?? 0) / 100).toFixed(2)}</span>
                           <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>
                             {ex.unit === "per_night" ? (lang === "es" ? "/ noche" : "/ night") : ex.unit === "per_person" ? (lang === "es" ? "/ persona" : "/ person") : ex.unit === "per_hour" ? (lang === "es" ? "/ hora" : "/ hour") : (lang === "es" ? "/ unidad" : "/ unit")}
                           </span>
@@ -4052,7 +4057,7 @@ function TourDetail({ params }) {
                           {(lang === "es" ? ex.label_es : ex.label_en) || ex.label_en || ex.label_es}
                         </div>
                         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 18 }}>+${ex.price}</span>
+                          <span style={{ color: "var(--gold)", fontFamily: "Bebas Neue", fontSize: 18 }}>+${((ex.price_cents ?? Number(ex.price) * 100 ?? 0) / 100).toFixed(2)}</span>
                           <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>
                             {ex.unit === "per_person" ? (lang === "es" ? "/ persona" : "/ person") : ex.unit === "per_hour" ? (lang === "es" ? "/ hora" : "/ hour") : (lang === "es" ? "/ unidad" : "/ unit")}
                           </span>
