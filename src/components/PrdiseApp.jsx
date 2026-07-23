@@ -15743,6 +15743,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       : (it.status || (isNew ? "published" : "draft"))
   );
   const [saved, setSaved] = useState(false);
+  // PM 2026-07-10: `saving` refleja el estado real de la request. Antes
+  // el botón mostraba "Saved ✓" con setTimeout(600ms) aunque el save
+  // fallara — cliente reportó "dice Saved pero no se aplica" cuando el
+  // server rechazó por columna faltante en DB.
+  const [saving, setSaving] = useState(false);
   // PM 2026-06-17: solo cargar como URL si es URL real. Para posts legacy,
   // posts.image puede tener un preset key tipo "IMG_MANGROVES" — eso NO
   // es URL y meterlo en este input confunde al admin. Si es preset, el
@@ -16186,7 +16191,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
 
   const formRef = useRef(null);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Collect all input values from the form
     const inputs = formRef.current?.querySelectorAll("input, select, textarea") || [];
     const vals = {};
@@ -16446,11 +16451,21 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       }
     }
 
-    setSaved(true);
-    setTimeout(() => {
-      if (onSave) onSave(updated);
+    // PM 2026-07-10: antes hacíamos setSaved(true) + setTimeout 600ms
+    // ANTES de que onSave completara — el botón mostraba "Saved ✓"
+    // aunque el server rechazara el guardado (ej. columna faltante
+    // en DB). Ahora `saving` refleja el estado real: bloqueado durante
+    // la request, y solo se libera cuando el flujo termina. Si el save
+    // fue exitoso, el padre cierra el modal (setEditing(null)) y
+    // dispara el toast "Cambios guardados correctamente". Si falló,
+    // el modal queda abierto con el botón habilitado y el toast rojo.
+    setSaving(true);
+    try {
+      if (onSave) await onSave(updated);
       else onClose();
-    }, 600);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -17359,8 +17374,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         )}
 
         <div className="adm-modal-actions">
-          <button className="adm-btn adm-btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="adm-btn adm-btn-primary" onClick={handleSave}><Check />{saved ? "Saved ✓" : "Save"}</button>
+          <button className="adm-btn adm-btn-ghost" onClick={onClose} disabled={saving}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+          <button className="adm-btn adm-btn-primary" onClick={handleSave} disabled={saving}>
+            {saving
+              ? <><span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .8s linear infinite" }} />{lang === "es" ? "Guardando..." : "Saving..."}</>
+              : <><Check />{lang === "es" ? "Guardar" : "Save"}</>
+            }
+          </button>
         </div>
       </div>
 
