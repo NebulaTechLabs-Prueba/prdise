@@ -15386,20 +15386,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               // las primeras 3 silenciosamente al guardar.
               const coverImg = ownedUpdate.img || "";
               const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
-              const allImages = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
-              const images = allImages.slice(0, 3);
-              // PM 2026-07-10: avisar si hay descarte por límite. Antes era
-              // silencioso — la 4ta imagen se perdía sin explicación y el
-              // admin no entendía por qué.
-              if (allImages.length > 3) {
-                toast({
-                  type: "warning",
-                  message: lang === "es"
-                    ? `Solo se guardan 3 imágenes en total. Se omitieron ${allImages.length - 3} para cumplir el límite.`
-                    : `Only 3 images total are saved. ${allImages.length - 3} were omitted to fit the limit.`,
-                  durationMs: 7000,
-                });
-              }
+              // PM 2026-07-10: sin slice — se preservan todas las imágenes
+              // que el admin decidió conservar (incluyendo legacy con >3).
+              // El UI del editor limita agregar más allá de 3 nuevas; los
+              // servicios que ya tenían 4+ se respetan tal cual estén.
+              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
               // PM 2026-06-17: el mapper expone id=slug y dbId=UUID. Server
@@ -15453,19 +15444,9 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("includes", JSON.stringify(includesArr));
               const coverImg = ownedUpdate.img || "";
               const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
-              // PM 2026-07-10: mismo tratamiento que stay — slice y warning
-              // si hay descarte por límite.
-              const allImagesTour = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
-              const images = allImagesTour.slice(0, 3);
-              if (allImagesTour.length > 3) {
-                toast({
-                  type: "warning",
-                  message: lang === "es"
-                    ? `Solo se guardan 3 imágenes en total. Se omitieron ${allImagesTour.length - 3} para cumplir el límite.`
-                    : `Only 3 images total are saved. ${allImagesTour.length - 3} were omitted to fit the limit.`,
-                  durationMs: 7000,
-                });
-              }
+              // PM 2026-07-10: sin slice — legacy con >3 imágenes se
+              // preservan tal cual. UI limita agregar nuevas más allá de 3.
+              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateTour : sbUpdateTour;
               // PM 2026-06-17: ver stay — mandar UUID (dbId), no slug.
@@ -15720,6 +15701,28 @@ textarea.adm-fi{resize:vertical;min-height:80px}
   );
 }
 
+// PM 2026-07-10: helper para presentar URLs de imágenes sin exponer
+// detalles del proveedor de almacenamiento. Si la URL viene de nuestro
+// Storage, extraemos solo el nombre del archivo. Si es externa, mostramos
+// solo el dominio + últimos segmentos legibles.
+function friendlyImageLabel(url) {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    const isStorage = /supabase\.co$/.test(u.hostname) || /\/storage\/v1\/object\//.test(u.pathname);
+    if (isStorage) {
+      const parts = u.pathname.split("/").filter(Boolean);
+      const filename = parts[parts.length - 1] || "imagen";
+      return decodeURIComponent(filename);
+    }
+    const parts = u.pathname.split("/").filter(Boolean);
+    const last = parts[parts.length - 1] || u.hostname;
+    return `${u.hostname} · ${decodeURIComponent(last)}`;
+  } catch {
+    return url.length > 60 ? url.slice(0, 57) + "…" : url;
+  }
+}
+
 function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const { t, lang } = useLang();
   const it = editing.item || {};
@@ -15760,6 +15763,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // PM 2026-07-10: día(s) de operación del tour. Controlado — antes usaba
   // defaultValue y el vals-por-label se rompía al traducir el label.
   const [tourDay, setTourDay] = useState(it.day || "");
+  // PM 2026-07-10: preview de imagen (lightbox). Click en cualquier
+  // thumbnail abre la vista ampliada.
+  const [previewImg, setPreviewImg] = useState(null);
+  // Modo "URL manual" para el cover — por defecto ocultamos el input crudo
+  // y mostramos solo el nombre del archivo. Si el admin quiere pegar una
+  // URL externa a mano, activa este modo con el botón "Pegar URL".
+  const [coverUrlMode, setCoverUrlMode] = useState(false);
   const stayTypeSuggestions = useMemo(() => {
     const defaults = ["Villa", "Apartment", "Beach House", "Penthouse", "Cabin", "Loft", "Studio", "Guesthouse"];
     const existing = (typeof HOTELS !== "undefined" && Array.isArray(HOTELS))
@@ -16074,11 +16084,33 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       <label className="adm-fl">Images / Gallery</label>
       <div className="adm-fg" style={{ marginBottom: 8 }}>
         <label className="adm-fl" style={{ fontSize: 10 }}>{lang === "es" ? "Imagen de portada" : "Cover Image"}</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL o usá Subir archivo →" : "Paste URL or use Upload file →"} style={{ flex: 1 }} />
-          <label className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, cursor: uploading ? "wait" : "pointer", opacity: uploading ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {/* PM 2026-07-10: en modo default mostramos solo el nombre del
+            archivo (no la URL completa que exponía el proveedor). El admin
+            puede abrir 'Pegar URL' para pegar una URL externa a mano. */}
+        {!coverUrlMode && imageUrl ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 10px", borderRadius: 8, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+            <ImageIcon style={{ width: 14, height: 14, color: "rgba(255,255,255,.5)", flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 12, color: "rgba(255,255,255,.75)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={friendlyImageLabel(imageUrl)}>
+              {friendlyImageLabel(imageUrl)}
+            </span>
+            <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 8px", fontSize: 10.5 }} onClick={() => setImageUrl("")}>
+              <Trash2 style={{ width: 10, height: 10 }} />{lang === "es" ? "Quitar" : "Remove"}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL o usá Subir archivo →" : "Paste URL or use Upload file →"} style={{ flex: 1 }} autoFocus={coverUrlMode} />
+            {coverUrlMode && (
+              <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 10px", fontSize: 10.5 }} onClick={() => setCoverUrlMode(false)}>
+                {lang === "es" ? "Cancelar" : "Cancel"}
+              </button>
+            )}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <label className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, cursor: uploading ? "wait" : "pointer", opacity: uploading ? 0.5 : 1, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5 }}>
             {uploading ? <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(141,198,63,.3)", borderTopColor: "#8DC63F", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> : <Plus style={{ width: 12, height: 12 }} />}
-            {lang === "es" ? "Subir" : "Upload"}
+            {lang === "es" ? "Subir archivo" : "Upload file"}
             <input
               type="file"
               accept="image/*"
@@ -16089,13 +16121,22 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 e.target.value = "";
                 if (!f) return;
                 const url = await uploadImageFile(f, "cover");
-                if (url) setImageUrl(url);
+                if (url) { setImageUrl(url); setCoverUrlMode(false); }
               }}
             />
           </label>
+          {!coverUrlMode && (
+            <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 10px", fontSize: 10.5 }} onClick={() => setCoverUrlMode(true)}>
+              {lang === "es" ? "Pegar URL externa" : "Paste external URL"}
+            </button>
+          )}
         </div>
         {imageUrl && (
-          <div style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", height: 80, position: "relative" }}>
+          <div
+            style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", height: 80, position: "relative", cursor: "zoom-in" }}
+            onClick={() => setPreviewImg(imageUrl)}
+            title={lang === "es" ? "Click para ver ampliada" : "Click to view larger"}
+          >
             <img src={imageUrl} alt="Cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = "none"; }} />
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,transparent 50%,rgba(0,0,0,.6))", display: "flex", alignItems: "flex-end", padding: 8 }}>
               <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--gold)", background: "rgba(0,0,0,.5)", padding: "2px 8px", borderRadius: 4 }}>Cover</span>
@@ -16129,9 +16170,12 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       {imageList.length > 0 && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {imageList.map((url, i) => (
-            <div key={i} style={{ width: 64, height: 48, borderRadius: 8, overflow: "hidden", position: "relative", border: "1px solid rgba(255,255,255,.1)", flexShrink: 0 }}>
+            <div key={i} style={{ width: 64, height: 48, borderRadius: 8, overflow: "hidden", position: "relative", border: "1px solid rgba(255,255,255,.1)", flexShrink: 0, cursor: "zoom-in" }}
+              onClick={() => setPreviewImg(url)}
+              title={friendlyImageLabel(url)}
+            >
               <img src={url} alt={`Gallery ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.src = ""; e.target.style.background = "rgba(255,255,255,.05)"; }} />
-              <button onClick={() => setImageList(imageList.filter((_, j) => j !== i))} style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "rgba(0,0,0,.7)", border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, lineHeight: 1 }}>×</button>
+              <button onClick={(e) => { e.stopPropagation(); setImageList(imageList.filter((_, j) => j !== i)); }} style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "rgba(0,0,0,.7)", border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, lineHeight: 1 }} title={lang === "es" ? "Quitar" : "Remove"}>×</button>
             </div>
           ))}
         </div>
@@ -17319,6 +17363,33 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           <button className="adm-btn adm-btn-primary" onClick={handleSave}><Check />{saved ? "Saved ✓" : "Save"}</button>
         </div>
       </div>
+
+      {/* PM 2026-07-10: lightbox para preview de imágenes. Click en
+          cualquier thumbnail del editor abre esta vista. Cierra con X
+          o click en el fondo. Cabe imagen completa dentro del viewport. */}
+      {previewImg && (
+        <div
+          onClick={() => setPreviewImg(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 40, cursor: "zoom-out" }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setPreviewImg(null); }}
+            style={{ position: "absolute", top: 20, right: 20, width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,.1)", border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            aria-label={lang === "es" ? "Cerrar" : "Close"}
+          >
+            <X style={{ width: 20, height: 20 }} />
+          </button>
+          <img
+            src={previewImg}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 12, boxShadow: "0 20px 60px rgba(0,0,0,.6)" }}
+          />
+          <div style={{ position: "absolute", bottom: 20, left: 20, right: 20, textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.55)", pointerEvents: "none" }}>
+            {friendlyImageLabel(previewImg)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

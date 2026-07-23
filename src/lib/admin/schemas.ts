@@ -68,9 +68,13 @@ const stringArraySchema = z
 // PM 2026-06-26: tope bajado de 30→3 por petición del cliente para
 // reducir egress de Storage en plan Free de Supabase. Cubre cover +
 // 2 secundarias, suficiente para la card + detail.
+// PM 2026-07-10: subido a 10 para tolerar servicios legacy que ya tenían
+// más de 3 imágenes antes de aplicarse el límite. El UI del editor limita
+// a agregar hasta 3, pero al guardar un servicio con 5 imágenes históricas
+// que el admin decidió conservar, no se rechaza ni se descartan.
 const imageUrlArraySchema = z
   .array(z.string().trim().min(1).max(2000, "URL de imagen demasiado larga"))
-  .max(3, "Máximo 3 imágenes por servicio");
+  .max(10, "Máximo 10 imágenes por servicio");
 
 const priceCentsSchema = z.coerce
   .number({ invalid_type_error: "Precio inválido" })
