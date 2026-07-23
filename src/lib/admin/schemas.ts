@@ -321,6 +321,9 @@ const tourBaseSchema = z.object({
   max_pax: positiveIntSchema("Capacidad"),
   difficulty: optionalText(40, "Dificultad"),
   meeting_point: optionalText(200, "Punto de encuentro"),
+  // PM 2026-07-10: día(s) en que opera el tour. Texto libre editable
+  // por el admin (ej. "Sábados", "Fines de semana", "Diario").
+  operating_day: optionalText(120, "Día de operación"),
   includes: stringArraySchema.default([]),
   images: imageUrlArraySchema.default([]),
   location: optionalText(200, "Ubicación"),

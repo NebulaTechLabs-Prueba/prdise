@@ -350,7 +350,9 @@ function mapTourToTour(t) {
     name: t.title_en || t.title_es || t.slug,
     nameEN: t.title_en || "",
     nameES: t.title_es || "",
-    day: "",
+    // PM 2026-07-10: día(s) en que se ofrece el tour (viene de DB tras
+    // migración 20260710000000). Editable por admin desde el editor.
+    day: t.operating_day || "",
     duration: t.duration_minutes ? `${Math.round(t.duration_minutes / 60)} hours` : "",
     price: Math.round(effectiveCents / 100),
     basePrice: Math.round((t.price_cents || 0) / 100),
@@ -1962,9 +1964,13 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
   .gallery-grid.gallery-grid--1 img{height:100% !important}
   .gallery-grid.gallery-grid--2{grid-template-columns:1fr 1fr;height:420px}
   .gallery-grid.gallery-grid--2 img{height:100% !important}
-  .gallery-grid.gallery-grid--3{grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr;height:420px}
-  .gallery-grid.gallery-grid--3 img{height:100% !important}
-  .gallery-grid.gallery-grid--3 img:first-child{grid-row:span 2}
+  /* PM 2026-07-10: layout de 3 imágenes reajustado. Antes usaba 2fr 1fr
+     con la primera imagen ocupando 2 filas — con imágenes de aspect
+     ratio distinto quedaba muy desbalanceado y con crops feos. Ahora 3
+     columnas iguales, más simétrico y predecible. object-position ligeramente
+     hacia arriba para preservar caras/sujetos en fotos verticales. */
+  .gallery-grid.gallery-grid--3{grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto;height:360px}
+  .gallery-grid.gallery-grid--3 img{height:100% !important;object-position:center 40%}
   .gallery-grid.gallery-grid--4,
   .gallery-grid.gallery-grid--5{grid-template-columns:2fr 1fr 1fr;grid-template-rows:1fr 1fr;height:420px}
   .gallery-grid.gallery-grid--4 img,
@@ -4085,6 +4091,11 @@ function TourDetail({ params }) {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.duration}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Users style={{ width: 14, height: 14, color: "var(--gold)" }} />Max {tour.capacity}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.difficulty}</span>
+                {/* PM 2026-07-10: día(s) de operación (editable por admin
+                    desde el editor). Solo se muestra si está seteado. */}
+                {tour.day && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Calendar style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.day}</span>
+                )}
               </div>
               {/* PM 2026-06-15: el "About this tour" prefiere el body
                   largo persistido en DB (description_es/_en mapeado a
@@ -15375,7 +15386,20 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               // las primeras 3 silenciosamente al guardar.
               const coverImg = ownedUpdate.img || "";
               const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
-              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i).slice(0, 3);
+              const allImages = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
+              const images = allImages.slice(0, 3);
+              // PM 2026-07-10: avisar si hay descarte por límite. Antes era
+              // silencioso — la 4ta imagen se perdía sin explicación y el
+              // admin no entendía por qué.
+              if (allImages.length > 3) {
+                toast({
+                  type: "warning",
+                  message: lang === "es"
+                    ? `Solo se guardan 3 imágenes en total. Se omitieron ${allImages.length - 3} para cumplir el límite.`
+                    : `Only 3 images total are saved. ${allImages.length - 3} were omitted to fit the limit.`,
+                  durationMs: 7000,
+                });
+              }
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateStay : sbUpdateStay;
               // PM 2026-06-17: el mapper expone id=slug y dbId=UUID. Server
@@ -15405,6 +15429,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               // El form ahora los expone como inputs editables.
               fd.append("difficulty", ownedUpdate.difficulty || "");
               fd.append("meeting_point", ownedUpdate.meetingPoint || "");
+              // PM 2026-07-10: día(s) de operación del tour.
+              fd.append("operating_day", ownedUpdate.day || "");
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               // Tour "hidden" debe desactivar el tour para que no salga en el
               // catálogo público (RLS activeOnly). "draft" idem.
@@ -15427,7 +15453,19 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("includes", JSON.stringify(includesArr));
               const coverImg = ownedUpdate.img || "";
               const galleryArr = Array.isArray(ownedUpdate.gallery) ? ownedUpdate.gallery : [];
-              const images = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
+              // PM 2026-07-10: mismo tratamiento que stay — slice y warning
+              // si hay descarte por límite.
+              const allImagesTour = [coverImg, ...galleryArr].filter((u, i, a) => u && a.indexOf(u) === i);
+              const images = allImagesTour.slice(0, 3);
+              if (allImagesTour.length > 3) {
+                toast({
+                  type: "warning",
+                  message: lang === "es"
+                    ? `Solo se guardan 3 imágenes en total. Se omitieron ${allImagesTour.length - 3} para cumplir el límite.`
+                    : `Only 3 images total are saved. ${allImagesTour.length - 3} were omitted to fit the limit.`,
+                  durationMs: 7000,
+                });
+              }
               fd.append("images", JSON.stringify(images));
               const action = editing.isNew ? sbCreateTour : sbUpdateTour;
               // PM 2026-06-17: ver stay — mandar UUID (dbId), no slug.
@@ -15589,6 +15627,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               setRoutes(routes.map(r => r.id === ownedUpdate.id ? { ...r, ...ownedUpdate } : r));
             }
           }
+          // PM 2026-07-10: toast de éxito. Antes el modal se cerraba en
+          // silencio y el admin no tenía certeza de que se hubiera guardado
+          // (reportado como "guardo y no se refleja"). Sin este feedback
+          // uno podía asumir que el sistema no procesó el cambio.
+          toast({
+            type: "success",
+            message: lang === "es" ? "Cambios guardados correctamente." : "Changes saved successfully.",
+          });
           setEditing(null);
         }} />
       )}
@@ -15711,6 +15757,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // datalist de sugerencias (custom tipos permitidos).
   const [stayType, setStayType] = useState(it.type || "");
   const [stayStars, setStayStars] = useState(it.rating ? String(Math.round(it.rating)) : "");
+  // PM 2026-07-10: día(s) de operación del tour. Controlado — antes usaba
+  // defaultValue y el vals-por-label se rompía al traducir el label.
+  const [tourDay, setTourDay] = useState(it.day || "");
   const stayTypeSuggestions = useMemo(() => {
     const defaults = ["Villa", "Apartment", "Beach House", "Penthouse", "Cabin", "Loft", "Studio", "Guesthouse"];
     const existing = (typeof HOTELS !== "undefined" && Array.isArray(HOTELS))
@@ -16012,7 +16061,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // local (Storage bucket service-images). El admin elige según convenga.
   // PM 2026-06-26: bajado a 3 para reducir Cached Egress de Supabase
   // Storage. Cubre cover + 2 secundarias, suficiente para card + detail.
-  const maxImages = 3;
+  // PM 2026-07-10: el total es 3 (cover + galería). Antes el UI decía
+  // "galería 0/3" ignorando el cover, y al guardar el slice(0,3) del
+  // handleSave descartaba silenciosamente la cuarta imagen (cliente
+  // reportó: "subí una imagen y desapareció"). Ahora el conteo del UI
+  // considera si hay cover; sin cover permite 3 en galería, con cover
+  // permite solo 2.
+  const totalMaxImages = 3;
+  const maxImages = imageUrl ? totalMaxImages - 1 : totalMaxImages;
   const imageSection = (type === "hotel" || type === "tour") ? (
     <div className="adm-fg">
       <label className="adm-fl">Images / Gallery</label>
@@ -16047,7 +16103,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           </div>
         )}
       </div>
-      <label className="adm-fl" style={{ fontSize: 10 }}>{lang === "es" ? `Galería (${imageList.length}/${maxImages})` : `Gallery Images (${imageList.length}/${maxImages})`}</label>
+      <label className="adm-fl" style={{ fontSize: 10 }}>{lang === "es" ? `Galería (${imageList.length}/${maxImages}) — máximo ${totalMaxImages} imágenes en total (portada + galería)` : `Gallery Images (${imageList.length}/${maxImages}) — max ${totalMaxImages} total (cover + gallery)`}</label>
       <div style={{ display: "flex", gap: 6 }}>
         <input className="adm-fi" value={newImgUrl} onChange={(e) => setNewImgUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL y dale + Agregar" : "Paste URL and click Add"} style={{ flex: 1 }} onKeyDown={(e) => e.key === "Enter" && newImgUrl.trim() && imageList.length < maxImages && (e.preventDefault(), setImageList([...imageList, newImgUrl.trim()]), setNewImgUrl(""))} disabled={imageList.length >= maxImages} />
         <button className="adm-btn adm-btn-ghost" onClick={() => { if (newImgUrl.trim() && imageList.length < maxImages) { setImageList([...imageList, newImgUrl.trim()]); setNewImgUrl(""); } }} style={{ flexShrink: 0, opacity: imageList.length >= maxImages ? .4 : 1 }} disabled={imageList.length >= maxImages}><Plus style={{ width: 12, height: 12 }} />{lang === "es" ? "Agregar" : "Add"}</button>
@@ -16179,7 +16235,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // PM 2026-06-15: estos inputs antes eran scrapeados al objeto `vals`
       // pero la rama tour nunca los asignaba a `updated` → las ediciones
       // del admin se perdían silenciosamente al guardar.
-      if (vals.day !== undefined && vals.day !== "") updated.day = vals.day;
+      // PM 2026-07-10: tourDay state (controlado) — reemplaza el
+      // vals.day que se rompía al traducir el label.
+      if (tourDay.trim()) updated.day = tourDay.trim();
       if (vals.duration !== undefined && vals.duration !== "") updated.duration = vals.duration;
       if (vals.capacity !== undefined && vals.capacity !== "" && vals.capacity !== 0) updated.capacity = vals.capacity;
       if (vals.difficulty !== undefined && vals.difficulty !== "") updated.difficulty = vals.difficulty;
@@ -16544,7 +16602,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
 
             {/* PM 2026-06-12: precio unificado en "Precio y categoría" abajo. */}
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">Day</label><input className="adm-fi" defaultValue={it.day || ""} placeholder="e.g. Saturday" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Día(s) de operación" : "Operating day(s)"}</label><input className="adm-fi" value={tourDay} onChange={(e) => setTourDay(e.target.value)} placeholder={lang === "es" ? "Ej: Sábados, Fines de semana, Diario" : "e.g. Saturdays, Weekends, Daily"} /></div>
               <div className="adm-fg"><label className="adm-fl">Duration</label><input className="adm-fi" defaultValue={it.duration || ""} placeholder="e.g. 6h" /></div>
             </div>
             <div className="adm-fg-row">

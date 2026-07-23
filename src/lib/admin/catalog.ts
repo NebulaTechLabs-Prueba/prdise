@@ -361,6 +361,7 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     max_pax: formData.get("max_pax"),
     difficulty: formData.get("difficulty") ?? "",
     meeting_point: formData.get("meeting_point") ?? "",
+    operating_day: formData.get("operating_day") ?? "",
     includes: readListField(formData, "includes"),
     images: readListField(formData, "images"),
     location: formData.get("location") ?? "",
@@ -390,6 +391,10 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
   const { data, error } = await supabase
     .from("tours")
     .insert({
+      // PM 2026-07-10: operating_day (cast as never porque los types
+      // generados no incluyen la columna hasta regenerar tras la
+      // migración 20260710000000).
+      operating_day: ((d as { operating_day?: string }).operating_day || null) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
@@ -460,6 +465,7 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     max_pax: formData.get("max_pax"),
     difficulty: formData.get("difficulty") ?? "",
     meeting_point: formData.get("meeting_point") ?? "",
+    operating_day: formData.get("operating_day") ?? "",
     includes: readListField(formData, "includes"),
     images: readListField(formData, "images"),
     location: formData.get("location") ?? "",
@@ -489,6 +495,8 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
   const { error } = await supabase
     .from("tours")
     .update({
+      // PM 2026-07-10: operating_day (columna nueva).
+      operating_day: ((d as { operating_day?: string }).operating_day || null) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
