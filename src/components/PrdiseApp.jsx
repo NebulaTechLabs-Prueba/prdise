@@ -3326,7 +3326,7 @@ function HotelsList() {
                             <span className="price">${h.price}</span>
                             <span className="price-sub">{pricingUnitLabel(h.pricingUnit || "per_night", lang).toUpperCase()}</span>
                           </div>
-                          <NavLink to={`/stay?id=${h.id}`} className="listing-btn">View <ArrowRight style={{ width: 12, height: 12 }} /></NavLink>
+                          <NavLink to={`/stay?id=${h.id}`} className="listing-btn">{lang === "es" ? "Ver" : "View"} <ArrowRight style={{ width: 12, height: 12 }} /></NavLink>
                         </div>
                       </div>
                     </div>
@@ -4367,7 +4367,7 @@ function TourDetail({ params }) {
                   />
                 </div>
                 <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-                  {lang==="es"?"Coordinamos tu reserva por WhatsApp o SMS y te enviamos el link de pago.":"We coordinate your booking via WhatsApp/SMS and send you the payment link."} {t("smallGroups")} · Max {tour.capacity} people
+                  {lang==="es"?"Coordinamos tu reserva por WhatsApp o SMS y te enviamos el link de pago.":"We coordinate your booking via WhatsApp/SMS and send you the payment link."} {t("smallGroups")} · {t("maxPeople").replace("{n}", tour.capacity)}
                 </p>
               </div>
             </aside>
