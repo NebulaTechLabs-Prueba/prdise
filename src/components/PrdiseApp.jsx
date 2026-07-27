@@ -3994,7 +3994,9 @@ function TourDetail({ params }) {
   // existe. La rama `if (!tour)` abajo renderiza un mensaje 404/empty state.
   const tour = id ? (TOURS.find((t) => t.id === id) || null) : null;
   const [date, setDate] = useState("");
-  const [travelers, setTravelers] = useState(2);
+  // PM 2026-07-27: default cap a la capacidad real del tour si es menor
+  // a 2 (evita arrancar con un valor fuera de rango).
+  const [travelers, setTravelers] = useState(() => Math.min(2, Math.max(1, tour?.capacity || 2)));
   const [user, setUser] = useState(null);
   // PM 2026-07-09: extras opcionales toggleables — mismo patrón que
   // HotelDetail. Default: todos ON al cargar el tour.
@@ -4289,8 +4291,12 @@ function TourDetail({ params }) {
                 </div>
                 <div className="f-grp">
                   <label className="f-lab">{t("travelers")}</label>
+                  {/* PM 2026-07-27: opciones dinámicas según la capacidad
+                      configurada del tour (antes eran 1-8 hardcoded). */}
                   <select className="f-in" value={travelers} onChange={(e) => setTravelers(parseInt(e.target.value))}>
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n} {t("traveler")}{n > 1 ? "s" : ""}</option>)}
+                    {Array.from({ length: Math.max(1, tour.capacity || 1) }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n} {t("traveler")}{n > 1 ? "s" : ""}</option>
+                    ))}
                   </select>
                 </div>
                 {tour.price > 0 ? (
