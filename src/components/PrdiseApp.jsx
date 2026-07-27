@@ -335,8 +335,15 @@ function mapStayToHotel(s) {
     // el detail page hace fallback al texto default.
     checkInTime: s.check_in_time || "3:00 PM",
     checkOutTime: s.check_out_time || "11:00 AM",
-    cancellationPolicy: s.cancellation_policy || "",
-    houseRules: s.house_rules || "",
+    // PM 2026-07-27: bilingüe. cancellationPolicy/houseRules quedan como
+    // el "resuelto" (prefiere EN → ES, mismo criterio que name/desc). Los
+    // _EN/_ES separados son para el editor.
+    cancellationPolicy: s.cancellation_policy_en || s.cancellation_policy_es || s.cancellation_policy || "",
+    cancellationPolicyEN: s.cancellation_policy_en || s.cancellation_policy || "",
+    cancellationPolicyES: s.cancellation_policy_es || "",
+    houseRules: s.house_rules_en || s.house_rules_es || s.house_rules || "",
+    houseRulesEN: s.house_rules_en || s.house_rules || "",
+    houseRulesES: s.house_rules_es || "",
   };
 }
 
@@ -3781,17 +3788,26 @@ function HotelDetail({ params }) {
                   ))}
                 </div>
               </div>
-              <div className="detail-section">
-                <h3>{t("policies")}</h3>
-                <p style={{ whiteSpace: "pre-wrap" }}>
-                  {t("checkInAfter")}: {hotel.checkInTime || "3:00 PM"} · {t("checkOutBefore")}: {hotel.checkOutTime || "11:00 AM"}
-                  {hotel.cancellationPolicy && <><br />{hotel.cancellationPolicy}</>}
-                  {hotel.houseRules && <><br />{hotel.houseRules}</>}
-                  {!hotel.cancellationPolicy && !hotel.houseRules && (
-                    <><br />{lang === "es" ? "Consulta con el equipo PRDISE las condiciones específicas de esta estadía." : "Ask the PRDISE team for the specific terms of this stay."}</>
-                  )}
-                </p>
-              </div>
+              {/* PM 2026-07-27: policy/rules bilingües. L() elige según
+                  lang activo; fallback al idioma opuesto si el elegido
+                  está vacío. */}
+              {(() => {
+                const policyText = L(hotel.cancellationPolicyEN, hotel.cancellationPolicyES) || hotel.cancellationPolicy || "";
+                const rulesText = L(hotel.houseRulesEN, hotel.houseRulesES) || hotel.houseRules || "";
+                return (
+                  <div className="detail-section">
+                    <h3>{t("policies")}</h3>
+                    <p style={{ whiteSpace: "pre-wrap" }}>
+                      {t("checkInAfter")}: {hotel.checkInTime || "3:00 PM"} · {t("checkOutBefore")}: {hotel.checkOutTime || "11:00 AM"}
+                      {policyText && <><br />{policyText}</>}
+                      {rulesText && <><br />{rulesText}</>}
+                      {!policyText && !rulesText && (
+                        <><br />{lang === "es" ? "Consulta con el equipo PRDISE las condiciones específicas de esta estadía." : "Ask the PRDISE team for the specific terms of this stay."}</>
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
               {/* Sección "Location" con mapa GPS removida (PM 2026-06-09).
                   El catálogo no provee coordenadas reales y el iframe con
                   (0,0) no aportaba valor. La zona/área sigue mostrándose
@@ -3998,8 +4014,22 @@ function TourDetail({ params }) {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = toISO(tomorrow);
   const pricing = useMemo(() => {
-    if (!tour) return { subtotal: 0, extras: [], extrasTotal: 0, service: 0, total: 0 };
-    const subtotal = travelers * tour.price;
+    if (!tour) return { subtotal: 0, subtotalLabel: "", extras: [], extrasTotal: 0, service: 0, total: 0 };
+    // PM 2026-07-27: respetar pricing_unit del tour.
+    //   per_person → precio × cantidad de viajeros (comportamiento anterior).
+    //   per_unit / per_service → precio fijo (por atracción/servicio),
+    //     no multiplica por viajeros. Antes se cobraba de más.
+    //   per_hour → precio × 1 (asumimos que la duración ya está en el
+    //     precio publicado; si se necesita multiplicar por horas, se
+    //     ajusta después).
+    //   otros / undefined → default per_person (backward compat con
+    //     tours legacy que no tienen pricing_unit seteado).
+    const unit = tour.pricingUnit || "per_person";
+    const isPerUnit = unit === "per_unit" || unit === "per_service";
+    const subtotal = isPerUnit ? tour.price : (travelers * tour.price);
+    const subtotalLabel = isPerUnit
+      ? (lang === "es" ? `Precio por servicio` : `Price per service`)
+      : `${travelers} × $${tour.price}`;
     // Extras del tour. Cantidad según unit: per_person → travelers;
     // per_hour → 1 (el admin ya lo modela como precio por hora); resto → 1.
     const extrasList = Array.isArray(tour.pricingExtras) ? tour.pricingExtras : [];
@@ -4015,12 +4045,13 @@ function TourDetail({ params }) {
     const service = subtotal * 0.05;
     return {
       subtotal,
+      subtotalLabel,
       extras: selectedExtrasDetail,
       extrasTotal,
       service,
       total: subtotal + extrasTotal + service,
     };
-  }, [travelers, tour?.price, tour, selectedExtras]);
+  }, [travelers, tour?.price, tour, selectedExtras, lang]);
   if (!tour) {
     const emptyDb = TOURS.length === 0;
     return (
@@ -4264,7 +4295,7 @@ function TourDetail({ params }) {
                 </div>
                 {tour.price > 0 ? (
                   <div style={{ margin: "16px 0", padding: 14, borderRadius: 14, background: "rgba(255,255,255,.04)" }}>
-                    <div className="summary-row"><span>{travelers} × ${tour.price}</span><span>{fmt(pricing.subtotal)}</span></div>
+                    <div className="summary-row"><span>{pricing.subtotalLabel}</span><span>{fmt(pricing.subtotal)}</span></div>
                     {/* PM 2026-07-09: extras opcionales toggleables. Click
                         alterna incluir/descartar; total y mensaje WhatsApp
                         se recalculan. Mismo patrón que HotelDetail. */}
@@ -15369,6 +15400,11 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("check_out_time", ownedUpdate.checkOutTime || "");
               fd.append("cancellation_policy", ownedUpdate.cancellationPolicy || "");
               fd.append("house_rules", ownedUpdate.houseRules || "");
+              // PM 2026-07-27: versiones bilingües separadas.
+              fd.append("cancellation_policy_es", ownedUpdate.cancellationPolicyES || "");
+              fd.append("cancellation_policy_en", ownedUpdate.cancellationPolicyEN || "");
+              fd.append("house_rules_es", ownedUpdate.houseRulesES || "");
+              fd.append("house_rules_en", ownedUpdate.houseRulesEN || "");
               // PM 2026-06-25: experiencia dinámica.
               fd.append("experience_id", ownedUpdate.experienceId || "");
               // PM 2026-07-09: type libre + stars 1-5 autopublicados.
@@ -15768,6 +15804,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // PM 2026-07-10: día(s) de operación del tour. Controlado — antes usaba
   // defaultValue y el vals-por-label se rompía al traducir el label.
   const [tourDay, setTourDay] = useState(it.day || "");
+  // PM 2026-07-27: cancellation_policy y house_rules bilingües. Antes
+  // eran defaultValue no controlado con un solo state — al escribir en
+  // ES sobreescribía el único valor y aparecía en ambas pestañas.
+  const [cancelPolicyEN, setCancelPolicyEN] = useState(it.cancellationPolicyEN != null ? it.cancellationPolicyEN : (it.cancellationPolicy || ""));
+  const [cancelPolicyES, setCancelPolicyES] = useState(it.cancellationPolicyES != null ? it.cancellationPolicyES : "");
+  const [houseRulesEN, setHouseRulesEN] = useState(it.houseRulesEN != null ? it.houseRulesEN : (it.houseRules || ""));
+  const [houseRulesES, setHouseRulesES] = useState(it.houseRulesES != null ? it.houseRulesES : "");
   // PM 2026-07-10: preview de imagen (lightbox). Click en cualquier
   // thumbnail abre la vista ampliada.
   const [previewImg, setPreviewImg] = useState(null);
@@ -16247,12 +16290,20 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // keys distintas, leemos ambas para no perder data según idioma activo.
       const checkInVal = vals.hora_de_entrada || vals.check_in_time || "";
       const checkOutVal = vals.hora_de_salida || vals.check_out_time || "";
-      const cancelVal = vals.pol_tica_de_cancelaci_n || vals.cancellation_policy || "";
-      const rulesVal = vals.normas_de_la_casa || vals.house_rules || "";
+      // PM 2026-07-27: policy/rules ahora vienen de states controlados
+      // bilingües. Ya no dependemos del vals-por-label. cancelVal/rulesVal
+      // se computa del idioma que tenga contenido (prefiere EN → ES).
+      const cancelVal = cancelPolicyEN || cancelPolicyES || "";
+      const rulesVal = houseRulesEN || houseRulesES || "";
       if (checkInVal !== undefined) updated.checkInTime = checkInVal;
       if (checkOutVal !== undefined) updated.checkOutTime = checkOutVal;
       if (cancelVal !== undefined) updated.cancellationPolicy = cancelVal;
       if (rulesVal !== undefined) updated.houseRules = rulesVal;
+      // PM 2026-07-27: pasar también las versiones ES/EN al server.
+      updated.cancellationPolicyES = cancelPolicyES || "";
+      updated.cancellationPolicyEN = cancelPolicyEN || "";
+      updated.houseRulesES = houseRulesES || "";
+      updated.houseRulesEN = houseRulesEN || "";
       // PM 2026-06-15: story persistido a DB como description_es/_en.
       // Se exponen como body/bodyES/bodyEN en el item para que el
       // FormData del save los envíe.
@@ -16559,13 +16610,26 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hora de entrada" : "Check-in time"}</label><input className="adm-fi" defaultValue={it.checkInTime || "3:00 PM"} placeholder="3:00 PM" /></div>
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Hora de salida" : "Check-out time"}</label><input className="adm-fi" defaultValue={it.checkOutTime || "11:00 AM"} placeholder="11:00 AM" /></div>
             </div>
+            {/* PM 2026-07-27: bilingües — se muestra el textarea del idioma
+                del tab activo (contentLang). Cada uno tiene su propio state
+                y no interfieren entre sí. */}
             <div className="adm-fg">
-              <label className="adm-fl">{lang === "es" ? "Política de cancelación" : "Cancellation policy"}</label>
-              <textarea className="adm-fi" rows={2} defaultValue={it.cancellationPolicy || ""} placeholder={lang === "es" ? "Ej: Cancelación gratis hasta 48h antes. Después, cargo del 50%." : "E.g. Free cancellation up to 48h before. 50% fee after that."} />
+              <label className="adm-fl">{contentLang === "en" ? "Cancellation policy" : "Política de cancelación"}</label>
+              <textarea
+                className="adm-fi" rows={2}
+                value={contentLang === "en" ? cancelPolicyEN : cancelPolicyES}
+                onChange={(e) => { if (contentLang === "en") setCancelPolicyEN(e.target.value); else setCancelPolicyES(e.target.value); }}
+                placeholder={contentLang === "en" ? "E.g. Free cancellation up to 48h before. 50% fee after that." : "Ej: Cancelación gratis hasta 48h antes. Después, cargo del 50%."}
+              />
             </div>
             <div className="adm-fg">
-              <label className="adm-fl">{lang === "es" ? "Normas de la casa" : "House rules"}</label>
-              <textarea className="adm-fi" rows={2} defaultValue={it.houseRules || ""} placeholder={lang === "es" ? "Ej: No mascotas · No fumar · Depósito requerido" : "E.g. No pets · No smoking · Deposit required"} />
+              <label className="adm-fl">{contentLang === "en" ? "House rules" : "Normas de la casa"}</label>
+              <textarea
+                className="adm-fi" rows={2}
+                value={contentLang === "en" ? houseRulesEN : houseRulesES}
+                onChange={(e) => { if (contentLang === "en") setHouseRulesEN(e.target.value); else setHouseRulesES(e.target.value); }}
+                placeholder={contentLang === "en" ? "E.g. No pets · No smoking · Deposit required" : "Ej: No mascotas · No fumar · Depósito requerido"}
+              />
             </div>
             <div className="adm-fg">
               <label className="adm-fl">Amenities / Services</label>

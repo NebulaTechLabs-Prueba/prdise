@@ -273,6 +273,13 @@ const stayBaseSchema = z.object({
   check_out_time: optionalText(40, "Hora de salida"),
   cancellation_policy: optionalText(2000, "Política de cancelación"),
   house_rules: optionalText(2000, "Normas de la casa"),
+  // PM 2026-07-27: versiones bilingües separadas. Los campos legacy
+  // (cancellation_policy, house_rules) se mantienen por compat; el
+  // server prefiere las _es/_en si están cargadas.
+  cancellation_policy_es: optionalText(2000, "Política de cancelación (ES)"),
+  cancellation_policy_en: optionalText(2000, "Política de cancelación (EN)"),
+  house_rules_es: optionalText(2000, "Normas de la casa (ES)"),
+  house_rules_en: optionalText(2000, "Normas de la casa (EN)"),
   // PM 2026-07-09: type libre + stars 1-5 (autopublicado por el admin,
   // distinto de rating_avg que viene de reseñas).
   stay_type: optionalText(80, "Tipo"),

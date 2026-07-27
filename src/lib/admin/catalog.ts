@@ -128,6 +128,11 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
     check_out_time: formData.get("check_out_time") ?? "",
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
+    // PM 2026-07-27: bilingüe.
+    cancellation_policy_es: formData.get("cancellation_policy_es") ?? "",
+    cancellation_policy_en: formData.get("cancellation_policy_en") ?? "",
+    house_rules_es: formData.get("house_rules_es") ?? "",
+    house_rules_en: formData.get("house_rules_en") ?? "",
     experience_id: formData.get("experience_id") ?? "",
     // PM 2026-07-09: type libre + stars 1-5.
     stay_type: formData.get("stay_type") ?? "",
@@ -178,12 +183,19 @@ export async function createStay(formData: FormData): Promise<ActionResult> {
       experience_id: (d.experience_id ?? null) as never,
       markup_type: d.markup_type ?? null,
       markup_value: d.markup_value ?? null,
-      ...(("check_in_time" in d) ? {
+      ...(("check_in_time" in d) ? ({
         check_in_time: (d as { check_in_time?: string }).check_in_time || null,
         check_out_time: (d as { check_out_time?: string }).check_out_time || null,
         cancellation_policy: (d as { cancellation_policy?: string }).cancellation_policy || null,
         house_rules: (d as { house_rules?: string }).house_rules || null,
-      } : {}),
+        // PM 2026-07-27: versiones bilingües. Cast del bloque entero
+        // porque los types generados aún no incluyen las columnas
+        // _es/_en hasta regenerar tras la migración 20260727000000.
+        cancellation_policy_es: (d as { cancellation_policy_es?: string }).cancellation_policy_es || null,
+        cancellation_policy_en: (d as { cancellation_policy_en?: string }).cancellation_policy_en || null,
+        house_rules_es: (d as { house_rules_es?: string }).house_rules_es || null,
+        house_rules_en: (d as { house_rules_en?: string }).house_rules_en || null,
+      } as never) : {}),
       created_by: actorId,
     })
     .select("id")
@@ -282,12 +294,19 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
       experience_id: (d.experience_id ?? null) as never,
       markup_type: d.markup_type ?? null,
       markup_value: d.markup_value ?? null,
-      ...(("check_in_time" in d) ? {
+      ...(("check_in_time" in d) ? ({
         check_in_time: (d as { check_in_time?: string }).check_in_time || null,
         check_out_time: (d as { check_out_time?: string }).check_out_time || null,
         cancellation_policy: (d as { cancellation_policy?: string }).cancellation_policy || null,
         house_rules: (d as { house_rules?: string }).house_rules || null,
-      } : {}),
+        // PM 2026-07-27: versiones bilingües. Cast del bloque entero
+        // porque los types generados aún no incluyen las columnas
+        // _es/_en hasta regenerar tras la migración 20260727000000.
+        cancellation_policy_es: (d as { cancellation_policy_es?: string }).cancellation_policy_es || null,
+        cancellation_policy_en: (d as { cancellation_policy_en?: string }).cancellation_policy_en || null,
+        house_rules_es: (d as { house_rules_es?: string }).house_rules_es || null,
+        house_rules_en: (d as { house_rules_en?: string }).house_rules_en || null,
+      } as never) : {}),
     })
     .eq("id", id);
 
