@@ -1,0 +1,60 @@
+{
+  "log": [
+    {
+      "t": "15:38:22.697",
+      "step": "login-done",
+      "url": "http://127.0.0.1:4173/#/admin"
+    },
+    {
+      "t": "15:38:26.128",
+      "step": "nav-tours"
+    },
+    {
+      "t": "15:38:26.131",
+      "step": "find-edit",
+      "count": 1
+    },
+    {
+      "t": "15:38:29.077",
+      "step": "find-notes-textarea",
+      "count": 1
+    },
+    {
+      "t": "15:38:29.081",
+      "step": "notes-before",
+      "value": ""
+    },
+    {
+      "t": "15:38:29.097",
+      "step": "notes-written",
+      "stamp": "e2e-persist-ms4tlk3k"
+    },
+    {
+      "t": "15:38:29.375",
+      "step": "find-save",
+      "count": 1
+    },
+    {
+      "t": "15:38:33.704",
+      "step": "save-clicked"
+    },
+    {
+      "t": "15:38:33.706",
+      "step": "modal-still-open",
+      "count": 0
+    },
+    {
+      "t": "15:38:38.410",
+      "step": "reloaded"
+    },
+    {
+      "t": "15:38:43.359",
+      "step": "persistence-check",
+      "stampFound": true,
+      "valueSample": "e2e-persist-ms4tlk3k"
+    }
+  ],
+  "errs": [],
+  "stampFound": true,
+  "STAMP": "e2e-persist-ms4tlk3k"
+}

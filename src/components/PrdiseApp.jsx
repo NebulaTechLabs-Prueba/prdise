@@ -10014,14 +10014,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   </div>
                   <div className="adm-pcard-foot">
-                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) setEditing({ type: "hotel", item: h }); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}><Pencil />{canEdit ? "Edit" : (lang==="es"?"Ver":"View")}</button>
+                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) setEditing({ type: "hotel", item: h }); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}><Pencil />{canEdit ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Ver":"View")}</button>
                     <button
                       className="adm-pcard-btn"
                       title={lang==="es"?"Ver facturas de esta estadía":"View invoices for this stay"}
                       onClick={() => { setServiceTrackFilter({ type: "stay", id: h.id, name: h.name }); setSection("invoices"); }}
                       style={{ color: "#29ABE2" }}
                     ><Search />{lang==="es"?"Seguir":"Track"}</button>
-                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) toggleStatus("hotels", h.id); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}>{h.status === "published" ? <><EyeOff />Hide</> : <><Eye />Publish</>}</button>
+                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) toggleStatus("hotels", h.id); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}>{h.status === "published" ? <><EyeOff />{lang==="es"?"Ocultar":"Hide"}</> : <><Eye />{lang==="es"?"Publicar":"Publish"}</>}</button>
                     <button className="adm-pcard-btn danger" onClick={() => { if (canDelete) deleteItem("hotels", h.id); }} disabled={!canDelete} style={{ opacity: canDelete ? 1 : 0.4, cursor: canDelete ? "pointer" : "not-allowed" }}><Trash2 /></button>
                   </div>
                 </div>
@@ -10142,14 +10142,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   </div>
                   <div className="adm-pcard-foot">
-                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) setEditing({ type: "tour", item: t }); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}><Pencil />{canEdit ? "Edit" : (lang==="es"?"Ver":"View")}</button>
+                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) setEditing({ type: "tour", item: t }); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}><Pencil />{canEdit ? (lang==="es"?"Editar":"Edit") : (lang==="es"?"Ver":"View")}</button>
                     <button
                       className="adm-pcard-btn"
                       title={lang==="es"?"Ver facturas de este tour":"View invoices for this tour"}
                       onClick={() => { setServiceTrackFilter({ type: "tour", id: t.id, name: t.name }); setSection("invoices"); }}
                       style={{ color: "#29ABE2" }}
                     ><Search />{lang==="es"?"Seguir":"Track"}</button>
-                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) toggleStatus("tours", t.id); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}>{t.status === "published" ? <><EyeOff />Hide</> : <><Eye />Publish</>}</button>
+                    <button className="adm-pcard-btn" onClick={() => { if (canEdit) toggleStatus("tours", t.id); }} disabled={!canEdit} style={{ opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }}>{t.status === "published" ? <><EyeOff />{lang==="es"?"Ocultar":"Hide"}</> : <><Eye />{lang==="es"?"Publicar":"Publish"}</>}</button>
                     <button className="adm-pcard-btn danger" onClick={() => { if (canDelete) deleteItem("tours", t.id); }} disabled={!canDelete} style={{ opacity: canDelete ? 1 : 0.4, cursor: canDelete ? "pointer" : "not-allowed" }}><Trash2 /></button>
                   </div>
                 </div>
@@ -13435,8 +13435,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <th>URL base</th>
                     <th>UTM source</th>
                     <th>{lang==="es"?"Clics 30d":"Clicks 30d"}</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Actions</th>
+                    <th>{lang==="es"?"Estado":"Status"}</th>
+                    <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
                   </tr></thead>
                   <tbody>
                     {partnersList.length === 0 ? (
@@ -13627,8 +13627,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <th>{lang==="es"?"Tours":"Tours"}</th>
                     <th>{lang==="es"?"Orden":"Order"}</th>
                     <th>{lang==="es"?"Home":"Home"}</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Actions</th>
+                    <th>{lang==="es"?"Estado":"Status"}</th>
+                    <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
                   </tr></thead>
                   <tbody>
                     {experiencesList.length === 0 ? (
@@ -13657,7 +13657,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td style={{ fontWeight: 700, color: "#F5A623" }}>{toursCount}</td>
                         <td style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>{e.sort_order ?? 100}</td>
                         <td>{e.featured_on_home ? <span className="adm-pill" style={{ background: "rgba(245,166,35,.18)", color: "#F5A623", borderColor: "rgba(245,166,35,.4)" }}>★ Home</span> : <span style={{ color: "rgba(255,255,255,.3)", fontSize: 11 }}>—</span>}</td>
-                        <td><span className={`adm-pill ${e.active ? "published" : "hidden"}`}>{e.active ? "active" : "inactive"}</span></td>
+                        <td><span className={`adm-pill ${e.active ? "published" : "hidden"}`}>{e.active ? (lang==="es"?"activa":"active") : (lang==="es"?"inactiva":"inactive")}</span></td>
                         <td>
                           <div className="adm-row-actions">
                             <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingExperience({ ...e })}><Pencil /></button>

@@ -1,0 +1,126 @@
+[
+  {
+    "t": "15:34:09.492",
+    "step": "nav-login"
+  },
+  {
+    "t": "15:34:17.193",
+    "step": "post-login",
+    "url": "http://127.0.0.1:4173/#/admin",
+    "errors": []
+  },
+  {
+    "t": "15:34:17.388",
+    "step": "admin-home",
+    "url": "http://127.0.0.1:4173/#/admin"
+  },
+  {
+    "t": "15:34:18.713",
+    "step": "section",
+    "id": "dash",
+    "label": "Dashboard",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:20.025",
+    "step": "section",
+    "id": "analytics",
+    "label": "Analytics",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:21.466",
+    "step": "section",
+    "id": "hotels",
+    "label": "Estadías",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:23.014",
+    "step": "section",
+    "id": "tours",
+    "label": "Tours",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:24.494",
+    "step": "section",
+    "id": "posts",
+    "label": "Blog",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:25.871",
+    "step": "section",
+    "id": "transfers",
+    "label": "Traslados",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:27.209",
+    "step": "section",
+    "id": "invoices",
+    "label": "Facturas",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:28.515",
+    "step": "section",
+    "id": "contact-inbox",
+    "label": "Buzón",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:29.833",
+    "step": "section",
+    "id": "contacts",
+    "label": "Contactos",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:31.099",
+    "step": "section",
+    "id": "partners",
+    "label": "Aliados",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:32.401",
+    "step": "section",
+    "id": "experiences",
+    "label": "Experiencias",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:33.664",
+    "step": "section",
+    "id": "settings",
+    "label": "Ajustes",
+    "overflow": false,
+    "errors": []
+  },
+  {
+    "t": "15:34:33.664",
+    "step": "persistence-test-start"
+  },
+  {
+    "t": "15:34:35.231",
+    "step": "persistence-test-errors",
+    "errors": []
+  }
+]
+
+
+=== ALL ERRORS ===
+[]
