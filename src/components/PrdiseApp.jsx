@@ -2279,7 +2279,7 @@ function Navbar() {
 
   const authBtn = session ? (
     session.role === "admin" ? (
-      <NavLink to="/admin" className="nav-admin" title="Admin Panel"><Shield />{session.name?.split(" ")[0] || "Admin"}</NavLink>
+      <NavLink to="/admin" className="nav-admin" title={lang === "es" ? "Panel de administración" : "Admin Panel"}><Shield />{session.name?.split(" ")[0] || "Admin"}</NavLink>
     ) : (
       <NavLink to="/account" className="nav-acc-logged" title={t("myAccount")}><User />{session.name?.split(" ")[0] || t("myAccount")}</NavLink>
     )
@@ -5037,12 +5037,14 @@ function TransferResultsPage() {
   return (
     <>
       <PageHero
-        tag="Vehicle Selection"
-        title="AVAILABLE"
-        titleEm="VEHICLES"
+        tag={lang === "es" ? "Selección de vehículo" : "Vehicle Selection"}
+        title={lang === "es" ? "VEHÍCULOS" : "AVAILABLE"}
+        titleEm={lang === "es" ? "DISPONIBLES" : "VEHICLES"}
         subtitle={tripCount > 1
           ? (lang === "es" ? `${tripCount} recorridos · empieza ${search.date} ${search.time}` : `${tripCount} trips · starts ${search.date} ${search.time}`)
-          : `${search.from} → ${search.to} · ${search.date} at ${search.time}`}
+          : (lang === "es"
+              ? `${search.from} → ${search.to} · ${search.date} a las ${search.time}`
+              : `${search.from} → ${search.to} · ${search.date} at ${search.time}`)}
       />
       <div className="inner-page">
         <div className="inner-wrap">
@@ -10295,8 +10297,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               <td><span className={`adm-pill ${c.active ? "published" : "hidden"}`}>{c.active ? "active" : "inactive"}</span></td>
                               <td>
                                 <div className="adm-row-actions">
-                                  <button className="adm-icon-btn" title="Edit" onClick={() => setEditingPostCategory({ ...c })}><Pencil /></button>
-                                  <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                                  <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingPostCategory({ ...c })}><Pencil /></button>
+                                  <button className="adm-icon-btn danger" title={lang === "es" ? "Eliminar" : "Delete"} onClick={async () => {
                                     const body = postsCount > 0
                                       ? (lang === "es"
                                         ? `Vas a eliminar "${c.name_es}". Los ${postsCount} post(s) que la usan quedarán sin color de categoría.`
@@ -10346,7 +10348,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         ({lang === "es" ? "se guarda en posts.category" : "stored in posts.category"})
                       </span>
                     </label>
-                    <input className="adm-fi" value={editingPostCategory.slug} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, slug: e.target.value })} placeholder="Tips" />
+                    <input className="adm-fi" value={editingPostCategory.slug} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, slug: e.target.value })} placeholder={lang === "es" ? "consejos" : "tips"} />
                   </div>
                   <div className="adm-fg-row">
                     <div className="adm-fg">
@@ -10456,7 +10458,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       return (
                         <tr key={p.id}>
                           <td>
-                            {p.featured && <Star style={{ width: 14, height: 14, fill: "#F5A623", color: "#F5A623" }} title="Featured" />}
+                            {p.featured && <Star style={{ width: 14, height: 14, fill: "#F5A623", color: "#F5A623" }} title={lang === "es" ? "Destacado" : "Featured"} />}
                           </td>
                           <td>
                             <div style={{ fontWeight: 600, color: "#fff", marginBottom: 2, maxWidth: 340 }}>{p.title}</div>
@@ -10519,7 +10521,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               }}>
                                 <Star style={{ fill: p.featured ? "#F5A623" : "none", color: p.featured ? "#F5A623" : "currentColor" }} />
                               </button>
-                              <button className="adm-icon-btn" title="Edit" onClick={() => setEditing({ type: "post", item: p })}><Pencil /></button>
+                              <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditing({ type: "post", item: p })}><Pencil /></button>
                               <button className="adm-icon-btn" title={p.status === "published" ? "Unpublish" : "Publish"} onClick={async () => {
                                 const prev = posts;
                                 const newStatus = p.status === "published" ? "draft" : "published";
@@ -10532,7 +10534,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               }}>
                                 {p.status === "published" ? <EyeOff /> : <Eye />}
                               </button>
-                              <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                              <button className="adm-icon-btn danger" title={lang === "es" ? "Eliminar" : "Delete"} onClick={async () => {
                                 const ok = await askConfirm({
                                   title: lang==="es" ? "Archivar publicación" : "Archive post",
                                   body: lang==="es"
@@ -11184,7 +11186,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   window.open(`https://wa.me/${digits}`, "_blank", "noopener,noreferrer");
                                 }}
                               ><MessageCircle /></button>
-                              <button className="adm-icon-btn" title="Edit" onClick={() => setEditingDriver(d)}><Pencil /></button>
+                              <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingDriver(d)}><Pencil /></button>
                             </div>
                           </td>
                         </tr>
@@ -11914,7 +11916,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       className={`adm-fi ${invoiceErrors.customer ? "has-error" : ""}`}
                       value={editingInvoice.customer}
                       onChange={(e) => { setEditingInvoice({ ...editingInvoice, customer: e.target.value }); if (invoiceErrors.customer) setInvoiceErrors({ ...invoiceErrors, customer: null }); }}
-                      placeholder="John Smith"
+                      placeholder={lang === "es" ? "Juan Pérez" : "John Smith"}
                     />
                     {invoiceErrors.customer && <div className="adm-fl-err"><AlertTriangle style={{ width: 10, height: 10 }} />{invoiceErrors.customer}</div>}
                   </div>
@@ -13160,7 +13162,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                                   </button>
                                 )}
                                 {c.status !== "spam" && (
-                                  <button className="adm-icon-btn" onClick={() => setStatus("spam")} title="Spam">
+                                  <button className="adm-icon-btn" onClick={() => setStatus("spam")} title={lang === "es" ? "Marcar como spam" : "Spam"}>
                                     <X />
                                   </button>
                                 )}
@@ -13456,8 +13458,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td><span className={`adm-pill ${p.active && !p.deleted_at ? "published" : "hidden"}`}>{p.active && !p.deleted_at ? "active" : "inactive"}</span></td>
                         <td>
                           <div className="adm-row-actions">
-                            <button className="adm-icon-btn" title="Edit" onClick={() => setEditingPartner({ ...p })}><Pencil /></button>
-                            <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                            <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingPartner({ ...p })}><Pencil /></button>
+                            <button className="adm-icon-btn danger" title={lang === "es" ? "Eliminar" : "Delete"} onClick={async () => {
                               const ok = await askConfirm({
                                 title: lang==="es" ? "Eliminar alianza" : "Delete partner",
                                 body: lang==="es"
@@ -13658,8 +13660,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <td><span className={`adm-pill ${e.active ? "published" : "hidden"}`}>{e.active ? "active" : "inactive"}</span></td>
                         <td>
                           <div className="adm-row-actions">
-                            <button className="adm-icon-btn" title="Edit" onClick={() => setEditingExperience({ ...e })}><Pencil /></button>
-                            <button className="adm-icon-btn danger" title="Delete" onClick={async () => {
+                            <button className="adm-icon-btn" title={lang === "es" ? "Editar" : "Edit"} onClick={() => setEditingExperience({ ...e })}><Pencil /></button>
+                            <button className="adm-icon-btn danger" title={lang === "es" ? "Eliminar" : "Delete"} onClick={async () => {
                               const body = toursCount > 0
                                 ? (lang==="es"
                                   ? `Vas a eliminar "${e.name_es}". Los ${toursCount} tour(s) asociados perderán la asignación (no se borran).`
@@ -14072,7 +14074,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   )}
 
                   <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">Full Name *</label><input className="adm-fi" value={editingUser.name} onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} placeholder="Full name" /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre completo" : "Full Name"} *</label><input className="adm-fi" value={editingUser.name} onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} placeholder={lang === "es" ? "Nombre completo" : "Full name"} /></div>
                     <div className="adm-fg"><label className="adm-fl">Email *</label><input type="email" className="adm-fi" value={editingUser.email} onChange={(e) => { if (!isSuperAdmin) setEditingUser({ ...editingUser, email: e.target.value }); }} placeholder="email@prdise.com" disabled={isSuperAdmin} style={{ opacity: isSuperAdmin ? 0.55 : 1, cursor: isSuperAdmin ? "not-allowed" : "text" }} /></div>
                   </div>
                   <div className="adm-fg-row">
@@ -14088,7 +14090,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     </div>
                   </div>
                   <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">Position</label><input className="adm-fi" value={editingUser.position} onChange={(e) => setEditingUser({ ...editingUser, position: e.target.value })} placeholder="Job title" /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Cargo" : "Position"}</label><input className="adm-fi" value={editingUser.position} onChange={(e) => setEditingUser({ ...editingUser, position: e.target.value })} placeholder={lang === "es" ? "Puesto" : "Job title"} /></div>
                     <div className="adm-fg"><label className="adm-fl">Phone</label><input type="tel" className="adm-fi" value={editingUser.phone || ""} onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })} placeholder="(787) 000-0000" /></div>
                   </div>
                   <div className="adm-fg"><label className="adm-fl">Joined Date</label><input type="date" className="adm-fi" value={editingUser.joined} onChange={(e) => setEditingUser({ ...editingUser, joined: e.target.value })} /></div>
@@ -15344,7 +15346,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             </p>
             <div className="adm-fg">
               <label className="adm-fl">{lang === "es" ? "Nombre" : "Name"} *</label>
-              <input className="adm-fi" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} placeholder="John Smith" autoFocus />
+              <input className="adm-fi" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} placeholder={lang === "es" ? "Juan Pérez" : "John Smith"} autoFocus />
             </div>
             <div className="adm-fg-row">
               <div className="adm-fg" style={{ flex: 1 }}>
@@ -16837,7 +16839,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           <>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Name" : "Nombre"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><input className="adm-fi" value={contentLang === "en" ? nameEN : nameES} onChange={(e) => { if (contentLang === "en") setNameEN(e.target.value); else setNameES(e.target.value); }} placeholder={contentLang === "en" ? "Stay name" : "Nombre de la estadía (opcional)"} /></div>
-              <div className="adm-fg"><label className="adm-fl">Location</label><input className="adm-fi" defaultValue={it.zone || ""} placeholder="Zone / area" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Ubicación" : "Location"}</label><input className="adm-fi" defaultValue={it.zone || ""} placeholder={lang === "es" ? "Zona / área" : "Zone / area"} /></div>
             </div>
             <div className="adm-fg"><label className="adm-fl">{contentLang === "en" ? "Description" : "Descripción"} {contentLang === "en" && <span style={{ color: "#EF6C2B" }}>*</span>}</label><textarea className="adm-fi" rows={3} value={contentLang === "en" ? descEN : descES} onChange={(e) => { if (contentLang === "en") setDescEN(e.target.value); else setDescES(e.target.value); }} placeholder={contentLang === "en" ? "Describe the property..." : "Descripción en español (opcional)..."} style={{ resize: "vertical", minHeight: 70 }} /></div>
 
@@ -16905,7 +16907,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                   {stayTypeSuggestions.map((v) => <option key={v} value={v} />)}
                 </datalist>
               </div>
-              <div className="adm-fg"><label className="adm-fl">Sleeps</label><input type="number" className="adm-fi" defaultValue={it.sleeps || ""} placeholder="Max guests" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Capacidad" : "Sleeps"}</label><input type="number" className="adm-fi" defaultValue={it.sleeps || ""} placeholder={lang === "es" ? "Máx. huéspedes" : "Max guests"} /></div>
               {/* PM 2026-06-15: el detail page muestra "{bedrooms} BR · {bathrooms} BA".
                   Antes el form no permitía editar baños y siempre quedaba el valor de DB. */}
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Baños" : "Bathrooms"}</label><input type="number" min="0" step="0.5" className="adm-fi" defaultValue={it.bathrooms ?? ""} placeholder="0" /></div>
@@ -16938,7 +16940,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             <div className="adm-fg">
               <label className="adm-fl">Amenities / Services</label>
               <div style={{ display: "flex", gap: 6 }}>
-                <input className="adm-fi" value={svcInput} onChange={(e) => setSvcInput(e.target.value)} placeholder="WiFi, Pool, A/C..." onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addChip(services, setServices, svcInput, setSvcInput))} style={{ flex: 1 }} />
+                <input className="adm-fi" value={svcInput} onChange={(e) => setSvcInput(e.target.value)} placeholder={lang === "es" ? "WiFi, Piscina, A/C..." : "WiFi, Pool, A/C..."} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addChip(services, setServices, svcInput, setSvcInput))} style={{ flex: 1 }} />
                 <button className="adm-btn adm-btn-ghost" onClick={() => addChip(services, setServices, svcInput, setSvcInput)} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />Add</button>
               </div>
               {chipRow(services, setServices)}
@@ -17038,10 +17040,10 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             {/* PM 2026-06-12: precio unificado en "Precio y categoría" abajo. */}
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Día(s) de operación" : "Operating day(s)"}</label><input className="adm-fi" value={tourDay} onChange={(e) => setTourDay(e.target.value)} placeholder={lang === "es" ? "Ej: Sábados, Fines de semana, Diario" : "e.g. Saturdays, Weekends, Daily"} /></div>
-              <div className="adm-fg"><label className="adm-fl">Duration</label><input className="adm-fi" defaultValue={it.duration || ""} placeholder="e.g. 6h" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Duración" : "Duration"}</label><input className="adm-fi" defaultValue={it.duration || ""} placeholder={lang === "es" ? "ej. 6h" : "e.g. 6h"} /></div>
             </div>
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">Capacity</label><input type="number" className="adm-fi" defaultValue={it.capacity || ""} placeholder="Max people" /></div>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Capacidad" : "Capacity"}</label><input type="number" className="adm-fi" defaultValue={it.capacity || ""} placeholder={lang === "es" ? "Máx. personas" : "Max people"} /></div>
               <div className="adm-fg"><label className="adm-fl">Difficulty</label>
                 <select className="adm-fi" defaultValue={it.difficulty || ""}>
                   <option value="">Select...</option>
@@ -17120,7 +17122,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         {/* ══ TRANSFER FORM ══ */}
         {type === "transfer" && (
           <>
-            <div className="adm-fg"><label className="adm-fl">Name</label><input className="adm-fi" defaultValue={it.name || ""} placeholder="Vehicle name" /></div>
+            <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre" : "Name"}</label><input className="adm-fi" defaultValue={it.name || ""} placeholder={lang === "es" ? "Nombre del vehículo" : "Vehicle name"} /></div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Plate</label><input className="adm-fi" defaultValue={it.plate || ""} /></div>
               <div className="adm-fg"><label className="adm-fl">Capacity</label><input type="number" className="adm-fi" defaultValue={it.seats || ""} /></div>
@@ -17133,7 +17135,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         {/* ══ USER/EMPLOYEE FORM ══ */}
         {type === "user" && (
           <>
-            <div className="adm-fg"><label className="adm-fl">Name</label><input className="adm-fi" defaultValue={it.name || ""} placeholder="Full name" /></div>
+            <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre" : "Name"}</label><input className="adm-fi" defaultValue={it.name || ""} placeholder={lang === "es" ? "Nombre completo" : "Full name"} /></div>
             <div className="adm-fg"><label className="adm-fl">Email</label><input type="email" className="adm-fi" defaultValue={it.email || ""} /></div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Role</label>
@@ -17166,7 +17168,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         {/* ══ DRIVER FORM ══ */}
         {type === "driver" && (
           <>
-            <div className="adm-fg"><label className="adm-fl">Name</label><input className="adm-fi" defaultValue={it.name || ""} placeholder="Full name" /></div>
+            <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre" : "Name"}</label><input className="adm-fi" defaultValue={it.name || ""} placeholder={lang === "es" ? "Nombre completo" : "Full name"} /></div>
             <div className="adm-fg"><label className="adm-fl">Phone</label><input type="tel" className="adm-fi" defaultValue={it.phone || ""} /></div>
           </>
         )}
@@ -17371,7 +17373,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
         {/* ══ BOOKING FORM ══ */}
         {type === "booking" && (
           <>
-            <div className="adm-fg"><label className="adm-fl">Route</label><input className="adm-fi" defaultValue={it.route || ""} placeholder="Route name" /></div>
+            <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Ruta" : "Route"}</label><input className="adm-fi" defaultValue={it.route || ""} placeholder={lang === "es" ? "Nombre de la ruta" : "Route name"} /></div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">Time</label><input type="time" className="adm-fi" defaultValue="" /></div>
               <div className="adm-fg"><label className="adm-fl">Passengers</label><input type="number" className="adm-fi" defaultValue={it.pax || ""} /></div>
@@ -19344,7 +19346,7 @@ function InvoiceCreateModal({ lang, onClose, onCreated }) {
               <div className="adm-fg-row">
                 <div className="adm-fg" style={{ flex: 1 }}>
                   <label className="adm-fl">{T("Nombre completo", "Full name")} *</label>
-                  <input className="adm-fi" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="John Smith" />
+                  <input className="adm-fi" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={lang === "es" ? "Juan Pérez" : "John Smith"} />
                 </div>
                 <div className="adm-fg" style={{ flex: 1 }}>
                   <label className="adm-fl">{T("Email", "Email")} *</label>
