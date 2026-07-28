@@ -537,6 +537,17 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     .update({
       // PM 2026-07-10: operating_day (columna nueva).
       operating_day: ((d as { operating_day?: string }).operating_day || null) as never,
+      // PM 2026-07-27: contenido extendido persistido — fix a bug crítico
+      // detectado en audit. En el commit 7766d42 se agregaron estos 6
+      // campos SOLO al INSERT (createTour), pero updateTour los ignoraba
+      // silenciosamente. Al editar un tour existente y refrescar, los
+      // cambios de Experience/Notes/Perfect For/Highlights se perdían.
+      experience_es: (((d as { experience_es?: string }).experience_es) || null) as never,
+      experience_en: (((d as { experience_en?: string }).experience_en) || null) as never,
+      important_notes_es: (((d as { important_notes_es?: string }).important_notes_es) || null) as never,
+      important_notes_en: (((d as { important_notes_en?: string }).important_notes_en) || null) as never,
+      perfect_for: ((d as { perfect_for?: string[] }).perfect_for ?? []) as never,
+      highlights: ((d as { highlights?: string[] }).highlights ?? []) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
