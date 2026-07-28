@@ -2019,7 +2019,11 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 /* Adaptación según cantidad de imágenes — clases por count permiten que el
    grid llene el ancho disponible sin huecos visuales cuando hay 1-2 fotos. */
 @media(min-width:768px){
-  .gallery-grid.gallery-grid--1{grid-template-columns:1fr;height:420px}
+  /* PM 2026-07-28: single-image gallery se limita a 780px de ancho y aspect
+     ratio ~16:10 para que fotos cuadradas/portrait luzcan bien centered sin
+     bandas laterales enormes. Reportado por PM: fotos cuadradas se veian
+     miniaturas dentro del wide banner. */
+  .gallery-grid.gallery-grid--1{grid-template-columns:1fr;height:460px;max-width:780px;margin:20px auto 0}
   .gallery-grid.gallery-grid--1 img,
   .gallery-grid.gallery-grid--1 .gallery-cell{height:100% !important}
   .gallery-grid.gallery-grid--2{grid-template-columns:1fr 1fr;height:420px}
@@ -2860,10 +2864,36 @@ function MediaImg({ src, alt, className, style, label }) {
 // PM 2026-07-28: variante ligera del patrón fit + blur para los pocos lugares
 // donde la card usa un <img> directo (galería del detail page, cover del
 // vehículo). Recibe src y renderiza el mismo marco lleno sin recortes.
-function FitImage({ src, alt, style, className }) {
+//
+// mode:
+//   "fit"    (default) — imagen COMPLETA centrada + backdrop blur del mismo
+//                        src (no recorta, útil para thumbnails/cards).
+//   "cover"           — imagen LLENA el marco (recorta si aspect ratio no
+//                        coincide). Sin backdrop. Usar para el hero principal
+//                        donde queremos que la foto luzca grande y edge-to-edge.
+//                        Reportado por PM 2026-07-28: en modo "fit" con foto
+//                        cuadrada dentro de un contenedor MUY WIDE, la foto
+//                        quedaba miniatura al centro con bandas blur enormes.
+function FitImage({ src, alt, style, className, mode = "fit" }) {
   if (!src) {
     return (
       <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(255,255,255,.04)", ...(style || {}) }} />
+    );
+  }
+  if (mode === "cover") {
+    return (
+      <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(0,0,0,.2)", ...(style || {}) }}>
+        <img
+          src={src}
+          alt={alt || ""}
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            objectPosition: "center 40%",
+            display: "block",
+          }}
+        />
+      </div>
     );
   }
   return (
@@ -3831,7 +3861,7 @@ function HotelDetail({ params }) {
 
           <div className={`gallery-grid gallery-grid--${imgs.length}`}>
             {imgs.map((src, i) => (
-              <div key={i} className="gallery-cell"><FitImage src={src} alt={hotel.name} /></div>
+              <div key={i} className="gallery-cell"><FitImage src={src} alt={hotel.name} mode="cover" /></div>
             ))}
           </div>
         </div>
@@ -4226,7 +4256,7 @@ function TourDetail({ params }) {
 
           <div className={`gallery-grid gallery-grid--${imgs.length}`}>
             {imgs.map((src, i) => (
-              <div key={i} className="gallery-cell"><FitImage src={src} alt={tour.name} /></div>
+              <div key={i} className="gallery-cell"><FitImage src={src} alt={tour.name} mode="cover" /></div>
             ))}
           </div>
         </div>
