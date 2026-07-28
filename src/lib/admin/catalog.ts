@@ -389,6 +389,13 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     perfect_for: readListField(formData, "perfect_for"),
     highlights: readListField(formData, "highlights"),
     includes: readListField(formData, "includes"),
+    // PM 2026-07-28: chips bilingües (arrays paralelos _es/_en).
+    perfect_for_es: readListField(formData, "perfect_for_es"),
+    perfect_for_en: readListField(formData, "perfect_for_en"),
+    highlights_es: readListField(formData, "highlights_es"),
+    highlights_en: readListField(formData, "highlights_en"),
+    includes_es: readListField(formData, "includes_es"),
+    includes_en: readListField(formData, "includes_en"),
     images: readListField(formData, "images"),
     location: formData.get("location") ?? "",
     lat: asNumberOrNull(formData, "lat"),
@@ -428,6 +435,14 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       important_notes_en: (((d as { important_notes_en?: string }).important_notes_en) || null) as never,
       perfect_for: ((d as { perfect_for?: string[] }).perfect_for ?? []) as never,
       highlights: ((d as { highlights?: string[] }).highlights ?? []) as never,
+      // PM 2026-07-28: chips bilingües. Cast as never porque los types
+      // generados no incluyen las nuevas columnas hasta regenerar.
+      perfect_for_es: ((d as { perfect_for_es?: string[] }).perfect_for_es ?? []) as never,
+      perfect_for_en: ((d as { perfect_for_en?: string[] }).perfect_for_en ?? []) as never,
+      highlights_es: ((d as { highlights_es?: string[] }).highlights_es ?? []) as never,
+      highlights_en: ((d as { highlights_en?: string[] }).highlights_en ?? []) as never,
+      includes_es: ((d as { includes_es?: string[] }).includes_es ?? []) as never,
+      includes_en: ((d as { includes_en?: string[] }).includes_en ?? []) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
@@ -507,6 +522,13 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     perfect_for: readListField(formData, "perfect_for"),
     highlights: readListField(formData, "highlights"),
     includes: readListField(formData, "includes"),
+    // PM 2026-07-28: chips bilingües (arrays paralelos _es/_en).
+    perfect_for_es: readListField(formData, "perfect_for_es"),
+    perfect_for_en: readListField(formData, "perfect_for_en"),
+    highlights_es: readListField(formData, "highlights_es"),
+    highlights_en: readListField(formData, "highlights_en"),
+    includes_es: readListField(formData, "includes_es"),
+    includes_en: readListField(formData, "includes_en"),
     images: readListField(formData, "images"),
     location: formData.get("location") ?? "",
     lat: asNumberOrNull(formData, "lat"),
@@ -548,6 +570,13 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
       important_notes_en: (((d as { important_notes_en?: string }).important_notes_en) || null) as never,
       perfect_for: ((d as { perfect_for?: string[] }).perfect_for ?? []) as never,
       highlights: ((d as { highlights?: string[] }).highlights ?? []) as never,
+      // PM 2026-07-28: chips bilingües (mismo cast que en createTour).
+      perfect_for_es: ((d as { perfect_for_es?: string[] }).perfect_for_es ?? []) as never,
+      perfect_for_en: ((d as { perfect_for_en?: string[] }).perfect_for_en ?? []) as never,
+      highlights_es: ((d as { highlights_es?: string[] }).highlights_es ?? []) as never,
+      highlights_en: ((d as { highlights_en?: string[] }).highlights_en ?? []) as never,
+      includes_es: ((d as { includes_es?: string[] }).includes_es ?? []) as never,
+      includes_en: ((d as { includes_en?: string[] }).includes_en ?? []) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
@@ -815,6 +844,11 @@ export async function createVehicle(
     active: asBool(formData, "active"),
     features: readListField(formData, "features"),
     description: formData.get("description") ?? "",
+    // PM 2026-07-28: campos bilingües (arrays paralelos + textos por idioma).
+    description_es: formData.get("description_es") ?? "",
+    description_en: formData.get("description_en") ?? "",
+    features_es: readListField(formData, "features_es"),
+    features_en: readListField(formData, "features_en"),
     price_per_km_cents: asNumberOrNull(formData, "price_per_km_cents"),
   });
   if (!parsed.success) {
@@ -837,6 +871,12 @@ export async function createVehicle(
       active: d.active,
       features: d.features as never,
       description: d.description || null,
+      // PM 2026-07-28: campos bilingües. Cast as never porque los types
+      // generados no incluyen las nuevas columnas hasta regenerar.
+      description_es: (((d as { description_es?: string }).description_es) || null) as never,
+      description_en: (((d as { description_en?: string }).description_en) || null) as never,
+      features_es: ((d as { features_es?: string[] }).features_es ?? []) as never,
+      features_en: ((d as { features_en?: string[] }).features_en ?? []) as never,
       price_per_km_cents: d.price_per_km_cents ?? null,
     })
     .select("id")
@@ -869,6 +909,11 @@ export async function updateVehicle(
     active: asBool(formData, "active"),
     features: readListField(formData, "features"),
     description: formData.get("description") ?? "",
+    // PM 2026-07-28: campos bilingües (ver createVehicle).
+    description_es: formData.get("description_es") ?? "",
+    description_en: formData.get("description_en") ?? "",
+    features_es: readListField(formData, "features_es"),
+    features_en: readListField(formData, "features_en"),
     price_per_km_cents: asNumberOrNull(formData, "price_per_km_cents"),
   });
   if (!parsed.success) {
@@ -891,6 +936,11 @@ export async function updateVehicle(
       active: d.active,
       features: d.features as never,
       description: d.description || null,
+      // PM 2026-07-28: bilingüe (mismo cast que en createVehicle).
+      description_es: (((d as { description_es?: string }).description_es) || null) as never,
+      description_en: (((d as { description_en?: string }).description_en) || null) as never,
+      features_es: ((d as { features_es?: string[] }).features_es ?? []) as never,
+      features_en: ((d as { features_en?: string[] }).features_en ?? []) as never,
       price_per_km_cents: d.price_per_km_cents ?? null,
     })
     .eq("id", id);

@@ -344,6 +344,15 @@ const tourBaseSchema = z.object({
   perfect_for: stringArraySchema.default([]),
   highlights: stringArraySchema.default([]),
   includes: stringArraySchema.default([]),
+  // PM 2026-07-28: versiones bilingües separadas de los chips. Los legacy
+  // (perfect_for, highlights, includes) se mantienen por compat; el server
+  // prefiere las _es/_en cuando están cargadas.
+  perfect_for_es: stringArraySchema.default([]),
+  perfect_for_en: stringArraySchema.default([]),
+  highlights_es: stringArraySchema.default([]),
+  highlights_en: stringArraySchema.default([]),
+  includes_es: stringArraySchema.default([]),
+  includes_en: stringArraySchema.default([]),
   images: imageUrlArraySchema.default([]),
   location: optionalText(200, "Ubicación"),
   lat: latSchema,
@@ -453,6 +462,11 @@ const vehicleBaseSchema = z.object({
   // mapper del frontend, todos los vehículos mostraban lo mismo).
   features: stringArraySchema.default([]),
   description: optionalText(500, "Descripción"),
+  // PM 2026-07-28: versiones bilingües. Los legacy quedan por compat.
+  description_es: optionalText(500, "Descripción (ES)"),
+  description_en: optionalText(500, "Descripción (EN)"),
+  features_es: stringArraySchema.default([]),
+  features_en: stringArraySchema.default([]),
   // PM 2026-06-17: tarifa por km del vehículo. Antes hardcoded a 2.5 en el
   // mapper — todos los vehículos cobraban lo mismo por km aunque un SUV/van
   // sea más caro de operar que un sedan.

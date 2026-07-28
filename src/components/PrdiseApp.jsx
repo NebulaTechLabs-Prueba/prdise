@@ -376,6 +376,14 @@ function mapTourToTour(t) {
     img: imgs[0] ? resolveImg(imgs[0]) : "",
     gallery: resolveImgs(imgs),
     includes: Array.isArray(t.includes) ? t.includes : [],
+    // PM 2026-07-28: chips bilingües (arrays paralelos). Se preserva
+    // `includes` legacy como fallback si aún no se cargó la variante _es.
+    includesES: Array.isArray(t.includes_es) && t.includes_es.length
+      ? t.includes_es
+      : (Array.isArray(t.includes) ? t.includes : []),
+    includesEN: Array.isArray(t.includes_en) && t.includes_en.length
+      ? t.includes_en
+      : (Array.isArray(t.includes) ? t.includes : []),
     bring: [],
     itinerary: [],
     desc: t.short_desc_en || t.short_desc_es || "",
@@ -400,6 +408,19 @@ function mapTourToTour(t) {
     importantNotes: t.important_notes_en || t.important_notes_es || "",
     perfectFor: Array.isArray(t.perfect_for) ? t.perfect_for : [],
     highlights: Array.isArray(t.highlights) ? t.highlights : [],
+    // PM 2026-07-28: chips bilingües (fallback al legacy si _es/_en vacíos).
+    perfectForES: Array.isArray(t.perfect_for_es) && t.perfect_for_es.length
+      ? t.perfect_for_es
+      : (Array.isArray(t.perfect_for) ? t.perfect_for : []),
+    perfectForEN: Array.isArray(t.perfect_for_en) && t.perfect_for_en.length
+      ? t.perfect_for_en
+      : (Array.isArray(t.perfect_for) ? t.perfect_for : []),
+    highlightsES: Array.isArray(t.highlights_es) && t.highlights_es.length
+      ? t.highlights_es
+      : (Array.isArray(t.highlights) ? t.highlights : []),
+    highlightsEN: Array.isArray(t.highlights_en) && t.highlights_en.length
+      ? t.highlights_en
+      : (Array.isArray(t.highlights) ? t.highlights : []),
     color: t.featured ? "gold" : "green",
     location: t.location || "",
     lat: Number(t.lat) || 0,
@@ -448,6 +469,15 @@ function mapVehicleToVehicle(v) {
     // PM 2026-06-17: desc + features ahora vienen de DB (antes hardcoded).
     desc: v.description || "",
     features: Array.isArray(v.features) ? v.features : [],
+    // PM 2026-07-28: variantes bilingües. Fallback al legacy si aún vacías.
+    descES: v.description_es || v.description || "",
+    descEN: v.description_en || v.description || "",
+    featuresES: Array.isArray(v.features_es) && v.features_es.length
+      ? v.features_es
+      : (Array.isArray(v.features) ? v.features : []),
+    featuresEN: Array.isArray(v.features_en) && v.features_en.length
+      ? v.features_en
+      : (Array.isArray(v.features) ? v.features : []),
     active: v.active !== false,
     status: v.active === false ? "out_of_service" : "available",
     plate: "",
@@ -4155,7 +4185,14 @@ function TourDetail({ params }) {
                 const legacyAbout = TOUR_ABOUT[tour.id] || {};
                 const experienceText = L(tour.experienceEN, tour.experienceES) || L(legacyAbout.experience, legacyAbout.experienceES);
                 const notesText = L(tour.importantNotesEN, tour.importantNotesES) || legacyAbout.notes;
-                const highlightsArr = (Array.isArray(tour.highlights) && tour.highlights.length ? tour.highlights : legacyAbout.highlights) || [];
+                // PM 2026-07-28: chips bilingües — usa la variante del idioma
+                // activo con fallback al legacy si aún vacía.
+                const highlightsLangArr = lang === "es"
+                  ? (Array.isArray(tour.highlightsES) ? tour.highlightsES : [])
+                  : (Array.isArray(tour.highlightsEN) ? tour.highlightsEN : []);
+                const highlightsArr = (highlightsLangArr.length
+                  ? highlightsLangArr
+                  : (Array.isArray(tour.highlights) && tour.highlights.length ? tour.highlights : legacyAbout.highlights)) || [];
                 if (!bodyText && !experienceText && !notesText && highlightsArr.length === 0) return null;
                 return (
                   <div className="detail-section">
@@ -4202,14 +4239,22 @@ function TourDetail({ params }) {
                   ))}
                 </div>
               )}
-              {(tour.includes || []).length > 0 && (
-                <div className="detail-section">
-                  <h3>{t("whatsIncluded")}</h3>
-                  {tour.includes.map((i) => (
-                    <div key={i} className="list-line"><Check style={{ color: "var(--green)" }} />{i}</div>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                // PM 2026-07-28: "Qué incluye" bilingüe.
+                const langInc = lang === "es" ? tour.includesES : tour.includesEN;
+                const incArr = Array.isArray(langInc) && langInc.length
+                  ? langInc
+                  : (Array.isArray(tour.includes) ? tour.includes : []);
+                if (incArr.length === 0) return null;
+                return (
+                  <div className="detail-section">
+                    <h3>{t("whatsIncluded")}</h3>
+                    {incArr.map((i, k) => (
+                      <div key={k} className="list-line"><Check style={{ color: "var(--green)" }} />{i}</div>
+                    ))}
+                  </div>
+                );
+              })()}
               {(tour.bring || []).length > 0 && (
                 <div className="detail-section">
                   <h3>{t("whatToBring")}</h3>
@@ -5106,7 +5151,12 @@ function TransferResultsPage() {
                     </div>
                     <div className="veh-info">
                       <h3>{v.name}</h3>
-                      {v.desc && <p className="desc">{v.desc}</p>}
+                      {/* PM 2026-07-28: descripción bilingüe — se toma la
+                          versión del idioma activo con fallback al legacy. */}
+                      {(() => {
+                        const localizedDesc = lang === "es" ? (v.descES || v.desc) : (v.descEN || v.desc);
+                        return localizedDesc ? <p className="desc">{localizedDesc}</p> : null;
+                      })()}
                       {/* PM 2026-07-09: removido el meta-item de
                           recorridos/km — se mostraba con datos residuales
                           de la búsqueda que confundían al cliente. La
@@ -5115,9 +5165,16 @@ function TransferResultsPage() {
                         <div className="veh-meta-item"><Users />{lang === "es" ? `Hasta ${v.seats} pasajeros` : `Up to ${v.seats} seats`}</div>
                         <div className="veh-meta-item"><Briefcase />{v.bags} {lang === "es" ? "maletas" : "bags"}</div>
                       </div>
-                      {(v.features || []).length > 0 && (
-                        <div className="veh-features">{v.features.map((f) => <span key={f}>{f}</span>)}</div>
-                      )}
+                      {(() => {
+                        // PM 2026-07-28: features bilingües — usa la lista del
+                        // idioma activo con fallback al legacy.
+                        const langList = lang === "es" ? v.featuresES : v.featuresEN;
+                        const feats = Array.isArray(langList) && langList.length
+                          ? langList
+                          : (Array.isArray(v.features) ? v.features : []);
+                        if (feats.length === 0) return null;
+                        return <div className="veh-features">{feats.map((f, k) => <span key={k}>{f}</span>)}</div>;
+                      })()}
                     </div>
                     <div className="veh-cta">
                       <span className="veh-price">{fmt(total).replace(/\.00$/, "")}</span>
@@ -7865,6 +7922,9 @@ function AdminPanel({ onClose }) {
   const initCompanySettings = () => ({
     company_name: SITE_SETTINGS.company_name ?? "",
     tagline: SITE_SETTINGS.tagline ?? "",
+    // PM 2026-07-28: lema bilingüe. Se persiste por separado del legacy.
+    tagline_es: SITE_SETTINGS.tagline_es ?? SITE_SETTINGS.tagline ?? "",
+    tagline_en: SITE_SETTINGS.tagline_en ?? SITE_SETTINGS.tagline ?? "",
     contact_email: SITE_SETTINGS.contact_email ?? "",
     contact_phone: SITE_SETTINGS.contact_phone ?? "",
     contact_phone_tel: SITE_SETTINGS.contact_phone_tel ?? "",
@@ -10770,10 +10830,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   </div>
                   {/* PM 2026-06-17: descripción + features ahora son editables
                       (eran hardcoded en el mapper, todos los vehículos mostraban
-                      lo mismo en el resultado de búsqueda). */}
-                  <div className="adm-fg">
-                    <label className="adm-fl">{lang === "es" ? "Descripción corta" : "Short description"}</label>
-                    <input className="adm-fi" value={editingVehicle.desc || ""} onChange={(e) => setEditingVehicle({ ...editingVehicle, desc: e.target.value })} placeholder={lang === "es" ? "Ej: Van amplia, ideal grupos familiares" : "E.g. Spacious van, family-friendly"} />
+                      lo mismo en el resultado de búsqueda).
+                      PM 2026-07-28: bilingüe — dos inputs ES/EN uno al lado del
+                      otro para que el admin cargue ambos sin cambiar de pestaña. */}
+                  <div className="adm-fg-row">
+                    <div className="adm-fg">
+                      <label className="adm-fl">{lang === "es" ? "Descripción (ES)" : "Description (ES)"}</label>
+                      <input className="adm-fi" value={editingVehicle.descES ?? editingVehicle.desc ?? ""} onChange={(e) => setEditingVehicle({ ...editingVehicle, descES: e.target.value })} placeholder={lang === "es" ? "Ej: Van amplia, ideal para grupos" : "Ej: Van amplia, ideal para grupos"} />
+                    </div>
+                    <div className="adm-fg">
+                      <label className="adm-fl">{lang === "es" ? "Descripción (EN)" : "Description (EN)"}</label>
+                      <input className="adm-fi" value={editingVehicle.descEN ?? editingVehicle.desc ?? ""} onChange={(e) => setEditingVehicle({ ...editingVehicle, descEN: e.target.value })} placeholder="E.g. Spacious van, family-friendly" />
+                    </div>
                   </div>
                   {/* PM 2026-07-09: upload de foto del vehículo. Reusa el
                       bucket 'service-images' (mismo que fotos de tour/stay).
@@ -10817,42 +10885,60 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       </div>
                     </div>
                   </div>
-                  <div className="adm-fg">
-                    <label className="adm-fl">{lang === "es" ? "Características (chips)" : "Features (chips)"}</label>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input
-                        className="adm-fi"
-                        value={vehFeatureInput}
-                        onChange={(e) => setVehFeatureInput(e.target.value)}
-                        placeholder={lang === "es" ? "A/C, WiFi, Agua, Conductor..." : "A/C, WiFi, Water, Driver..."}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && vehFeatureInput.trim()) {
-                            e.preventDefault();
-                            const next = [...(editingVehicle.features || []), vehFeatureInput.trim()];
-                            setEditingVehicle({ ...editingVehicle, features: next });
-                            setVehFeatureInput("");
-                          }
-                        }}
-                        style={{ flex: 1 }}
-                      />
-                      <button type="button" className="adm-btn adm-btn-ghost" onClick={() => {
-                        if (!vehFeatureInput.trim()) return;
-                        const next = [...(editingVehicle.features || []), vehFeatureInput.trim()];
-                        setEditingVehicle({ ...editingVehicle, features: next });
-                        setVehFeatureInput("");
-                      }} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />{lang === "es" ? "Agregar" : "Add"}</button>
-                    </div>
-                    {(editingVehicle.features || []).length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
-                        {(editingVehicle.features || []).map((f, i) => (
-                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 99, background: "rgba(245,166,35,.12)", color: "#F5A623", fontSize: 11, fontWeight: 700 }}>
-                            {f}
-                            <button type="button" onClick={() => setEditingVehicle({ ...editingVehicle, features: (editingVehicle.features || []).filter((_, j) => j !== i) })} style={{ background: "none", border: "none", color: "#F5A623", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 13 }}>×</button>
-                          </span>
-                        ))}
+                  {/* PM 2026-07-28: features bilingües — dos bloques ES/EN.
+                      Cada uno mantiene su propia lista y su propio input. */}
+                  {["ES", "EN"].map((lg) => {
+                    const key = lg === "ES" ? "featuresES" : "featuresEN";
+                    const list = (editingVehicle[key] && editingVehicle[key].length)
+                      ? editingVehicle[key]
+                      : (Array.isArray(editingVehicle.features) ? editingVehicle.features : []);
+                    const draftKey = lg === "ES" ? "_featDraftES" : "_featDraftEN";
+                    const draft = editingVehicle[draftKey] || "";
+                    const addOne = () => {
+                      const t = draft.trim();
+                      if (!t) return;
+                      setEditingVehicle({
+                        ...editingVehicle,
+                        [key]: [...list, t],
+                        [draftKey]: "",
+                      });
+                    };
+                    return (
+                      <div className="adm-fg" key={lg}>
+                        <label className="adm-fl">
+                          {lang === "es" ? `Características (${lg})` : `Features (${lg})`}
+                        </label>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            className="adm-fi"
+                            value={draft}
+                            onChange={(e) => setEditingVehicle({ ...editingVehicle, [draftKey]: e.target.value })}
+                            placeholder={lg === "ES" ? "A/C, WiFi, Agua, Conductor..." : "A/C, WiFi, Water, Driver..."}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && draft.trim()) {
+                                e.preventDefault();
+                                addOne();
+                              }
+                            }}
+                            style={{ flex: 1 }}
+                          />
+                          <button type="button" className="adm-btn adm-btn-ghost" onClick={addOne} style={{ flexShrink: 0 }}>
+                            <Plus style={{ width: 12, height: 12 }} />{lang === "es" ? "Agregar" : "Add"}
+                          </button>
+                        </div>
+                        {list.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                            {list.map((f, i) => (
+                              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 99, background: "rgba(245,166,35,.12)", color: "#F5A623", fontSize: 11, fontWeight: 700 }}>
+                                {f}
+                                <button type="button" onClick={() => setEditingVehicle({ ...editingVehicle, [key]: list.filter((_, j) => j !== i) })} style={{ background: "none", border: "none", color: "#F5A623", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 13 }}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
                   <div className="adm-modal-actions">
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingVehicle(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
@@ -10873,6 +10959,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         // PM 2026-06-17: persistir features + description + perKm.
                         fd.append("features", JSON.stringify(Array.isArray(editingVehicle.features) ? editingVehicle.features : []));
                         fd.append("description", editingVehicle.desc || "");
+                        // PM 2026-07-28: variantes bilingües. Los legacy quedan
+                        // por compat; el server prefiere estas cuando existen.
+                        fd.append("description_es", editingVehicle.descES ?? editingVehicle.desc ?? "");
+                        fd.append("description_en", editingVehicle.descEN ?? editingVehicle.desc ?? "");
+                        fd.append("features_es", JSON.stringify(Array.isArray(editingVehicle.featuresES) ? editingVehicle.featuresES : []));
+                        fd.append("features_en", JSON.stringify(Array.isArray(editingVehicle.featuresEN) ? editingVehicle.featuresEN : []));
                         // perKm en USD → CENTAVOS para DB. NULL/vacío = no se cobra
                         // por km (solo el flat base).
                         if (editingVehicle.perKm == null || editingVehicle.perKm === "") {
@@ -11855,7 +11947,10 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     {/* PM 2026-06-29: leer email/teléfono de site_settings
                         en lugar del placeholder "hello@prdise.com" /
                         "+1 787-555-0100" que no son los reales. */}
-                    <div style={{ fontSize: 11, color: "rgba(15,24,34,.55)", lineHeight: 1.5 }}>{getSetting("tagline") || "House of Tours"} · {getSetting("address") || "Cabo Rojo, PR"}<br />{getSetting("contact_email")} · {getSetting("contact_phone")}</div>
+                    {/* PM 2026-07-28: tagline bilingüe — usa el key del idioma
+                        activo con fallback al legacy. Dirección/company_name
+                        siguen siendo un solo valor (nombre propio / dato op). */}
+                    <div style={{ fontSize: 11, color: "rgba(15,24,34,.55)", lineHeight: 1.5 }}>{(lang === "es" ? (getSetting("tagline_es") || getSetting("tagline")) : (getSetting("tagline_en") || getSetting("tagline"))) || ""} · {getSetting("address") || "Cabo Rojo, PR"}<br />{getSetting("contact_email")} · {getSetting("contact_phone")}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <h2>{lang === "es" ? "FACTURA" : "INVOICE"}</h2>
@@ -14351,7 +14446,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <Collapsible title={lang==="es"?"Información de la Empresa":"Company Information"} icon={Briefcase} defaultOpen={true}>
                 <div className="adm-fg-row">
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre de la Empresa":"Company Name"}</label><input className="adm-fi" value={companySettings.company_name} onChange={(e) => updCompanySetting("company_name", e.target.value)} /></div>
-                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema":"Tagline"}</label><input className="adm-fi" value={companySettings.tagline} onChange={(e) => updCompanySetting("tagline", e.target.value)} /></div>
+                </div>
+                {/* PM 2026-07-28: lema bilingüe — dos inputs ES/EN. El lema
+                    legacy `tagline` se mantiene para lectores viejos, pero
+                    la app usa el par _es/_en según idioma activo. */}
+                <div className="adm-fg-row">
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema (ES)":"Tagline (ES)"}</label><input className="adm-fi" value={companySettings.tagline_es ?? companySettings.tagline ?? ""} onChange={(e) => { updCompanySetting("tagline_es", e.target.value); updCompanySetting("tagline", e.target.value); }} /></div>
+                  <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Lema (EN)":"Tagline (EN)"}</label><input className="adm-fi" value={companySettings.tagline_en ?? companySettings.tagline ?? ""} onChange={(e) => updCompanySetting("tagline_en", e.target.value)} /></div>
                 </div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Correo de Contacto":"Contact Email"}</label><input className="adm-fi" type="email" value={companySettings.contact_email} onChange={(e) => updCompanySetting("contact_email", e.target.value)} /></div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Teléfono / WhatsApp":"Phone / WhatsApp"} <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>{lang === "es" ? "(usado para llamadas y WhatsApp)" : "(used for calls and WhatsApp)"}</span></label><input className="adm-fi" type="tel" value={companySettings.contact_phone} onChange={(e) => {
@@ -15486,6 +15587,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("important_notes_en", ownedUpdate.importantNotesEN || "");
               fd.append("perfect_for", JSON.stringify(Array.isArray(ownedUpdate.perfectFor) ? ownedUpdate.perfectFor : []));
               fd.append("highlights", JSON.stringify(Array.isArray(ownedUpdate.highlights) ? ownedUpdate.highlights : []));
+              // PM 2026-07-28: chips bilingües — arrays paralelos _es/_en.
+              // Los legacy (perfect_for/highlights/includes) quedan por
+              // compat, pero el server prefiere las variantes por idioma.
+              fd.append("perfect_for_es", JSON.stringify(Array.isArray(ownedUpdate.perfectForES) ? ownedUpdate.perfectForES : []));
+              fd.append("perfect_for_en", JSON.stringify(Array.isArray(ownedUpdate.perfectForEN) ? ownedUpdate.perfectForEN : []));
+              fd.append("highlights_es", JSON.stringify(Array.isArray(ownedUpdate.highlightsES) ? ownedUpdate.highlightsES : []));
+              fd.append("highlights_en", JSON.stringify(Array.isArray(ownedUpdate.highlightsEN) ? ownedUpdate.highlightsEN : []));
+              fd.append("includes_es", JSON.stringify(Array.isArray(ownedUpdate.includesES) ? ownedUpdate.includesES : []));
+              fd.append("includes_en", JSON.stringify(Array.isArray(ownedUpdate.includesEN) ? ownedUpdate.includesEN : []));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               // Tour "hidden" debe desactivar el tour para que no salga en el
               // catálogo público (RLS activeOnly). "draft" idem.
@@ -15899,14 +16009,51 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // sobrescribía entre pestañas).
   const [notesTextEN, setNotesTextEN] = useState((it.importantNotesEN != null ? it.importantNotesEN : about.notes) || "");
   const [notesTextES, setNotesTextES] = useState((it.importantNotesES != null ? it.importantNotesES : "") || "");
-  const [perfectFor, setPerfectFor] = useState(
-    Array.isArray(it.perfectFor) && it.perfectFor.length ? it.perfectFor : (about.perfectFor || [])
+  // PM 2026-07-28: chips bilingües (arrays paralelos _es/_en). Antes existía
+  // un solo array por chip type y todo el contenido convivía en un idioma —
+  // en cliente en modo EN aparecían chips en ES y viceversa. Ahora cada
+  // idioma tiene su propia lista; el input "Add" agrega al idioma del tab
+  // activo. Fallback a legacy si el mapper aún no expone _es/_en.
+  const [perfectForES, setPerfectForES] = useState(
+    Array.isArray(it.perfectForES) && it.perfectForES.length
+      ? it.perfectForES
+      : (Array.isArray(it.perfectFor) && it.perfectFor.length ? it.perfectFor : (about.perfectFor || []))
   );
+  const [perfectForEN, setPerfectForEN] = useState(
+    Array.isArray(it.perfectForEN) && it.perfectForEN.length
+      ? it.perfectForEN
+      : (Array.isArray(it.perfectFor) && it.perfectFor.length ? it.perfectFor : (about.perfectFor || []))
+  );
+  const perfectFor = contentLang === "en" ? perfectForEN : perfectForES;
+  const setPerfectFor = contentLang === "en" ? setPerfectForEN : setPerfectForES;
   const [pfInput, setPfInput] = useState("");
-  const [highlightsList, setHighlightsList] = useState(
-    Array.isArray(it.highlights) && it.highlights.length ? it.highlights : (about.highlights || [])
+  const [highlightsES, setHighlightsES] = useState(
+    Array.isArray(it.highlightsES) && it.highlightsES.length
+      ? it.highlightsES
+      : (Array.isArray(it.highlights) && it.highlights.length ? it.highlights : (about.highlights || []))
   );
+  const [highlightsEN, setHighlightsEN] = useState(
+    Array.isArray(it.highlightsEN) && it.highlightsEN.length
+      ? it.highlightsEN
+      : (Array.isArray(it.highlights) && it.highlights.length ? it.highlights : (about.highlights || []))
+  );
+  const highlightsList = contentLang === "en" ? highlightsEN : highlightsES;
+  const setHighlightsList = contentLang === "en" ? setHighlightsEN : setHighlightsES;
   const [hlInput, setHlInput] = useState("");
+  // includes / incluye — mismo patrón bilingüe.
+  const [includesES, setIncludesES] = useState(
+    Array.isArray(it.includesES) && it.includesES.length
+      ? it.includesES
+      : (Array.isArray(it.includes) ? it.includes : [])
+  );
+  const [includesEN, setIncludesEN] = useState(
+    Array.isArray(it.includesEN) && it.includesEN.length
+      ? it.includesEN
+      : (Array.isArray(it.includes) ? it.includes : [])
+  );
+  const includesList = contentLang === "en" ? includesEN : includesES;
+  const setIncludesList = contentLang === "en" ? setIncludesEN : setIncludesES;
+  const [incInput, setIncInput] = useState("");
   const [translating, setTranslating] = useState(false);
   // Partner (referral) — solo aplica a stays/tours
   const [partnerId, setPartnerId] = useState(it.partnerId || "");
@@ -16428,6 +16575,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.importantNotesES = notesTextES;
       updated.perfectFor = perfectFor;
       updated.highlights = highlightsList;
+      // PM 2026-07-28: pasar variantes bilingües + includes al FormData.
+      updated.perfectForES = perfectForES;
+      updated.perfectForEN = perfectForEN;
+      updated.highlightsES = highlightsES;
+      updated.highlightsEN = highlightsEN;
+      updated.includes = includesES.length ? includesES : includesEN;
+      updated.includesES = includesES;
+      updated.includesEN = includesEN;
     }
     // Post-specific
     if (type === "post") {
@@ -16864,12 +17019,12 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 Precio Final en vivo). La columna tours.markup_pct queda
                 en DB sin uso — se dropea en migración futura. */}
             <div className="adm-fg">
-              <label className="adm-fl">What is Included</label>
+              <label className="adm-fl">{contentLang === "en" ? "What is Included" : "Qué incluye"}</label>
               <div style={{ display: "flex", gap: 6 }}>
-                <input className="adm-fi" value={inclInput} onChange={(e) => setInclInput(e.target.value)} placeholder="Transport, Lunch, Equipment..." onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addChip(included, setIncluded, inclInput, setInclInput))} style={{ flex: 1 }} />
-                <button className="adm-btn adm-btn-ghost" onClick={() => addChip(included, setIncluded, inclInput, setInclInput)} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />Add</button>
+                <input className="adm-fi" value={incInput} onChange={(e) => setIncInput(e.target.value)} placeholder={contentLang === "en" ? "Transport, Lunch, Equipment..." : "Transporte, Almuerzo, Equipo..."} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addChip(includesList, setIncludesList, incInput, setIncInput))} style={{ flex: 1 }} />
+                <button className="adm-btn adm-btn-ghost" onClick={() => addChip(includesList, setIncludesList, incInput, setIncInput)} style={{ flexShrink: 0 }}><Plus style={{ width: 12, height: 12 }} />Add</button>
               </div>
-              {chipRow(included, setIncluded)}
+              {chipRow(includesList, setIncludesList)}
             </div>
             {/* PM 2026-06-15: punto de encuentro persistido en DB.meeting_point.
                 El detail page lo renderiza en su propia sección — antes no había
