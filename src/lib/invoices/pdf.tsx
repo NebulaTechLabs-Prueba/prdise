@@ -185,7 +185,10 @@ function InvoiceDoc({ invoice }: { invoice: InvoiceForPdf }) {
         <View style={styles.header}>
           <View>
             <Text style={styles.brand}>PRDISE</Text>
-            <Text style={styles.brandSub}>LIVING IN PARADISE · CABO ROJO, PUERTO RICO</Text>
+            {/* PM 2026-07-28: brand tagline como nombre de la marca real +
+                ubicación. Antes decía "LIVING IN PARADISE" (typo del
+                launch) — ni siquiera coincidía con el nombre oficial. */}
+            <Text style={styles.brandSub}>LIVING IN PRDISE · CABO ROJO, PUERTO RICO</Text>
           </View>
           <View style={styles.invoiceMeta}>
             <Text style={styles.invoiceNumber}>{invoice.number}</Text>

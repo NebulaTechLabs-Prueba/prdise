@@ -247,6 +247,14 @@ export async function updateStay(formData: FormData): Promise<ActionResult> {
     check_out_time: formData.get("check_out_time") ?? "",
     cancellation_policy: formData.get("cancellation_policy") ?? "",
     house_rules: formData.get("house_rules") ?? "",
+    // PM 2026-07-28: policy/rules bilingües. Fix a bug: antes updateStay
+    // solo escribía estos campos en el UPDATE si aparecían en `d`, pero
+    // nunca los leía del FormData → siempre quedaban vacíos al editar.
+    // Reportado por el PM cuando la política ES/EN se perdía al refrescar.
+    cancellation_policy_es: formData.get("cancellation_policy_es") ?? "",
+    cancellation_policy_en: formData.get("cancellation_policy_en") ?? "",
+    house_rules_es: formData.get("house_rules_es") ?? "",
+    house_rules_en: formData.get("house_rules_en") ?? "",
     experience_id: formData.get("experience_id") ?? "",
     stay_type: formData.get("stay_type") ?? "",
     stars: formData.get("stars") ?? "",

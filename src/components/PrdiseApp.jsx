@@ -1254,9 +1254,17 @@ function ContactSplitButton({ user, lang, service, color = "gold", className = "
       if (phone) fd.append("phone", phone);
       fd.append("message", message);
       // Best-effort: NO bloqueamos al usuario. Si falla el insert, el
-      // referral sigue abriendo wa.me/sms igual.
-      sbSubmitContact(fd).catch(() => {});
-    } catch { /* never break the referral flow */ }
+      // referral sigue abriendo wa.me/sms igual — pero LOGUEAMOS el fallo
+      // (antes se tragaba con .catch(() => {}) y perdíamos leads sin
+      // rastro). El log queda en la consola del navegador; si el cliente
+      // reporta que "envió pero no aparece en el buzón", el error se ve.
+      // PM 2026-07-28: reemplazado silent catch por log explícito.
+      sbSubmitContact(fd)
+        .then((res) => {
+          if (!res?.ok) console.error("Referral contact submit failed:", res?.error);
+        })
+        .catch((err) => console.error("Referral contact submit exception:", err));
+    } catch (err) { console.error("Referral flow error:", err); }
     // Abrimos el canal. WhatsApp en nueva pestaña; SMS dispara la app
     // nativa del SO (mejor en _self para mobile).
     if (channel === "whatsapp") {
@@ -3046,7 +3054,7 @@ function TransferQuickSearch() {
               </select>
             </div>
             <div className="transfer-quick-swap">
-              <button onClick={() => { const tmp = from; setFrom(to); setTo(tmp); }} title="Swap"
+              <button onClick={() => { const tmp = from; setFrom(to); setTo(tmp); }} title={lang === "es" ? "Intercambiar" : "Swap"}
                 style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,rgba(245,166,35,.12),rgba(239,108,43,.12))", border: "1.5px solid rgba(245,166,35,.3)", color: "var(--gold)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .25s", fontSize: 16, fontWeight: 700 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = "linear-gradient(135deg,var(--gold),var(--orange))"; e.currentTarget.style.color = "#fff"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "linear-gradient(135deg,rgba(245,166,35,.12),rgba(239,108,43,.12))"; e.currentTarget.style.color = "var(--gold)"; }}
@@ -3380,8 +3388,8 @@ function HotelsList() {
                 <div style={{ marginBottom: 14 }}>
                   <label className="panel-label">{t("priceRange")}</label>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <input className="f-in" type="number" placeholder="Min" value={filters.min} onChange={(e) => setFilters((f) => ({ ...f, min: e.target.value }))} />
-                    <input className="f-in" type="number" placeholder="Max" value={filters.max} onChange={(e) => setFilters((f) => ({ ...f, max: e.target.value }))} />
+                    <input className="f-in" type="number" placeholder={lang === "es" ? "Mín" : "Min"} value={filters.min} onChange={(e) => setFilters((f) => ({ ...f, min: e.target.value }))} />
+                    <input className="f-in" type="number" placeholder={lang === "es" ? "Máx" : "Max"} value={filters.max} onChange={(e) => setFilters((f) => ({ ...f, max: e.target.value }))} />
                   </div>
                 </div>
                 <button onClick={() => setFilters({ zones: [], types: [], min: "", max: "" })} className="cta-sec" style={{ width: "100%", justifyContent: "center", padding: "10px 0" }}>{t("clearAll")}</button>
@@ -6804,7 +6812,7 @@ function LoginPage() {
           <input
             type="email"
             className="f-in"
-            placeholder="your@email.com"
+            placeholder={lang === "es" ? "tu@correo.com" : "your@email.com"}
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             onKeyDown={(e) => e.key === "Enter" && document.getElementById("login-pwd")?.focus()}
@@ -10951,6 +10959,22 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                           onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
+                            // PM 2026-07-28: validar tipo + tamaño antes de
+                            // gastar el request al Storage. Antes: se subían
+                            // archivos vacíos (0 bytes) o no-imagen y la URL
+                            // quedaba como imagen rota en el catálogo.
+                            if (!file.type.startsWith("image/")) {
+                              toast({ type: "error", message: lang === "es" ? "El archivo debe ser una imagen." : "The file must be an image." });
+                              return;
+                            }
+                            if (file.size === 0) {
+                              toast({ type: "error", message: lang === "es" ? "El archivo está vacío." : "The file is empty." });
+                              return;
+                            }
+                            if (file.size > 8 * 1024 * 1024) {
+                              toast({ type: "error", message: lang === "es" ? "La imagen supera 8 MB." : "Image exceeds 8 MB." });
+                              return;
+                            }
                             try {
                               const sb = createClient();
                               const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
@@ -10958,6 +10982,12 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                               const { error: upErr } = await sb.storage.from("service-images").upload(path, file, { upsert: true, contentType: file.type });
                               if (upErr) { toast({ type: "error", message: (lang === "es" ? "Subida falló: " : "Upload failed: ") + upErr.message }); return; }
                               const { data } = sb.storage.from("service-images").getPublicUrl(path);
+                              // PM 2026-07-28: validar que la URL pública se
+                              // resolvió antes de pisar el state con undefined.
+                              if (!data?.publicUrl) {
+                                toast({ type: "error", message: lang === "es" ? "No se obtuvo la URL de la imagen." : "Could not get the image URL." });
+                                return;
+                              }
                               setEditingVehicle({ ...editingVehicle, image: data.publicUrl });
                               toast({ type: "success", message: lang === "es" ? "Foto cargada" : "Photo uploaded" });
                             } catch (err) {
@@ -16144,7 +16174,6 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const includesList = contentLang === "en" ? includesEN : includesES;
   const setIncludesList = contentLang === "en" ? setIncludesEN : setIncludesES;
   const [incInput, setIncInput] = useState("");
-  const [translating, setTranslating] = useState(false);
   // Partner (referral) — solo aplica a stays/tours
   const [partnerId, setPartnerId] = useState(it.partnerId || "");
   const [partnerUrl, setPartnerUrl] = useState(it.partnerUrl || "");
@@ -16207,57 +16236,8 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     []
   );
 
-  const autoTranslate = async () => {
-    // Collect all EN fields that have content
-    const fields = {};
-    if (nameEN) fields.name = nameEN;
-    if (descEN) fields.description = descEN;
-    if (storyEN) fields.story = storyEN;
-    if (areaEN) fields.area = areaEN;
-    if (experienceEN) fields.experience = experienceEN;
-    if (excerptEN) fields.excerpt = excerptEN;
-    if (bodyEN) fields.body = bodyEN;
-    if (notesTextEN) fields.notes = notesTextEN;
-    if (perfectFor.length) fields.perfectFor = perfectFor;
-    if (highlightsList.length) fields.highlights = highlightsList;
-
-    if (Object.keys(fields).length === 0) return;
-
-    setTranslating(true);
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 2000,
-          messages: [{
-            role: "user",
-            content: `Translate the following tourism content from English to Puerto Rican Spanish. Keep it natural, warm, and appealing for travelers. Return ONLY a JSON object with the same keys, translated values. Arrays should remain arrays with each item translated. Do not include any markdown formatting or backticks.\n\n${JSON.stringify(fields)}`
-          }]
-        })
-      });
-      const data = await response.json();
-      const text = data.content?.map(c => c.text || "").join("") || "";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
-
-      if (parsed.name) setNameES(parsed.name);
-      if (parsed.description) setDescES(parsed.description);
-      if (parsed.story) setStoryES(parsed.story);
-      if (parsed.area) setAreaES(parsed.area);
-      if (parsed.experience) setExperienceES(parsed.experience);
-      if (parsed.excerpt) setExcerptES(parsed.excerpt);
-      if (parsed.body) setBodyES(parsed.body);
-      // perfectFor and highlights stay in English (they're tags)
-
-      setContentLang("es");
-    } catch (err) {
-      console.error("Translation error:", err);
-      toast({ type: "error", message: "Translation failed. Please try again." });
-    }
-    setTranslating(false);
-  };
+  // PM 2026-07-28: auto-traducción con IA eliminada por decisión de negocio.
+  // El admin/empleado se encarga de cargar cada versión (ES/EN) manualmente.
 
   const langTabs = hasBilingual ? (
     <div style={{ marginBottom: 14 }}>

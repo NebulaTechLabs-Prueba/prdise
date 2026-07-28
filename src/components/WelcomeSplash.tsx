@@ -21,8 +21,17 @@ export default function WelcomeSplash() {
   // para evitar React error #418 (text/style mismatch entre SSR y client).
   // La animación arranca en useEffect (solo se ejecuta en client).
   const [progress, setProgress] = useState(0);
+  // PM 2026-07-28: leer idioma preferido del visitante desde localStorage
+  // (misma key que usa PRDISE.load("lang", ...) en el resto del app). Se
+  // hidrata en useEffect para no divergir SSR/CSR.
+  const [lang, setLang] = useState<"en" | "es">("en");
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem("prdise_lang");
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed === "es" || parsed === "en") setLang(parsed);
+    } catch {}
     if (startedAt === null) startedAt = Date.now();
     let raf: number | undefined;
     const tick = () => {
@@ -122,7 +131,7 @@ export default function WelcomeSplash() {
             marginTop: -8,
           }}
         >
-          Welcome to paradise
+          {lang === "es" ? "Bienvenido al paraíso" : "Welcome to paradise"}
         </p>
       </div>
     </div>
