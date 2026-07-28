@@ -2005,31 +2005,40 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .gallery-hero .inner{max-width:1240px;margin:0 auto;padding:30px 28px}
 .gallery-grid{display:grid;grid-template-columns:1fr;gap:6px;border-radius:18px;overflow:hidden;margin-top:20px}
 .gallery-grid img{width:100%;height:200px;object-fit:cover}
+/* PM 2026-07-28: cada celda es un <div .gallery-cell> con <FitImage>. La
+   celda tiene la altura que antes tenía el <img>; FitImage llena el 100%. */
+.gallery-grid .gallery-cell{width:100%;height:200px;position:relative;overflow:hidden}
 /* Adaptación según cantidad de imágenes — clases por count permiten que el
    grid llene el ancho disponible sin huecos visuales cuando hay 1-2 fotos. */
 @media(min-width:768px){
   .gallery-grid.gallery-grid--1{grid-template-columns:1fr;height:420px}
-  .gallery-grid.gallery-grid--1 img{height:100% !important}
+  .gallery-grid.gallery-grid--1 img,
+  .gallery-grid.gallery-grid--1 .gallery-cell{height:100% !important}
   .gallery-grid.gallery-grid--2{grid-template-columns:1fr 1fr;height:420px}
-  .gallery-grid.gallery-grid--2 img{height:100% !important}
-  /* PM 2026-07-10: layout de 3 imágenes reajustado. Antes usaba 2fr 1fr
-     con la primera imagen ocupando 2 filas — con imágenes de aspect
-     ratio distinto quedaba muy desbalanceado y con crops feos. Ahora 3
-     columnas iguales, más simétrico y predecible. object-position ligeramente
-     hacia arriba para preservar caras/sujetos en fotos verticales. */
+  .gallery-grid.gallery-grid--2 img,
+  .gallery-grid.gallery-grid--2 .gallery-cell{height:100% !important}
+  /* PM 2026-07-10: layout de 3 imágenes reajustado. */
   .gallery-grid.gallery-grid--3{grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto;height:360px}
-  .gallery-grid.gallery-grid--3 img{height:100% !important;object-position:center 40%}
+  .gallery-grid.gallery-grid--3 img,
+  .gallery-grid.gallery-grid--3 .gallery-cell{height:100% !important}
   .gallery-grid.gallery-grid--4,
   .gallery-grid.gallery-grid--5{grid-template-columns:2fr 1fr 1fr;grid-template-rows:1fr 1fr;height:420px}
   .gallery-grid.gallery-grid--4 img,
-  .gallery-grid.gallery-grid--5 img{height:100% !important}
+  .gallery-grid.gallery-grid--4 .gallery-cell,
+  .gallery-grid.gallery-grid--5 img,
+  .gallery-grid.gallery-grid--5 .gallery-cell{height:100% !important}
   .gallery-grid.gallery-grid--4 img:first-child,
-  .gallery-grid.gallery-grid--5 img:first-child{grid-row:span 2}
+  .gallery-grid.gallery-grid--4 .gallery-cell:first-child,
+  .gallery-grid.gallery-grid--5 img:first-child,
+  .gallery-grid.gallery-grid--5 .gallery-cell:first-child{grid-row:span 2}
 }
 @media(max-width:767px){
   .gallery-grid.gallery-grid--1 img,
-  .gallery-grid.gallery-grid--2 img{height:auto;max-height:380px}
-  .gallery-grid img:nth-child(n+3){display:none}
+  .gallery-grid.gallery-grid--1 .gallery-cell,
+  .gallery-grid.gallery-grid--2 img,
+  .gallery-grid.gallery-grid--2 .gallery-cell{height:auto;min-height:260px;max-height:380px}
+  .gallery-grid img:nth-child(n+3),
+  .gallery-grid .gallery-cell:nth-child(n+3){display:none}
 }
 
 .booking-box{position:sticky;top:90px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:24px;overflow:visible;position:relative}
@@ -2194,7 +2203,7 @@ select.f-in option{background:var(--ink);color:#fff}
 .veh-row{display:grid;grid-template-columns:1fr;gap:20px;padding:22px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);transition:border-color .3s;align-items:center;margin-bottom:14px}
 @media(min-width:768px){.veh-row{grid-template-columns:auto 1fr auto}}
 .veh-row:hover{border-color:rgba(245,166,35,.3)}
-.veh-pic{width:130px;height:110px;border-radius:18px;background:linear-gradient(135deg,rgba(255,255,255,.06),rgba(255,255,255,.02));display:flex;align-items:center;justify-content:center;margin:0 auto}
+.veh-pic{width:130px;height:110px;border-radius:18px;background:linear-gradient(135deg,rgba(255,255,255,.06),rgba(255,255,255,.02));display:flex;align-items:center;justify-content:center;margin:0 auto;overflow:hidden;position:relative}
 .veh-pic svg{width:72px;height:72px;color:var(--gold);opacity:.85}
 .veh-info h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.04em;margin-bottom:6px}
 .veh-info p.desc{font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;line-height:1.5}
@@ -2778,22 +2787,56 @@ function Collapsible({ title, icon: Icon, defaultOpen = false, children, accent 
 // Se usa en cards de tours / aliados / news donde antes <img> con src vacía
 // dejaba un cuadrado negro sin contexto. La imagen NUNCA se monta si src no
 // existe (evita pedido HTTP roto y el "alt text feo" visible).
+//
+// PM 2026-07-28: patrón "fit + blur backdrop". Antes usaba object-fit: cover
+// y las imágenes se recortaban (sujeto quedaba fuera del marco). Ahora la
+// imagen se muestra COMPLETA y CENTRADA (object-fit: contain) sobre un fondo
+// desenfocado de la misma imagen — el marco siempre queda lleno sin bandas
+// negras y sin cortar contenido. Es lo que hacen Netflix / YouTube /
+// Instagram Stories cuando cargas fotos que no encajan en el aspect ratio.
 function MediaImg({ src, alt, className, style, label }) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const showPlaceholder = !src || errored;
   return (
-    <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(255,255,255,.04)", ...(style || {}) }}>
+    <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(0,0,0,.35)", ...(style || {}) }}>
       {!showPlaceholder && !loaded && (
         <div className="media-skeleton" aria-hidden="true" />
       )}
+      {/* Backdrop: misma foto en cover + blur para llenar el marco sin bandas. */}
+      {!showPlaceholder && (
+        <img
+          src={src}
+          alt=""
+          aria-hidden="true"
+          onError={() => setErrored(true)}
+          style={{
+            position: "absolute", inset: 0,
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            filter: "blur(24px) brightness(.6) saturate(1.2)",
+            transform: "scale(1.15)",
+            opacity: loaded ? 1 : 0,
+            transition: "opacity .3s ease",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {/* Foreground: foto completa centrada, sin recorte. */}
       {!showPlaceholder && (
         <img
           src={src}
           alt={alt || ""}
           onLoad={() => setLoaded(true)}
           onError={() => setErrored(true)}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: loaded ? 1 : 0, transition: "opacity .25s ease" }}
+          style={{
+            position: "relative", zIndex: 1,
+            width: "100%", height: "100%",
+            objectFit: "contain",
+            display: "block",
+            opacity: loaded ? 1 : 0,
+            transition: "opacity .25s ease",
+          }}
         />
       )}
       {showPlaceholder && (
@@ -2802,6 +2845,44 @@ function MediaImg({ src, alt, className, style, label }) {
           {label && <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "center", maxWidth: "90%", lineHeight: 1.3 }}>{label}</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+// PM 2026-07-28: variante ligera del patrón fit + blur para los pocos lugares
+// donde la card usa un <img> directo (galería del detail page, cover del
+// vehículo). Recibe src y renderiza el mismo marco lleno sin recortes.
+function FitImage({ src, alt, style, className }) {
+  if (!src) {
+    return (
+      <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(255,255,255,.04)", ...(style || {}) }} />
+    );
+  }
+  return (
+    <div className={className} style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", background: "rgba(0,0,0,.35)", ...(style || {}) }}>
+      <img
+        src={src}
+        alt=""
+        aria-hidden="true"
+        style={{
+          position: "absolute", inset: 0,
+          width: "100%", height: "100%",
+          objectFit: "cover",
+          filter: "blur(24px) brightness(.6) saturate(1.2)",
+          transform: "scale(1.15)",
+          pointerEvents: "none",
+        }}
+      />
+      <img
+        src={src}
+        alt={alt || ""}
+        style={{
+          position: "relative", zIndex: 1,
+          width: "100%", height: "100%",
+          objectFit: "contain",
+          display: "block",
+        }}
+      />
     </div>
   );
 }
@@ -3741,7 +3822,9 @@ function HotelDetail({ params }) {
         <div className="inner">
 
           <div className={`gallery-grid gallery-grid--${imgs.length}`}>
-            {imgs.map((src, i) => <img key={i} src={src} alt={hotel.name} />)}
+            {imgs.map((src, i) => (
+              <div key={i} className="gallery-cell"><FitImage src={src} alt={hotel.name} /></div>
+            ))}
           </div>
         </div>
       </section>
@@ -4134,7 +4217,9 @@ function TourDetail({ params }) {
         <div className="inner">
 
           <div className={`gallery-grid gallery-grid--${imgs.length}`}>
-            {imgs.map((src, i) => <img key={i} src={src} alt={tour.name} />)}
+            {imgs.map((src, i) => (
+              <div key={i} className="gallery-cell"><FitImage src={src} alt={tour.name} /></div>
+            ))}
           </div>
         </div>
       </section>
@@ -5145,9 +5230,14 @@ function TransferResultsPage() {
                     )}
                     {/* PM 2026-07-09: si el vehículo tiene foto cargada,
                         se usa como thumbnail. Fallback al ícono SVG por
-                        tipo. */}
-                    <div className="veh-pic" style={v.image ? { backgroundImage: `url(${v.image})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>
-                      {!v.image && VEHICLE_ICONS[v.id]}
+                        tipo.
+                        PM 2026-07-28: patrón fit + blur — la foto se ve
+                        completa (nunca recorta la cabeza del auto) sobre
+                        el mismo bg desenfocado. */}
+                    <div className="veh-pic">
+                      {v.image
+                        ? <FitImage src={v.image} alt={v.name} style={{ borderRadius: 18 }} />
+                        : VEHICLE_ICONS[v.id]}
                     </div>
                     <div className="veh-info">
                       <h3>{v.name}</h3>
@@ -19934,9 +20024,9 @@ function BlogArchive() {
                     onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = "rgba(255,255,255,.06)"; }}
                   >
                     <div style={{ height: 180, overflow: "hidden", position: "relative" }}>
-                      <img src={img} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      <span style={{ position: "absolute", top: 12, left: 12, fontSize: 9, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 99, background: catColor, color: "#0c1318" }}>{p.category}</span>
-                      {p.featured && <span style={{ position: "absolute", top: 12, right: 12, fontSize: 9, fontWeight: 800, padding: "4px 8px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff" }}>★</span>}
+                      <FitImage src={img} alt={p.title} />
+                      <span style={{ position: "absolute", top: 12, left: 12, zIndex: 2, fontSize: 9, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 99, background: catColor, color: "#0c1318" }}>{p.category}</span>
+                      {p.featured && <span style={{ position: "absolute", top: 12, right: 12, zIndex: 2, fontSize: 9, fontWeight: 800, padding: "4px 8px", borderRadius: 99, background: "linear-gradient(135deg,var(--gold),var(--orange))", color: "#fff" }}>★</span>}
                     </div>
                     <div style={{ padding: "16px 20px 20px" }}>
                       <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginBottom: 6 }}>{p.date} · {p.author}</div>
@@ -19964,8 +20054,8 @@ function BlogArchive() {
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(245,166,35,.2)"; e.currentTarget.style.background = "rgba(255,255,255,.05)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,.06)"; e.currentTarget.style.background = "rgba(255,255,255,.03)"; }}
                   >
-                    <div style={{ width: 120, height: 80, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-                      <img src={img} alt={p.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <div style={{ width: 120, height: 80, borderRadius: 10, overflow: "hidden", flexShrink: 0, position: "relative" }}>
+                      <FitImage src={img} alt={p.title} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -20024,8 +20114,8 @@ function PostDetail({ params }) {
     <>
       {/* Hero Banner */}
       <div style={{ position: "relative", height: "clamp(280px, 40vh, 420px)", overflow: "hidden" }}>
-        <img src={coverImg} alt={post.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(14,24,36,0) 20%,rgba(14,24,36,.6) 60%,rgba(14,24,36,.97) 100%)" }} />
+        <FitImage src={coverImg} alt={post.title} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(14,24,36,0) 20%,rgba(14,24,36,.6) 60%,rgba(14,24,36,.97) 100%)", zIndex: 2 }} />
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "40px clamp(20px,5vw,80px) 36px" }}>
           <div style={{ maxWidth: 800 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
