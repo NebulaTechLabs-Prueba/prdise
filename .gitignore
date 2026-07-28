@@ -97,3 +97,12 @@ desktop.ini
 /scripts/sanitize-partners-table.mjs
 /scripts/apply-experiences-migration.mjs
 /scripts/strip-tours-structured-meta.mjs
+
+# E2E artefactos (temporales de Playwright)
+_shots/
+_e2e*.mjs
+_e2e*.out.json
+_splash.mjs
+_cleanup.mjs
+_rt.out.json
+_adm.out.json
