@@ -335,6 +335,14 @@ const tourBaseSchema = z.object({
   // PM 2026-07-10: día(s) en que opera el tour. Texto libre editable
   // por el admin (ej. "Sábados", "Fines de semana", "Diario").
   operating_day: optionalText(120, "Día de operación"),
+  // PM 2026-07-27: contenido extendido persistido en DB (antes vivía en
+  // memoria y se perdía al refrescar).
+  experience_es: optionalText(8000, "La experiencia (ES)"),
+  experience_en: optionalText(8000, "La experiencia (EN)"),
+  important_notes_es: optionalText(2000, "Notas importantes (ES)"),
+  important_notes_en: optionalText(2000, "Notas importantes (EN)"),
+  perfect_for: stringArraySchema.default([]),
+  highlights: stringArraySchema.default([]),
   includes: stringArraySchema.default([]),
   images: imageUrlArraySchema.default([]),
   location: optionalText(200, "Ubicación"),

@@ -381,6 +381,13 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     difficulty: formData.get("difficulty") ?? "",
     meeting_point: formData.get("meeting_point") ?? "",
     operating_day: formData.get("operating_day") ?? "",
+    // PM 2026-07-27: contenido extendido persistido.
+    experience_es: formData.get("experience_es") ?? "",
+    experience_en: formData.get("experience_en") ?? "",
+    important_notes_es: formData.get("important_notes_es") ?? "",
+    important_notes_en: formData.get("important_notes_en") ?? "",
+    perfect_for: readListField(formData, "perfect_for"),
+    highlights: readListField(formData, "highlights"),
     includes: readListField(formData, "includes"),
     images: readListField(formData, "images"),
     location: formData.get("location") ?? "",
@@ -414,6 +421,13 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       // generados no incluyen la columna hasta regenerar tras la
       // migración 20260710000000).
       operating_day: ((d as { operating_day?: string }).operating_day || null) as never,
+      // PM 2026-07-27: contenido extendido persistido en DB.
+      experience_es: (((d as { experience_es?: string }).experience_es) || null) as never,
+      experience_en: (((d as { experience_en?: string }).experience_en) || null) as never,
+      important_notes_es: (((d as { important_notes_es?: string }).important_notes_es) || null) as never,
+      important_notes_en: (((d as { important_notes_en?: string }).important_notes_en) || null) as never,
+      perfect_for: ((d as { perfect_for?: string[] }).perfect_for ?? []) as never,
+      highlights: ((d as { highlights?: string[] }).highlights ?? []) as never,
       slug: d.slug,
       title_es: d.title_es,
       title_en: d.title_en || null,
@@ -485,6 +499,13 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     difficulty: formData.get("difficulty") ?? "",
     meeting_point: formData.get("meeting_point") ?? "",
     operating_day: formData.get("operating_day") ?? "",
+    // PM 2026-07-27: contenido extendido persistido.
+    experience_es: formData.get("experience_es") ?? "",
+    experience_en: formData.get("experience_en") ?? "",
+    important_notes_es: formData.get("important_notes_es") ?? "",
+    important_notes_en: formData.get("important_notes_en") ?? "",
+    perfect_for: readListField(formData, "perfect_for"),
+    highlights: readListField(formData, "highlights"),
     includes: readListField(formData, "includes"),
     images: readListField(formData, "images"),
     location: formData.get("location") ?? "",

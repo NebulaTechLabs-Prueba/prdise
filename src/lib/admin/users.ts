@@ -268,6 +268,66 @@ export async function updateUserRole(
   return { ok: true };
 }
 
+// PM 2026-07-27: acción dedicada para actualizar department + position
+// del profile de un empleado. Antes esos campos se enviaban solo al
+// CREAR (createEmployeeAccount) pero al editar quedaban sin persistir
+// — el admin editaba y al refrescar volvían al valor viejo.
+const updateEmployeeProfileSchema = z.object({
+  targetUserId: z.string().uuid("ID de usuario inválido"),
+  department: z.string().trim().max(80).optional().or(z.literal("")),
+  position: z.string().trim().max(80).optional().or(z.literal("")),
+});
+
+export async function updateEmployeeProfile(
+  formData: FormData
+): Promise<ActionResult> {
+  const guard = await getAdminOrError();
+  if (!guard.ok) return guard;
+
+  const parsed = updateEmployeeProfileSchema.safeParse({
+    targetUserId: formData.get("targetUserId"),
+    department: formData.get("department") ?? "",
+    position: formData.get("position") ?? "",
+  });
+  if (!parsed.success) {
+    return { ok: false, error: firstZodError(parsed.error) };
+  }
+
+  const { targetUserId, department, position } = parsed.data;
+  const actorId = guard.current.user.id;
+
+  const admin = createAdminClient();
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("id, department, position")
+    .eq("id", targetUserId)
+    .single();
+
+  if (!target) return { ok: false, error: "El usuario no existe." };
+
+  const { error: updErr } = await admin
+    .from("profiles")
+    .update({
+      department: department || null,
+      position: position || null,
+    })
+    .eq("id", targetUserId);
+
+  if (updErr) {
+    return { ok: false, error: `No se pudo actualizar el perfil: ${updErr.message}` };
+  }
+
+  await writeAuditLog(actorId, "user.update_profile", "user", targetUserId, {
+    department_from: target.department,
+    department_to: department || null,
+    position_from: target.position,
+    position_to: position || null,
+  });
+
+  return { ok: true };
+}
+
 // ─── toggleUserStatus ───────────────────────────────────────────────────────
 
 /**

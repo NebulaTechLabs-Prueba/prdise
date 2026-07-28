@@ -119,6 +119,7 @@ import {
   listAllUsers as sbListAllUsers,
   updateUserRole as sbUpdateUserRole,
   createEmployeeAccount as sbCreateEmployeeAccount,
+  updateEmployeeProfile as sbUpdateEmployeeProfile,
   toggleUserStatus as sbToggleUserStatus,
 } from "@/lib/admin/users";
 import {
@@ -389,6 +390,16 @@ function mapTourToTour(t) {
     // sección "Punto de encuentro" del detail page quedaba sin data
     // aunque el admin lo cargara.
     meetingPoint: t.meeting_point || "",
+    // PM 2026-07-27: contenido extendido persistido (antes vivía en
+    // TOUR_ABOUT memoria y se perdía al refrescar).
+    experienceES: t.experience_es || "",
+    experienceEN: t.experience_en || "",
+    experience: t.experience_en || t.experience_es || "",
+    importantNotesES: t.important_notes_es || "",
+    importantNotesEN: t.important_notes_en || "",
+    importantNotes: t.important_notes_en || t.important_notes_es || "",
+    perfectFor: Array.isArray(t.perfect_for) ? t.perfect_for : [],
+    highlights: Array.isArray(t.highlights) ? t.highlights : [],
     color: t.featured ? "gold" : "green",
     location: t.location || "",
     lat: Number(t.lat) || 0,
@@ -4135,41 +4146,45 @@ function TourDetail({ params }) {
                   body/bodyES/bodyEN). Si no hay body, cae al short desc
                   para no dejar la sección vacía. Si tampoco hay desc,
                   se oculta la sección entera. */}
+              {/* PM 2026-07-27: leemos los campos extendidos desde el
+                  propio tour (persistidos en DB). TOUR_ABOUT[tour.id]
+                  queda como cache espejo por compat, se consulta solo
+                  si el tour no expone los campos aún. */}
               {(() => {
                 const bodyText = L(tour.body, tour.bodyES) || L(tour.desc, tour.descES);
-                if (!bodyText && !TOUR_ABOUT[tour.id]) return null;
+                const legacyAbout = TOUR_ABOUT[tour.id] || {};
+                const experienceText = L(tour.experienceEN, tour.experienceES) || L(legacyAbout.experience, legacyAbout.experienceES);
+                const notesText = L(tour.importantNotesEN, tour.importantNotesES) || legacyAbout.notes;
+                const highlightsArr = (Array.isArray(tour.highlights) && tour.highlights.length ? tour.highlights : legacyAbout.highlights) || [];
+                if (!bodyText && !experienceText && !notesText && highlightsArr.length === 0) return null;
                 return (
                   <div className="detail-section">
                     <h3>{t("aboutThisTour")}</h3>
                     {bodyText && <p style={{ whiteSpace: "pre-wrap" }}>{bodyText}</p>}
-                    {TOUR_ABOUT[tour.id] && (
+                    {experienceText && (
                       <>
-                        {TOUR_ABOUT[tour.id].experience && (
-                          <>
-                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 8 }}>{t("theExperience")}</h4>
-                            <p style={{ whiteSpace: "pre-wrap" }}>{L(TOUR_ABOUT[tour.id].experience, TOUR_ABOUT[tour.id].experienceES)}</p>
-                          </>
-                        )}
-                        {(TOUR_ABOUT[tour.id].highlights || []).length > 0 && (
-                          <>
-                            <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 10 }}>{t("highlights")}</h4>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8, marginBottom: 14 }}>
-                              {TOUR_ABOUT[tour.id].highlights.map((h, i) => (
-                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,.7)" }}>
-                                  <Sparkles style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
-                                  <span>{h}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                        {TOUR_ABOUT[tour.id].notes && (
-                          <div style={{ padding: 14, borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)", display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8 }}>
-                            <Info style={{ width: 15, height: 15, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
-                            <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.65 }}>{TOUR_ABOUT[tour.id].notes}</p>
-                          </div>
-                        )}
+                        <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 8 }}>{t("theExperience")}</h4>
+                        <p style={{ whiteSpace: "pre-wrap" }}>{experienceText}</p>
                       </>
+                    )}
+                    {highlightsArr.length > 0 && (
+                      <>
+                        <h4 style={{ fontFamily: "Bebas Neue", fontSize: 15, letterSpacing: ".08em", color: "#fff", marginTop: 20, marginBottom: 10 }}>{t("highlights")}</h4>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 8, marginBottom: 14 }}>
+                          {highlightsArr.map((h, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,.7)" }}>
+                              <Sparkles style={{ width: 13, height: 13, color: "var(--gold)", flexShrink: 0 }} />
+                              <span>{h}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {notesText && (
+                      <div style={{ padding: 14, borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)", display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8 }}>
+                        <Info style={{ width: 15, height: 15, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
+                        <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.65 }}>{notesText}</p>
+                      </div>
                     )}
                   </div>
                 );
@@ -15464,6 +15479,13 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("meeting_point", ownedUpdate.meetingPoint || "");
               // PM 2026-07-10: día(s) de operación del tour.
               fd.append("operating_day", ownedUpdate.day || "");
+              // PM 2026-07-27: contenido extendido — persistir en DB.
+              fd.append("experience_es", ownedUpdate.experienceES || "");
+              fd.append("experience_en", ownedUpdate.experienceEN || "");
+              fd.append("important_notes_es", ownedUpdate.importantNotesES || "");
+              fd.append("important_notes_en", ownedUpdate.importantNotesEN || "");
+              fd.append("perfect_for", JSON.stringify(Array.isArray(ownedUpdate.perfectFor) ? ownedUpdate.perfectFor : []));
+              fd.append("highlights", JSON.stringify(Array.isArray(ownedUpdate.highlights) ? ownedUpdate.highlights : []));
               fd.append("featured", ownedUpdate.featured ? "true" : "false");
               // Tour "hidden" debe desactivar el tour para que no salga en el
               // catálogo público (RLS activeOnly). "draft" idem.
@@ -15613,6 +15635,19 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   if (newCustomRoleId) fdCR.append("role_id", newCustomRoleId);
                   const r2 = await sbAssignCustomRoleToUser(fdCR);
                   if (!r2?.ok) saveResult = r2;
+                }
+                // PM 2026-07-27: department + position al editar. Antes
+                // solo se enviaban al crear; en edición se perdían al
+                // refrescar.
+                const deptChanged = (ownedUpdate.department || "") !== (original.department || "");
+                const posChanged = (ownedUpdate.position || "") !== (original.position || "");
+                if (saveResult.ok && (deptChanged || posChanged)) {
+                  const fdP = new FormData();
+                  fdP.append("targetUserId", targetUserId);
+                  fdP.append("department", ownedUpdate.department || "");
+                  fdP.append("position", ownedUpdate.position || "");
+                  const r3 = await sbUpdateEmployeeProfile(fdP);
+                  if (!r3?.ok) saveResult = r3;
                 }
               }
             }
@@ -15854,12 +15889,23 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   const [storyES, setStoryES] = useState((it.bodyES != null && it.bodyES !== "" ? it.bodyES : about.storyES) || "");
   const [areaEN, setAreaEN] = useState(about.area || "");
   const [areaES, setAreaES] = useState(about.areaES || "");
-  const [experienceEN, setExperienceEN] = useState(about.experience || "");
-  const [experienceES, setExperienceES] = useState(about.experienceES || "");
-  const [notesText, setNotesText] = useState(about.notes || "");
-  const [perfectFor, setPerfectFor] = useState(about.perfectFor || []);
+  // PM 2026-07-27: contenido extendido — se inicializa preferente-mente
+  // desde el propio item (mapeado de DB), con fallback a TOUR_ABOUT/
+  // STAY_ABOUT que ya solo aplica a legacy en memoria. Antes solo leían
+  // de about, entonces se perdía todo al refrescar la página.
+  const [experienceEN, setExperienceEN] = useState((it.experienceEN != null ? it.experienceEN : about.experience) || "");
+  const [experienceES, setExperienceES] = useState((it.experienceES != null ? it.experienceES : about.experienceES) || "");
+  // Notas importantes ahora bilingüe (antes era un solo string, se
+  // sobrescribía entre pestañas).
+  const [notesTextEN, setNotesTextEN] = useState((it.importantNotesEN != null ? it.importantNotesEN : about.notes) || "");
+  const [notesTextES, setNotesTextES] = useState((it.importantNotesES != null ? it.importantNotesES : "") || "");
+  const [perfectFor, setPerfectFor] = useState(
+    Array.isArray(it.perfectFor) && it.perfectFor.length ? it.perfectFor : (about.perfectFor || [])
+  );
   const [pfInput, setPfInput] = useState("");
-  const [highlightsList, setHighlightsList] = useState(about.highlights || []);
+  const [highlightsList, setHighlightsList] = useState(
+    Array.isArray(it.highlights) && it.highlights.length ? it.highlights : (about.highlights || [])
+  );
   const [hlInput, setHlInput] = useState("");
   const [translating, setTranslating] = useState(false);
   // Partner (referral) — solo aplica a stays/tours
@@ -15885,6 +15931,11 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // PM 2026-06-23: descripción corta bilingüe + pricing_mode.
   const [routeDescES, setRouteDescES] = useState(it.descES || "");
   const [routeDescEN, setRouteDescEN] = useState(it.descEN || "");
+  // PM 2026-07-27: Department + Position controlados. Antes eran
+  // defaultValue no controlado y al EDITAR (no crear) no se enviaban
+  // al server — al refrescar volvían al valor viejo.
+  const [empDepartment, setEmpDepartment] = useState(it.department || "");
+  const [empPosition, setEmpPosition] = useState(it.position || "");
   const [routePricingMode, setRoutePricingMode] = useState(it.pricingMode || "route_price");
   // Pricing mixto + categoría (PM 2026-06-10): aplica a stays/tours/route.
   const defaultPricingUnit = type === "hotel" ? "per_night" : type === "tour" ? "per_person" : "per_unit";
@@ -15929,7 +15980,7 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
     if (experienceEN) fields.experience = experienceEN;
     if (excerptEN) fields.excerpt = excerptEN;
     if (bodyEN) fields.body = bodyEN;
-    if (notesText) fields.notes = notesText;
+    if (notesTextEN) fields.notes = notesTextEN;
     if (perfectFor.length) fields.perfectFor = perfectFor;
     if (highlightsList.length) fields.highlights = highlightsList;
 
@@ -16353,16 +16404,30 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       updated.bodyES = storyES || "";
       updated.bodyEN = storyEN || "";
       updated.body = storyES || storyEN || "";
+      // PM 2026-07-27: TOUR_ABOUT queda como cache espejo en memoria por
+      // compat con lugares que aún lo consultan; los datos reales viven
+      // ahora en las columnas del propio tour (experience_es/en,
+      // important_notes_es/en, perfect_for, highlights). El save de abajo
+      // manda los 6 campos al server para que persistan.
       if (storyEN || experienceEN || perfectFor.length || highlightsList.length) {
         TOUR_ABOUT[updated.id] = {
           ...(TOUR_ABOUT[updated.id] || {}),
           story: storyEN, storyES: storyES,
           experience: experienceEN, experienceES: experienceES,
-          notes: notesText,
+          notes: notesTextEN,
+          notesES: notesTextES,
           perfectFor: perfectFor,
           highlights: highlightsList,
         };
       }
+      // Extender el updated para que el flujo de save del padre reciba
+      // los campos nuevos y los pueda mandar por FormData.
+      updated.experienceEN = experienceEN;
+      updated.experienceES = experienceES;
+      updated.importantNotesEN = notesTextEN;
+      updated.importantNotesES = notesTextES;
+      updated.perfectFor = perfectFor;
+      updated.highlights = highlightsList;
     }
     // Post-specific
     if (type === "post") {
@@ -16449,6 +16514,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // de guardar la lista admin mostraba el base hasta refrescar.
       const effCents = applyMarkupCents(baseCents, mtype, mvalue);
       updated.price = Math.round(effCents / 100);
+    }
+
+    // PM 2026-07-27: user editor — persistir department + position al
+    // updated para que el flujo de save (create o edit) los envíe al
+    // server. Antes solo se leían al crear vía defaultValue.
+    if (type === "user") {
+      updated.department = empDepartment.trim();
+      updated.position = empPosition.trim();
     }
 
     // New items need an ID. Para stays/tours el slug se deriva del nombre
@@ -16709,7 +16782,15 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
               </div>
               <div className="adm-fg">
                 <label className="adm-fl">{contentLang === "en" ? "Important Notes" : "Notas Importantes"}</label>
-                <textarea className="adm-fi" rows={2} value={notesText} onChange={(e) => setNotesText(e.target.value)} placeholder={contentLang === "en" ? "e.g. This tour runs rain or shine. Best visibility Nov–Apr..." : "ej. Este tour opera llueva o haga sol..."} style={{ resize: "vertical", minHeight: 50 }} />
+                {/* PM 2026-07-27: notas importantes bilingües (antes era
+                    un solo string y se sobreescribía entre pestañas). */}
+                <textarea
+                  className="adm-fi" rows={2}
+                  value={contentLang === "en" ? notesTextEN : notesTextES}
+                  onChange={(e) => { if (contentLang === "en") setNotesTextEN(e.target.value); else setNotesTextES(e.target.value); }}
+                  placeholder={contentLang === "en" ? "e.g. This tour runs rain or shine. Best visibility Nov–Apr..." : "ej. Este tour opera llueva o haga sol..."}
+                  style={{ resize: "vertical", minHeight: 50 }}
+                />
               </div>
               <div className="adm-fg">
                 <label className="adm-fl">{contentLang === "en" ? "Perfect For" : "Ideal Para"}</label>
@@ -16851,8 +16932,8 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                 : "The custom role (if assigned) grants additional admin permissions over the base role. Configure roles in Settings → Roles."}
             </p>
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">Department</label><input className="adm-fi" defaultValue={it.department || ""} /></div>
-              <div className="adm-fg"><label className="adm-fl">Position</label><input className="adm-fi" defaultValue={it.position || ""} /></div>
+              <div className="adm-fg"><label className="adm-fl">Department</label><input className="adm-fi" value={empDepartment} onChange={(e) => setEmpDepartment(e.target.value)} /></div>
+              <div className="adm-fg"><label className="adm-fl">Position</label><input className="adm-fi" value={empPosition} onChange={(e) => setEmpPosition(e.target.value)} /></div>
             </div>
           </>
         )}
