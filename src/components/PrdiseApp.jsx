@@ -9743,7 +9743,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               ) : (
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang==="es"?"Número":"Number"}</th><th>{lang==="es"?"Cliente":"Customer"}</th><th>Total</th><th>Status</th><th>{lang==="es"?"Emitida":"Issued"}</th></tr></thead>
+                    <thead><tr><th>{lang==="es"?"Número":"Number"}</th><th>{lang==="es"?"Cliente":"Customer"}</th><th>Total</th><th>{lang==="es"?"Estado":"Status"}</th><th>{lang==="es"?"Emitida":"Issued"}</th></tr></thead>
                     <tbody>
                       {(invoices || []).slice(0, 6).map((inv) => (
                         <tr key={inv.id} style={{ cursor: "pointer" }} onClick={() => setSection("invoices")}>
@@ -10264,8 +10264,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         <th>{lang === "es" ? "Color" : "Color"}</th>
                         <th>{lang === "es" ? "Posts" : "Posts"}</th>
                         <th>{lang === "es" ? "Orden" : "Order"}</th>
-                        <th>Status</th>
-                        <th style={{ textAlign: "right" }}>Actions</th>
+                        <th>{lang==="es"?"Estado":"Status"}</th>
+                        <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
                       </tr></thead>
                       <tbody>
                         {postCategoriesList.length === 0 ? (
@@ -10418,8 +10418,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       <th>Author</th>
                       <th>Date</th>
                       <th>Views</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: "right" }}>Actions</th>
+                      <th>{lang==="es"?"Estado":"Status"}</th>
+                      <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -10652,8 +10652,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       <th>{lang==="es"?"Precio base":"Base price"}</th>
                       <th>{lang==="es"?"Distancia / Duración":"Distance / Duration"}</th>
                       <th>{lang==="es"?"Popular":"Featured"}</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: "right" }}>Actions</th>
+                      <th>{lang==="es"?"Estado":"Status"}</th>
+                      <th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th>
                     </tr></thead>
                     <tbody>
                       {routes.length === 0 && (
@@ -10757,7 +10757,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                       <th>{lang === "es" ? "Etiqueta (EN)" : "Label (EN)"}</th>
                       <th>{lang === "es" ? "Clave técnica" : "Tech key"}</th>
                       <th style={{ width: 80 }}>{lang === "es" ? "Orden" : "Order"}</th>
-                      <th style={{ width: 90 }}>Status</th>
+                      <th style={{ width: 90 }}>{lang==="es"?"Estado":"Status"}</th>
                       <th style={{ textAlign: "right", width: 100 }}>{lang === "es" ? "Acciones" : "Actions"}</th>
                     </tr></thead>
                     <tbody>
@@ -10806,7 +10806,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </div>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Placa":"Plate"}</th><th>{lang==="es"?"Capacidad":"Capacity"}</th><th>{lang==="es"?"Maletas":"Bags"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>{lang==="es"?"Precio Base":"Base Price"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+                    <thead><tr><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Placa":"Plate"}</th><th>{lang==="es"?"Capacidad":"Capacity"}</th><th>{lang==="es"?"Maletas":"Bags"}</th><th>{lang==="es"?"Conductor":"Driver"}</th><th>{lang==="es"?"Precio Base":"Base Price"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>{lang==="es"?"Estado":"Status"}</th><th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th></tr></thead>
                     <tbody>
                       {vehicles.length === 0 && (
                         <tr><td colSpan={9} style={{ padding: 0 }}>
@@ -11136,7 +11136,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 </p>
                 <div className="adm-tbl-wrap">
                   <table className="adm-tbl">
-                    <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Contacto":"Contact"}</th><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>{lang==="es"?"Calificación":"Rating"}</th><th>Web</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+                    <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Contacto":"Contact"}</th><th>{lang==="es"?"Vehículo":"Vehicle"}</th><th>{lang==="es"?"Viajes":"Trips"}</th><th>{lang==="es"?"Calificación":"Rating"}</th><th>Web</th><th>{lang==="es"?"Estado":"Status"}</th><th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th></tr></thead>
                     <tbody>
                       {drivers.length === 0 && (
                         <tr><td colSpan={8} style={{ padding: 0 }}>
@@ -13789,7 +13789,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
             <div className="adm-ph">
               <div>
                 <h1>{lang==="es"?"CONFIGURACIÓN":"SYSTEM"} <em>{lang==="es"?"DEL SISTEMA":"SETTINGS"}</em></h1>
-                <p className="sub">Configure your platform</p>
+                <p className="sub">{lang==="es"?"Configura tu plataforma":"Configure your platform"}</p>
               </div>
             </div>
             <div className="adm-tabs">
@@ -13802,7 +13802,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               {/* Tab "Roles" eliminada (PM 2026-06-10): los Roles
                   Personalizados ahora viven dentro de "Usuarios y Roles" para
                   evitar dos secciones que parecen lo mismo. */}
-              <button className={`adm-tab ${settingsTab === "authtools" ? "active" : ""}`} onClick={() => setSettingsTab("authtools")}><Lock />{lang === "es" ? "Auth Tools" : "Auth Tools"}</button>
+              <button className={`adm-tab ${settingsTab === "authtools" ? "active" : ""}`} onClick={() => setSettingsTab("authtools")}><Lock />{lang === "es" ? "Herramientas Auth" : "Auth Tools"}</button>
             </div>
 
         {settingsTab === "team" && (() => {
@@ -13867,7 +13867,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               <div className="adm-card-head"><div className="adm-card-title"><Users />{lang==="es"?"Cuentas de Empleados":"Employee Accounts"}</div></div>
               <div className="adm-tbl-wrap">
                 <table className="adm-tbl">
-                  <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Correo":"Email"}</th><th>{lang==="es"?"Rol":"Role"}</th><th>{lang==="es"?"Departamento":"Department"}</th><th>{lang==="es"?"Posición":"Position"}</th><th>{lang==="es"?"Ingreso":"Joined"}</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+                  <thead><tr><th>{lang==="es"?"Nombre":"Name"}</th><th>{lang==="es"?"Correo":"Email"}</th><th>{lang==="es"?"Rol":"Role"}</th><th>{lang==="es"?"Departamento":"Department"}</th><th>{lang==="es"?"Posición":"Position"}</th><th>{lang==="es"?"Ingreso":"Joined"}</th><th>{lang==="es"?"Estado":"Status"}</th><th style={{ textAlign: "right" }}>{lang==="es"?"Acciones":"Actions"}</th></tr></thead>
                   <tbody>
                     {/* PM 2026-06-25: solo STAFF en esta tabla — admin y users
                         con custom_role asignado. Los clientes regulares (role
@@ -18207,7 +18207,7 @@ function IntegrationsPanel() {
                     <th style={{ textAlign: "left" }}>{lang === "es" ? "Recibido" : "Received"}</th>
                     <th style={{ textAlign: "left" }}>Provider</th>
                     <th style={{ textAlign: "left" }}>{lang === "es" ? "Evento" : "Event"}</th>
-                    <th>Status</th>
+                    <th>{lang==="es"?"Estado":"Status"}</th>
                     <th style={{ textAlign: "left" }}>{lang === "es" ? "Resultado" : "Outcome"}</th>
                     <th style={{ textAlign: "left" }}>{lang === "es" ? "Mensaje" : "Message"}</th>
                   </tr>
