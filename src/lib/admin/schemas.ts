@@ -335,6 +335,9 @@ const tourBaseSchema = z.object({
   // PM 2026-07-10: día(s) en que opera el tour. Texto libre editable
   // por el admin (ej. "Sábados", "Fines de semana", "Diario").
   operating_day: optionalText(120, "Día de operación"),
+  // PM 2026-07-28: bilingüe. Legacy `operating_day` queda por compat.
+  operating_day_es: optionalText(120, "Día de operación (ES)"),
+  operating_day_en: optionalText(120, "Día de operación (EN)"),
   // PM 2026-07-27: contenido extendido persistido en DB (antes vivía en
   // memoria y se perdía al refrescar).
   experience_es: optionalText(8000, "La experiencia (ES)"),

@@ -361,6 +361,9 @@ function mapTourToTour(t) {
     // PM 2026-07-10: día(s) en que se ofrece el tour (viene de DB tras
     // migración 20260710000000). Editable por admin desde el editor.
     day: t.operating_day || "",
+    // PM 2026-07-28: bilingüe. Fallback al legacy si _es/_en vacíos.
+    dayES: t.operating_day_es || t.operating_day || "",
+    dayEN: t.operating_day_en || t.operating_day || "",
     duration: t.duration_minutes ? `${Math.round(t.duration_minutes / 60)} hours` : "",
     price: Math.round(effectiveCents / 100),
     basePrice: Math.round((t.price_cents || 0) / 100),
@@ -626,6 +629,12 @@ const SITE_SETTINGS_DEFAULTS = {
   // se está enviando el mensaje").
   contact_form_notice_es: "Te responderemos al correo que dejes en este formulario, normalmente dentro de las 24 horas.",
   contact_form_notice_en: "We'll reply to the email you provide in this form, usually within 24 hours.",
+  // PM 2026-07-28: subtítulo del hero + footer (aparece en /, /tours, /stays y
+  // como descripción del footer). Antes hardcoded en el diccionario i18n; el
+  // cliente lo pidió editable — dice "Traslados sin fricción" y no le gusta
+  // esa palabra. Ahora se edita desde Admin → Ajustes → Empresa.
+  hero_subtitle_es: "Traslados cómodos y seguros desde los aeropuertos principales de PR hasta la costa oeste — más nuestra red de aliados de hospedaje, tours y servicios.",
+  hero_subtitle_en: "Comfortable and safe transfers from PR's main airports to the West Coast — plus our trusted partner network for stays, tours, and more.",
   // Sección "Our Story / Born in Cabo Rojo" de la página About — todo
   // editable por el admin (imagen, copy bilingüe). Defaults = los textos
   // que tenían los strings i18n previos.
@@ -2020,10 +2029,10 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
    grid llene el ancho disponible sin huecos visuales cuando hay 1-2 fotos. */
 @media(min-width:768px){
   /* PM 2026-07-28: single-image gallery se limita a 780px de ancho y aspect
-     ratio ~16:10 para que fotos cuadradas/portrait luzcan bien centered sin
-     bandas laterales enormes. Reportado por PM: fotos cuadradas se veian
-     miniaturas dentro del wide banner. */
-  .gallery-grid.gallery-grid--1{grid-template-columns:1fr;height:460px;max-width:780px;margin:20px auto 0}
+     ratio ~cuadrado para que fotos cuadradas/portrait luzcan bien centered sin
+     bandas laterales enormes. Height subido a 540 para que fotos cuadradas
+     se recorten menos vertically (la lancha del PM quedaba cortada). */
+  .gallery-grid.gallery-grid--1{grid-template-columns:1fr;height:540px;max-width:780px;margin:20px auto 0}
   .gallery-grid.gallery-grid--1 img,
   .gallery-grid.gallery-grid--1 .gallery-cell{height:100% !important}
   .gallery-grid.gallery-grid--2{grid-template-columns:1fr 1fr;height:420px}
@@ -2347,7 +2356,7 @@ function Footer() {
                 <NavLink to="/" className="logo" style={{ marginBottom: 14 }}>
                   <img src={LOGO_SRC} alt="Living in PRDISE" className="logo-img logo-img-lg" />
                 </NavLink>
-                <p>{t("heroSub")}</p>
+                <p>{getSetting(lang === "es" ? "hero_subtitle_es" : "hero_subtitle_en") || t("heroSub")}</p>
               </div>
               <div className="foot-col">
                 <h5>{t("home")}</h5>
@@ -2889,7 +2898,10 @@ function FitImage({ src, alt, style, className, mode = "fit" }) {
           style={{
             width: "100%", height: "100%",
             objectFit: "cover",
-            objectPosition: "center 40%",
+            /* PM 2026-07-28: 55% (leve bias hacia abajo) preserva el
+               sujeto principal cuando la foto tiene cielo/decorado arriba
+               y protagonistas abajo (lancha con personas). */
+            objectPosition: "center 55%",
             display: "block",
           }}
         />
@@ -3133,7 +3145,7 @@ function HomePage() {
             <span>{t("heroTag")}</span>
           </div>
           <h1 className={lang === "es" ? "lang-es" : ""}>{t("heroTitle")}<br /><span className="col-g">P</span><span className="col-o">R</span><span>DISE</span></h1>
-          <p className="hero-sub">{t("heroSub")}</p>
+          <p className="hero-sub">{getSetting(lang === "es" ? "hero_subtitle_es" : "hero_subtitle_en") || t("heroSub")}</p>
           {/* marginTop negativo recorta el margin-bottom:40 del .hero-sub
               para que la separación visual quede aireada pero balanceada.
               marginBottom:28 deja respiro entre la chip y los botones. */}
@@ -4290,9 +4302,12 @@ function TourDetail({ params }) {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.difficulty}</span>
                 {/* PM 2026-07-10: día(s) de operación (editable por admin
                     desde el editor). Solo se muestra si está seteado. */}
-                {tour.day && (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Calendar style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.day}</span>
-                )}
+                {(() => {
+                  const dayLocalized = (lang === "es" ? tour.dayES : tour.dayEN) || tour.day;
+                  return dayLocalized ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Calendar style={{ width: 14, height: 14, color: "var(--gold)" }} />{dayLocalized}</span>
+                  ) : null;
+                })()}
               </div>
               {/* PM 2026-06-15: el "About this tour" prefiere el body
                   largo persistido en DB (description_es/_en mapeado a
@@ -4470,7 +4485,7 @@ function TourDetail({ params }) {
                 <div className="f-grp">
                   <label className="f-lab">{t("date")}</label>
                   <DatePicker value={date} onChange={setDate} min={minDate} placeholder={t("selectDate")} />
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 6 }}>{t("runsOn")} {tour.day}</p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 6 }}>{t("runsOn")} {(lang === "es" ? tour.dayES : tour.dayEN) || tour.day}</p>
                 </div>
                 <div className="f-grp">
                   <label className="f-lab">{t("travelers")}</label>
@@ -8055,6 +8070,9 @@ function AdminPanel({ onClose }) {
     // PM 2026-07-28: lema bilingüe. Se persiste por separado del legacy.
     tagline_es: SITE_SETTINGS.tagline_es ?? SITE_SETTINGS.tagline ?? "",
     tagline_en: SITE_SETTINGS.tagline_en ?? SITE_SETTINGS.tagline ?? "",
+    // PM 2026-07-28: subtítulo del hero + footer.
+    hero_subtitle_es: SITE_SETTINGS.hero_subtitle_es ?? "",
+    hero_subtitle_en: SITE_SETTINGS.hero_subtitle_en ?? "",
     contact_email: SITE_SETTINGS.contact_email ?? "",
     contact_phone: SITE_SETTINGS.contact_phone ?? "",
     contact_phone_tel: SITE_SETTINGS.contact_phone_tel ?? "",
@@ -14615,6 +14633,18 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                   updCompanySetting("whatsapp_phone", digits);
                 }} placeholder="+1 (787) 237-9519" /></div>
                 <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Dirección":"Address"}</label><textarea className="adm-fi" value={companySettings.address} onChange={(e) => updCompanySetting("address", e.target.value)} /></div>
+                {/* PM 2026-07-28: subtítulo del hero + footer, bilingüe.
+                    Aparece en la portada, en /tours, /stays y en la descripción
+                    del footer. Editable acá para que el cliente ajuste el copy
+                    sin pedir deploy. */}
+                <div className="adm-fg">
+                  <label className="adm-fl">{lang==="es"?"Subtítulo del hero (ES)":"Hero subtitle (ES)"} <span style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginLeft: 6 }}>{lang==="es" ? "(aparece en portada y footer)" : "(shown on home and footer)"}</span></label>
+                  <textarea rows={3} className="adm-fi" value={companySettings.hero_subtitle_es ?? ""} onChange={(e) => updCompanySetting("hero_subtitle_es", e.target.value)} placeholder={lang==="es" ? "Traslados cómodos y seguros desde los aeropuertos..." : ""} />
+                </div>
+                <div className="adm-fg">
+                  <label className="adm-fl">{lang==="es"?"Subtítulo del hero (EN)":"Hero subtitle (EN)"}</label>
+                  <textarea rows={3} className="adm-fi" value={companySettings.hero_subtitle_en ?? ""} onChange={(e) => updCompanySetting("hero_subtitle_en", e.target.value)} placeholder="Comfortable and safe transfers from PR's main airports..." />
+                </div>
               </Collapsible>
 
               <Collapsible title={lang==="es"?"Mensaje pre-relleno (WhatsApp / SMS)":"Pre-filled message (WhatsApp / SMS)"} icon={MessageCircle}>
@@ -15732,6 +15762,8 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               fd.append("meeting_point", ownedUpdate.meetingPoint || "");
               // PM 2026-07-10: día(s) de operación del tour.
               fd.append("operating_day", ownedUpdate.day || "");
+              fd.append("operating_day_es", ownedUpdate.dayES || "");
+              fd.append("operating_day_en", ownedUpdate.dayEN || "");
               // PM 2026-07-27: contenido extendido — persistir en DB.
               fd.append("experience_es", ownedUpdate.experienceES || "");
               fd.append("experience_en", ownedUpdate.experienceEN || "");
@@ -16107,6 +16139,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // PM 2026-07-10: día(s) de operación del tour. Controlado — antes usaba
   // defaultValue y el vals-por-label se rompía al traducir el label.
   const [tourDay, setTourDay] = useState(it.day || "");
+  // PM 2026-07-28: día bilingüe. Cada pestaña edita su propio valor.
+  const [tourDayES, setTourDayES] = useState(it.dayES != null ? it.dayES : (it.day || ""));
+  const [tourDayEN, setTourDayEN] = useState(it.dayEN != null ? it.dayEN : (it.day || ""));
   // PM 2026-07-27: cancellation_policy y house_rules bilingües. Antes
   // eran defaultValue no controlado con un solo state — al escribir en
   // ES sobreescribía el único valor y aparecía en ambas pestañas.
@@ -16644,6 +16679,9 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
       // PM 2026-07-10: tourDay state (controlado) — reemplaza el
       // vals.day que se rompía al traducir el label.
       if (tourDay.trim()) updated.day = tourDay.trim();
+      // PM 2026-07-28: pasar variantes bilingues al padre.
+      updated.dayES = tourDayES.trim();
+      updated.dayEN = tourDayEN.trim();
       if (vals.duration !== undefined && vals.duration !== "") updated.duration = vals.duration;
       if (vals.capacity !== undefined && vals.capacity !== "" && vals.capacity !== 0) updated.capacity = vals.capacity;
       if (vals.difficulty !== undefined && vals.difficulty !== "") updated.difficulty = vals.difficulty;
@@ -17069,7 +17107,23 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
 
             {/* PM 2026-06-12: precio unificado en "Precio y categoría" abajo. */}
             <div className="adm-fg-row">
-              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Día(s) de operación" : "Operating day(s)"}</label><input className="adm-fi" value={tourDay} onChange={(e) => setTourDay(e.target.value)} placeholder={lang === "es" ? "Ej: Sábados, Fines de semana, Diario" : "e.g. Saturdays, Weekends, Daily"} /></div>
+              {/* PM 2026-07-28: bilingüe — la pestaña activa (contentLang)
+                  edita día en ES o EN. Antes había un solo input, quedaba
+                  "Monday to Sunday" incluso al visitante en español. */}
+              <div className="adm-fg">
+                <label className="adm-fl">{contentLang === "en" ? "Operating day(s)" : "Día(s) de operación"}</label>
+                <input
+                  className="adm-fi"
+                  value={contentLang === "en" ? tourDayEN : tourDayES}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (contentLang === "en") setTourDayEN(v);
+                    else setTourDayES(v);
+                    setTourDay(v); // mantiene legacy sincronizado con la última edición
+                  }}
+                  placeholder={contentLang === "en" ? "e.g. Saturdays, Weekends, Daily" : "Ej: Sábados, Fines de semana, Diario"}
+                />
+              </div>
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Duración" : "Duration"}</label><input className="adm-fi" defaultValue={it.duration || ""} placeholder={lang === "es" ? "ej. 6h" : "e.g. 6h"} /></div>
             </div>
             <div className="adm-fg-row">

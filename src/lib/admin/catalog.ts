@@ -389,6 +389,9 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
     difficulty: formData.get("difficulty") ?? "",
     meeting_point: formData.get("meeting_point") ?? "",
     operating_day: formData.get("operating_day") ?? "",
+    // PM 2026-07-28: bilingüe.
+    operating_day_es: formData.get("operating_day_es") ?? "",
+    operating_day_en: formData.get("operating_day_en") ?? "",
     // PM 2026-07-27: contenido extendido persistido.
     experience_es: formData.get("experience_es") ?? "",
     experience_en: formData.get("experience_en") ?? "",
@@ -436,6 +439,8 @@ export async function createTour(formData: FormData): Promise<ActionResult> {
       // generados no incluyen la columna hasta regenerar tras la
       // migración 20260710000000).
       operating_day: ((d as { operating_day?: string }).operating_day || null) as never,
+      operating_day_es: (((d as { operating_day_es?: string }).operating_day_es) || null) as never,
+      operating_day_en: (((d as { operating_day_en?: string }).operating_day_en) || null) as never,
       // PM 2026-07-27: contenido extendido persistido en DB.
       experience_es: (((d as { experience_es?: string }).experience_es) || null) as never,
       experience_en: (((d as { experience_en?: string }).experience_en) || null) as never,
@@ -522,6 +527,9 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     difficulty: formData.get("difficulty") ?? "",
     meeting_point: formData.get("meeting_point") ?? "",
     operating_day: formData.get("operating_day") ?? "",
+    // PM 2026-07-28: bilingüe.
+    operating_day_es: formData.get("operating_day_es") ?? "",
+    operating_day_en: formData.get("operating_day_en") ?? "",
     // PM 2026-07-27: contenido extendido persistido.
     experience_es: formData.get("experience_es") ?? "",
     experience_en: formData.get("experience_en") ?? "",
@@ -567,6 +575,8 @@ export async function updateTour(formData: FormData): Promise<ActionResult> {
     .update({
       // PM 2026-07-10: operating_day (columna nueva).
       operating_day: ((d as { operating_day?: string }).operating_day || null) as never,
+      operating_day_es: (((d as { operating_day_es?: string }).operating_day_es) || null) as never,
+      operating_day_en: (((d as { operating_day_en?: string }).operating_day_en) || null) as never,
       // PM 2026-07-27: contenido extendido persistido — fix a bug crítico
       // detectado en audit. En el commit 7766d42 se agregaron estos 6
       // campos SOLO al INSERT (createTour), pero updateTour los ignoraba
