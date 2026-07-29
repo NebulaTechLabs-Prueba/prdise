@@ -2344,7 +2344,7 @@ function Navbar() {
 }
 
 function Footer() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   return (
     <>
       <footer className="foot">
