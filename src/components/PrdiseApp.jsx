@@ -775,6 +775,23 @@ function toast(opts) {
   }
 }
 
+// PM 2026-07-28: dificultad del tour = enum fijo (Easy/Moderate/Hard/Expert).
+// El valor canónico se guarda en inglés en la DB; el label se localiza al
+// renderizar según el idioma del visitante. Fallback: devolver el valor
+// tal cual si no está en el mapping (compat con valores custom viejos).
+const DIFFICULTY_LABELS = {
+  Easy:     { es: "Fácil",    en: "Easy" },
+  Moderate: { es: "Moderado", en: "Moderate" },
+  Hard:     { es: "Difícil",  en: "Hard" },
+  Expert:   { es: "Experto",  en: "Expert" },
+};
+function difficultyLabel(value, lang) {
+  if (!value) return "";
+  const entry = DIFFICULTY_LABELS[value];
+  if (!entry) return value;
+  return entry[lang === "es" ? "es" : "en"];
+}
+
 // PM 2026-06-17: label de unidad de precio según pricing_unit del servicio.
 // Antes las cards hardcodeaban "/ person" y "/ night" → cuando un servicio
 // estaba configurado como per_unit (fijo por servicio/evento) el cliente
@@ -3577,7 +3594,7 @@ function ToursList({ params }) {
           )}
         </div>
         <h3>{L(tr.name, tr.nameES)}</h3>
-        <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {tr.difficulty}</p>
+        <p className="listing-meta"><Users style={{ width: 12, height: 12 }} />Max {tr.capacity} · {difficultyLabel(tr.difficulty, lang)}</p>
         <p className="listing-desc">{L(tr.desc, tr.descES)}</p>
         <div className="listing-foot">
           <div>
@@ -4299,7 +4316,7 @@ function TourDetail({ params }) {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Star style={{ width: 14, height: 14, fill: "var(--gold)", color: "var(--gold)" }} /><strong style={{ color: "var(--gold)" }}>{tour.rating}</strong> ({tour.reviews})</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.duration}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Users style={{ width: 14, height: 14, color: "var(--gold)" }} />Max {tour.capacity}</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.difficulty}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap style={{ width: 14, height: 14, color: "var(--gold)" }} />{difficultyLabel(tour.difficulty, lang)}</span>
                 {/* PM 2026-07-10: día(s) de operación (editable por admin
                     desde el editor). Solo se muestra si está seteado. */}
                 {(() => {
@@ -10185,7 +10202,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <div className="adm-pcard-meta">
                       <span><Clock style={{ width: 11, height: 11 }} /> {t.duration}</span>
                       <span><Users style={{ width: 11, height: 11 }} /> Max {t.capacity}</span>
-                      <span><Zap style={{ width: 11, height: 11 }} /> {t.difficulty}</span>
+                      <span><Zap style={{ width: 11, height: 11 }} /> {difficultyLabel(t.difficulty, lang)}</span>
                       {t.rating > 0 && <span><Star style={{ width: 11, height: 11, fill: "#F5A623", color: "#F5A623" }} /> {t.rating}</span>}
                     </div>
                   </div>
@@ -17128,10 +17145,16 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             </div>
             <div className="adm-fg-row">
               <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Capacidad" : "Capacity"}</label><input type="number" className="adm-fi" defaultValue={it.capacity || ""} placeholder={lang === "es" ? "Máx. personas" : "Max people"} /></div>
-              <div className="adm-fg"><label className="adm-fl">Difficulty</label>
+              <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Dificultad" : "Difficulty"}</label>
+                {/* PM 2026-07-28: value CANÓNICO en inglés (Easy/Moderate/Hard/
+                    Expert) — no lo cambies o rompe el mapping bilingüe del
+                    render público. Solo los LABELS visibles cambian por idioma. */}
                 <select className="adm-fi" defaultValue={it.difficulty || ""}>
-                  <option value="">Select...</option>
-                  <option>Easy</option><option>Moderate</option><option>Hard</option><option>Expert</option>
+                  <option value="">{lang === "es" ? "Seleccionar..." : "Select..."}</option>
+                  <option value="Easy">{lang === "es" ? "Fácil" : "Easy"}</option>
+                  <option value="Moderate">{lang === "es" ? "Moderado" : "Moderate"}</option>
+                  <option value="Hard">{lang === "es" ? "Difícil" : "Hard"}</option>
+                  <option value="Expert">{lang === "es" ? "Experto" : "Expert"}</option>
                 </select>
               </div>
             </div>
