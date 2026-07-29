@@ -3873,7 +3873,7 @@ function HotelDetail({ params }) {
 
           <div className={`gallery-grid gallery-grid--${imgs.length}`}>
             {imgs.map((src, i) => (
-              <div key={i} className="gallery-cell"><FitImage src={src} alt={hotel.name} mode="cover" /></div>
+              <div key={i} className="gallery-cell"><FitImage src={src} alt={hotel.name} /></div>
             ))}
           </div>
         </div>
@@ -4268,7 +4268,7 @@ function TourDetail({ params }) {
 
           <div className={`gallery-grid gallery-grid--${imgs.length}`}>
             {imgs.map((src, i) => (
-              <div key={i} className="gallery-cell"><FitImage src={src} alt={tour.name} mode="cover" /></div>
+              <div key={i} className="gallery-cell"><FitImage src={src} alt={tour.name} /></div>
             ))}
           </div>
         </div>
@@ -4358,7 +4358,7 @@ function TourDetail({ params }) {
                     {notesText && (
                       <div style={{ padding: 14, borderRadius: 12, background: "rgba(41,171,226,.08)", border: "1px solid rgba(41,171,226,.2)", display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8 }}>
                         <Info style={{ width: 15, height: 15, color: "#29ABE2", flexShrink: 0, marginTop: 2 }} />
-                        <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.65 }}>{notesText}</p>
+                        <p style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{notesText}</p>
                       </div>
                     )}
                   </div>
