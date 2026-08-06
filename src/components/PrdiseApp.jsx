@@ -10403,9 +10403,32 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
                   <button className="adm-modal-close" onClick={() => setEditingPostCategory(null)}><X /></button>
                   <h3>{editingPostCategory.id === "new" ? (lang === "es" ? "NUEVA CATEGORÍA" : "NEW CATEGORY") : (lang === "es" ? "EDITAR CATEGORÍA" : "EDIT CATEGORY")}</h3>
+                  {/* PM 2026-08-05: slug auto-generado desde el nombre EN
+                      (mantiene coherencia con seeds "Season", "Tips", etc. que
+                      son texto libre, no kebab-case). Sigue editable. */}
                   <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre (ES)" : "Name (ES)"} *</label><input className="adm-fi" value={editingPostCategory.name_es} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, name_es: e.target.value })} /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre (EN)" : "Name (EN)"} *</label><input className="adm-fi" value={editingPostCategory.name_en} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, name_en: e.target.value })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre (ES)" : "Name (ES)"} *</label><input className="adm-fi" value={editingPostCategory.name_es} onChange={(e) => {
+                      const newName = e.target.value;
+                      const autoSlug = (editingPostCategory.name_en || newName || "").trim();
+                      const prevAutoSlug = (editingPostCategory.name_en || editingPostCategory.name_es || "").trim();
+                      const shouldAutoSlug = !editingPostCategory.slug || editingPostCategory.slug === prevAutoSlug;
+                      setEditingPostCategory({
+                        ...editingPostCategory,
+                        name_es: newName,
+                        ...(shouldAutoSlug ? { slug: autoSlug } : {}),
+                      });
+                    }} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang === "es" ? "Nombre (EN)" : "Name (EN)"} *</label><input className="adm-fi" value={editingPostCategory.name_en} onChange={(e) => {
+                      const newName = e.target.value;
+                      const autoSlug = (newName || editingPostCategory.name_es || "").trim();
+                      const prevAutoSlug = (editingPostCategory.name_en || editingPostCategory.name_es || "").trim();
+                      const shouldAutoSlug = !editingPostCategory.slug || editingPostCategory.slug === prevAutoSlug;
+                      setEditingPostCategory({
+                        ...editingPostCategory,
+                        name_en: newName,
+                        ...(shouldAutoSlug ? { slug: autoSlug } : {}),
+                      });
+                    }} /></div>
                   </div>
                   <div className="adm-fg">
                     <label className="adm-fl">Slug *
@@ -10413,7 +10436,7 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                         ({lang === "es" ? "se guarda en posts.category" : "stored in posts.category"})
                       </span>
                     </label>
-                    <input className="adm-fi" value={editingPostCategory.slug} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, slug: e.target.value })} placeholder={lang === "es" ? "consejos" : "tips"} />
+                    <input className="adm-fi" value={editingPostCategory.slug} onChange={(e) => setEditingPostCategory({ ...editingPostCategory, slug: e.target.value })} placeholder={lang === "es" ? "Se auto-completa desde el nombre" : "Auto-fills from name"} />
                   </div>
                   <div className="adm-fg-row">
                     <div className="adm-fg">
@@ -10433,8 +10456,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingPostCategory(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       const isNew = editingPostCategory.id === "new";
-                      if (!editingPostCategory.slug || !editingPostCategory.name_es || !editingPostCategory.name_en) {
-                        toast({ type: "error", message: lang === "es" ? "Slug, nombre ES y nombre EN son requeridos." : "Slug, name ES and name EN are required." });
+                      // PM 2026-08-05: mensaje específico (antes decía "los 3
+                      // son requeridos" aunque solo faltara uno).
+                      const missing = [];
+                      if (!editingPostCategory.name_es) missing.push(lang === "es" ? "Nombre (ES)" : "Name (ES)");
+                      if (!editingPostCategory.name_en) missing.push(lang === "es" ? "Nombre (EN)" : "Name (EN)");
+                      if (!editingPostCategory.slug)    missing.push("Slug");
+                      if (missing.length) {
+                        toast({ type: "error", message: (lang === "es" ? "Falta completar: " : "Missing: ") + missing.join(", ") });
                         return;
                       }
                       const fd = new FormData();
@@ -13764,13 +13793,46 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 <div className="adm-modal" onClick={(ev) => ev.stopPropagation()} style={{ maxWidth: 640 }}>
                   <button className="adm-modal-close" onClick={() => setEditingExperience(null)}><X /></button>
                   <h3>{editingExperience.id === "new" ? (lang==="es"?"NUEVA EXPERIENCIA":"NEW EXPERIENCE") : (lang==="es"?"EDITAR EXPERIENCIA":"EDIT EXPERIENCE")}</h3>
+                  {/* PM 2026-08-05: al tipear el nombre, el slug se auto-rellena
+                      (mismo patrón que Partners línea ~13565). La empleada
+                      llenaba solo nombres y guardar fallaba porque no sabía
+                      qué era "slug". Fuente preferida: EN → cae a ES.
+                      Sigue editable si el admin necesita override. */}
                   <div className="adm-fg-row">
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre (ES)":"Name (ES)"} *</label><input className="adm-fi" value={editingExperience.name_es} onChange={(e) => setEditingExperience({ ...editingExperience, name_es: e.target.value })} /></div>
-                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre (EN)":"Name (EN)"} *</label><input className="adm-fi" value={editingExperience.name_en} onChange={(e) => setEditingExperience({ ...editingExperience, name_en: e.target.value })} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre (ES)":"Name (ES)"} *</label><input className="adm-fi" value={editingExperience.name_es} onChange={(e) => {
+                      const newName = e.target.value;
+                      const autoSlug = (editingExperience.name_en || newName || "").toLowerCase()
+                        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                      const prevAutoSlug = (editingExperience.name_en || editingExperience.name_es || "").toLowerCase()
+                        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                      const shouldAutoSlug = !editingExperience.slug || editingExperience.slug === prevAutoSlug;
+                      setEditingExperience({
+                        ...editingExperience,
+                        name_es: newName,
+                        ...(shouldAutoSlug ? { slug: autoSlug } : {}),
+                      });
+                    }} /></div>
+                    <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Nombre (EN)":"Name (EN)"} *</label><input className="adm-fi" value={editingExperience.name_en} onChange={(e) => {
+                      const newName = e.target.value;
+                      const autoSlug = (newName || editingExperience.name_es || "").toLowerCase()
+                        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                      const prevAutoSlug = (editingExperience.name_en || editingExperience.name_es || "").toLowerCase()
+                        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                      const shouldAutoSlug = !editingExperience.slug || editingExperience.slug === prevAutoSlug;
+                      setEditingExperience({
+                        ...editingExperience,
+                        name_en: newName,
+                        ...(shouldAutoSlug ? { slug: autoSlug } : {}),
+                      });
+                    }} /></div>
                   </div>
                   <div className="adm-fg">
                     <label className="adm-fl">Slug *</label>
-                    <input className="adm-fi" value={editingExperience.slug} onChange={(e) => setEditingExperience({ ...editingExperience, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder="beach-escape" />
+                    <input className="adm-fi" value={editingExperience.slug} onChange={(e) => setEditingExperience({ ...editingExperience, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder={lang === "es" ? "Se auto-completa desde el nombre" : "Auto-fills from name"} />
                   </div>
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Descripción (ES)":"Description (ES)"}</label><textarea className="adm-fi" rows={2} value={editingExperience.description_es} onChange={(e) => setEditingExperience({ ...editingExperience, description_es: e.target.value })} /></div>
                   <div className="adm-fg"><label className="adm-fl">{lang==="es"?"Descripción (EN)":"Description (EN)"}</label><textarea className="adm-fi" rows={2} value={editingExperience.description_en} onChange={(e) => setEditingExperience({ ...editingExperience, description_en: e.target.value })} /></div>
@@ -13816,8 +13878,15 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                     <button className="adm-btn adm-btn-ghost" onClick={() => setEditingExperience(null)}>{lang==="es"?"Cancelar":"Cancel"}</button>
                     <button className="adm-btn adm-btn-primary" onClick={async () => {
                       const isNew = editingExperience.id === "new";
-                      if (!editingExperience.slug || !editingExperience.name_es || !editingExperience.name_en) {
-                        toast({ type: "error", message: lang==="es"?"Slug, nombre ES y nombre EN son requeridos.":"Slug, name ES and name EN are required." });
+                      // PM 2026-08-05: mensaje específico en vez de "los 3 son requeridos"
+                      // — antes decía "Slug, nombre ES y nombre EN" aunque solo
+                      // faltara uno, causando confusión.
+                      const missing = [];
+                      if (!editingExperience.name_es) missing.push(lang==="es" ? "Nombre (ES)" : "Name (ES)");
+                      if (!editingExperience.name_en) missing.push(lang==="es" ? "Nombre (EN)" : "Name (EN)");
+                      if (!editingExperience.slug)    missing.push("Slug");
+                      if (missing.length) {
+                        toast({ type: "error", message: (lang==="es" ? "Falta completar: " : "Missing: ") + missing.join(", ") });
                         return;
                       }
                       const fd = new FormData();
