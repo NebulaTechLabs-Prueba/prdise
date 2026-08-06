@@ -4314,7 +4314,9 @@ function TourDetail({ params }) {
               <div style={{ height: 12 }} />
               <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 20, fontSize: 13, color: "rgba(255,255,255,.6)" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Star style={{ width: 14, height: 14, fill: "var(--gold)", color: "var(--gold)" }} /><strong style={{ color: "var(--gold)" }}>{tour.rating}</strong> ({tour.reviews})</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.duration}</span>
+                {tour.duration ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock style={{ width: 14, height: 14, color: "var(--gold)" }} />{tour.duration}</span>
+                ) : null}
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Users style={{ width: 14, height: 14, color: "var(--gold)" }} />Max {tour.capacity}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Zap style={{ width: 14, height: 14, color: "var(--gold)" }} />{difficultyLabel(tour.difficulty, lang)}</span>
                 {/* PM 2026-07-10: día(s) de operación (editable por admin
@@ -15838,7 +15840,14 @@ textarea.adm-fi{resize:vertical;min-height:80px}
               if (ownedUpdate.bodyES != null) fd.append("description_es", ownedUpdate.bodyES);
               if (ownedUpdate.bodyEN != null) fd.append("description_en", ownedUpdate.bodyEN);
               fd.append("price_cents", priceCents);
-              fd.append("duration_minutes", String((ownedUpdate.duration || "").match(/\d+/)?.[0] ? Number((ownedUpdate.duration || "").match(/\d+/)[0]) * 60 : 60));
+              // PM 2026-08-06: si el admin deja el campo de duración vacío,
+              // se envía 0 (interpretado como "sin duración"). Antes se
+              // forzaba a 60 por default y luego el schema rechazaba tours
+              // que legítimamente no tienen duración fija.
+              {
+                const durNum = Number((ownedUpdate.duration || "").match(/\d+/)?.[0] || 0);
+                fd.append("duration_minutes", String(durNum > 0 ? durNum * 60 : 0));
+              }
               fd.append("max_pax", String(ownedUpdate.capacity || 10));
               fd.append("location", ownedUpdate.location || "");
               // PM 2026-06-15: difficulty + meeting_point — el server action ya los
@@ -17197,7 +17206,12 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
                   edita día en ES o EN. Antes había un solo input, quedaba
                   "Monday to Sunday" incluso al visitante en español. */}
               <div className="adm-fg">
-                <label className="adm-fl">{contentLang === "en" ? "Operating day(s)" : "Día(s) de operación"}</label>
+                {/* PM 2026-08-06: el LABEL respeta el idioma del admin (lang),
+                    mismo patrón que "Duración" al lado. El VALUE del input sigue
+                    controlado por contentLang porque ahí sí se edita contenido
+                    bilingüe del tour. Antes el label solo cambiaba con el toggle
+                    interno del contenido, causando disonancia con el resto del UI. */}
+                <label className="adm-fl">{lang === "es" ? "Día(s) de operación" : "Operating day(s)"}</label>
                 <input
                   className="adm-fi"
                   value={contentLang === "en" ? tourDayEN : tourDayES}

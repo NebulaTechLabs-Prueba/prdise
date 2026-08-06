@@ -324,10 +324,13 @@ const tourBaseSchema = z.object({
   short_desc_es: optionalText(500, "Descripción corta (ES)"),
   short_desc_en: optionalText(500, "Descripción corta (EN)"),
   price_cents: priceCentsSchema,
+  // PM 2026-08-06: duración opcional. Antes forzábamos min(1) → tours sin
+  // duración definida (ej. Marina Pony Ride) no se podían guardar. Ahora
+  // 0 = "no aplica" y el render público oculta el chip cuando es 0.
   duration_minutes: z.coerce
     .number({ invalid_type_error: "Duración inválida" })
     .int("Duración debe ser entera")
-    .min(1, "Duración mínima 1 minuto")
+    .min(0, "Duración no puede ser negativa")
     .max(60 * 24 * 14, "Duración fuera de rango"),
   max_pax: positiveIntSchema("Capacidad"),
   difficulty: optionalText(40, "Dificultad"),
