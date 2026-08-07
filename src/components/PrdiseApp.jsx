@@ -2022,8 +2022,12 @@ input[type="date"].transfer-quick-select::-webkit-calendar-picker-indicator{opac
 .listing-pic{position:relative;height:200px;overflow:hidden}
 .listing-pic img{width:100%;height:100%;object-fit:cover;transition:transform .6s}
 .listing-card:hover .listing-pic img{transform:scale(1.08)}
-.listing-badge{position:absolute;top:12px;left:12px;padding:5px 12px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#fff}
-.listing-fav{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center}
+/* PM 2026-08-06: z-index:2 + max-width para que el badge quede por encima
+   de la imagen (MediaImg foreground tiene z-index:1) y no se extienda
+   detrás de la parte central de la foto cuando el texto es largo
+   (ej. "EN LAS MAÑANAS, GENERALMENTE..."). Ellipsis si excede. */
+.listing-badge{position:absolute;top:12px;left:12px;z-index:2;padding:5px 12px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#fff;max-width:calc(100% - 24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.listing-fav{position:absolute;top:12px;right:12px;z-index:2;width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center}
 .listing-body{padding:18px;flex:1;display:flex;flex-direction:column}
 .listing-body h3{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.04em;margin-bottom:4px}
 .listing-meta{font-size:11px;color:rgba(255,255,255,.5);margin-bottom:8px;display:flex;align-items:center;gap:6px}
