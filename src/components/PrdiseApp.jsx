@@ -16091,14 +16091,19 @@ textarea.adm-fi{resize:vertical;min-height:80px}
       )}
 
       {/* PM 2026-06-29: toast container. Stack inferior-derecha. Cada
-          toast se auto-dismiss tras 4s; click cierra. */}
+          toast se auto-dismiss tras 4s; click cierra.
+          PM 2026-08-06: z-index 300 (antes 90) para quedar POR ENCIMA del
+          overlay de los modales (.adm-modal-bg tiene z-index 200 + bg
+          rgba(0,0,0,.75) que atenuaba el toast haciéndolo ver "opaco").
+          También reforzamos el borde a 2px + sombra más intensa para que
+          los mensajes de error/éxito destaquen incluso sobre el modal. */}
       {toasts.length > 0 && (
-        <div style={{ position: "fixed", right: 20, bottom: 20, zIndex: 90, display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
+        <div style={{ position: "fixed", right: 20, bottom: 20, zIndex: 300, display: "flex", flexDirection: "column", gap: 8, maxWidth: 380 }}>
           {toasts.map((t) => {
             const colors = {
-              success: { bg: "rgba(141,198,63,.12)", border: "rgba(141,198,63,.45)", icon: "#8DC63F", Icon: CheckCircle },
-              error: { bg: "rgba(239,108,43,.12)", border: "rgba(239,108,43,.45)", icon: "#EF6C2B", Icon: AlertTriangle },
-              info: { bg: "rgba(245,166,35,.1)", border: "rgba(245,166,35,.4)", icon: "var(--gold)", Icon: Info },
+              success: { border: "#8DC63F", icon: "#8DC63F", Icon: CheckCircle },
+              error:   { border: "#EF6C2B", icon: "#EF6C2B", Icon: AlertTriangle },
+              info:    { border: "var(--gold)", icon: "var(--gold)", Icon: Info },
             };
             const c = colors[t.type] || colors.info;
             const IconCmp = c.Icon;
@@ -16108,16 +16113,16 @@ textarea.adm-fi{resize:vertical;min-height:80px}
                 onClick={() => dismissToast(t.id)}
                 style={{
                   display: "flex", alignItems: "flex-start", gap: 10,
-                  padding: "11px 14px", borderRadius: 10,
+                  padding: "12px 14px", borderRadius: 10,
                   background: "#0c1318",
-                  border: `1px solid ${c.border}`,
-                  boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+                  border: `2px solid ${c.border}`,
+                  boxShadow: `0 12px 32px rgba(0,0,0,.75), 0 0 0 1px ${c.border}33`,
                   cursor: "pointer",
                   animation: "prdiseToastIn .22s ease",
                 }}
               >
-                <IconCmp style={{ width: 16, height: 16, color: c.icon, flexShrink: 0, marginTop: 1 }} />
-                <span style={{ fontSize: 12.5, color: "rgba(255,255,255,.88)", lineHeight: 1.45 }}>{t.message}</span>
+                <IconCmp style={{ width: 18, height: 18, color: c.icon, flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 13, color: "#fff", lineHeight: 1.45, fontWeight: 500 }}>{t.message}</span>
               </div>
             );
           })}
