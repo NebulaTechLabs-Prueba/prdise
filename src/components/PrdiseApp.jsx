@@ -16255,6 +16255,12 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
   // y mostramos solo el nombre del archivo. Si el admin quiere pegar una
   // URL externa a mano, activa este modo con el botón "Pegar URL".
   const [coverUrlMode, setCoverUrlMode] = useState(false);
+  // PM 2026-08-06: guarda la URL previa al entrar en modo "Pegar URL externa"
+  // — se restaura si el admin cancela sin pegar nada, evitando perder la
+  // imagen y evitando también exponer la URL interna de Supabase pre-poblada
+  // en el input (que confundía al admin haciéndole creer que estaba
+  // conectando algo con Supabase).
+  const [savedCoverUrl, setSavedCoverUrl] = useState("");
   const stayTypeSuggestions = useMemo(() => {
     const defaults = ["Villa", "Apartment", "Beach House", "Penthouse", "Cabin", "Loft", "Studio", "Guesthouse"];
     const existing = (typeof HOTELS !== "undefined" && Array.isArray(HOTELS))
@@ -16589,7 +16595,13 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
           <div style={{ display: "flex", gap: 6 }}>
             <input className="adm-fi" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder={lang === "es" ? "Pegá URL o usá Subir archivo →" : "Paste URL or use Upload file →"} style={{ flex: 1 }} autoFocus={coverUrlMode} />
             {coverUrlMode && (
-              <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 10px", fontSize: 10.5 }} onClick={() => setCoverUrlMode(false)}>
+              <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 10px", fontSize: 10.5 }} onClick={() => {
+                // PM 2026-08-06: si el admin no pegó nada, restaurar la URL
+                // previa (la imagen no se pierde por cancelar).
+                if (!imageUrl.trim() && savedCoverUrl) setImageUrl(savedCoverUrl);
+                setSavedCoverUrl("");
+                setCoverUrlMode(false);
+              }}>
                 {lang === "es" ? "Cancelar" : "Cancel"}
               </button>
             )}
@@ -16614,7 +16626,14 @@ function EditModal({ editing, onClose, onSave, customRolesGlobal = [] }) {
             />
           </label>
           {!coverUrlMode && (
-            <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 10px", fontSize: 10.5 }} onClick={() => setCoverUrlMode(true)}>
+            <button type="button" className="adm-btn adm-btn-ghost" style={{ flexShrink: 0, padding: "4px 10px", fontSize: 10.5 }} onClick={() => {
+              // PM 2026-08-06: guardar URL previa y limpiar input antes de
+              // mostrar el modo URL. Antes el input aparecía con la URL de
+              // Supabase de la imagen subida, confundiendo al admin.
+              setSavedCoverUrl(imageUrl);
+              setImageUrl("");
+              setCoverUrlMode(true);
+            }}>
               {lang === "es" ? "Pegar URL externa" : "Paste external URL"}
             </button>
           )}
